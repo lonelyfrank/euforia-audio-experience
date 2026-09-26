@@ -1,0 +1,603 @@
+/*
+ * Halo UI layer (ported from the Halo design system bundle.css).
+ * Every control floats over the visualizer; nothing here paints an opaque page.
+ */
+
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--void);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.halo-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.halo-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.halo-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.halo-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 95% at 52% 40%, rgba(0, 0, 0, 0) 58%, rgba(2, 3, 8, 0.6) 100%);
+}
+
+.halo-stage.is-idle[data-cursor='hide'],
+.halo-stage.is-idle[data-cursor='hide'] * {
+  cursor: none;
+}
+
+/* ---------- Now playing ---------- */
+
+.halo-np {
+  position: absolute;
+  left: var(--meta-x);
+  top: var(--meta-y);
+  width: 248px;
+  z-index: 2;
+  transition: opacity var(--dur-fade) var(--ease-out);
+}
+
+.halo-np__title {
+  margin: 0;
+  font-size: 30px;
+  line-height: 36px;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.halo-np__artist {
+  margin-top: var(--space-2);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.halo-np__wave {
+  display: block;
+  width: 248px;
+  height: 24px;
+  margin-top: 30px;
+}
+
+.halo-np__times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.halo-np__source {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+
+.halo-np__src {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.halo-np__glyph {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+}
+
+.halo-np__glyph svg {
+  width: 12px;
+  height: 12px;
+}
+
+.halo-np.is-live .halo-np__times {
+  visibility: hidden;
+}
+
+.halo-stage[data-track='hidden'] .halo-np {
+  opacity: 0;
+}
+
+.halo-stage.is-idle[data-track='dim'] .halo-np {
+  opacity: var(--idle-meta);
+}
+
+/* ---------- Dock: core + radial wheel ---------- */
+
+.halo-dock {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--core-bottom) + var(--core-size) / 2);
+  width: 0;
+  height: 0;
+  z-index: 3;
+  transition:
+    transform 620ms var(--ease-out),
+    opacity var(--dur-fade) var(--ease-out);
+}
+
+.halo-dock.is-open {
+  transform: translateY(calc(-1 * var(--dock-lift)));
+}
+
+.halo-stage.is-idle .halo-dock {
+  opacity: var(--idle-controls);
+  pointer-events: none;
+}
+
+.halo-guide {
+  position: absolute;
+  left: calc(-1 * var(--wheel-r));
+  top: calc(-1 * var(--wheel-r));
+  width: calc(2 * var(--wheel-r));
+  height: calc(2 * var(--wheel-r));
+  border-radius: 50%;
+  border: 1px solid var(--guide);
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.3) rotate(-40deg);
+  transition:
+    opacity 320ms var(--ease-in),
+    transform 360ms var(--ease-in);
+}
+
+.halo-dock.is-open .halo-guide {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 420ms var(--ease-out),
+    transform var(--dur-expand) var(--ease-out);
+}
+
+.halo-dock__caption {
+  position: absolute;
+  left: -120px;
+  width: 240px;
+  top: 40px;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 9.5px;
+  line-height: 12px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  opacity: 0;
+  transition: opacity 300ms;
+}
+
+.halo-dock.is-sub .halo-dock__caption {
+  opacity: 1;
+}
+
+.halo-dock__items {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.halo-core {
+  position: absolute;
+  left: calc(var(--core-size) / -2);
+  top: calc(var(--core-size) / -2);
+  width: var(--core-size);
+  height: var(--core-size);
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line-strong);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  /* --lvl (0..1) is written every frame from the audio level. */
+  box-shadow:
+    0 0 calc(8px + var(--lvl, 0) * 22px) rgba(155, 123, 255, calc(0.1 + var(--lvl, 0) * 0.26)),
+    inset 0 0 14px rgba(155, 123, 255, 0.07);
+  transform: scale(calc(1 + var(--lvl, 0) * 0.03));
+  transition:
+    border-color 300ms,
+    background-color 300ms;
+}
+
+.halo-core:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(16, 18, 36, 0.62);
+}
+
+.halo-dock.is-open > .halo-core,
+.halo-core.is-active {
+  border-color: var(--accent-live);
+  border-width: 1.5px;
+}
+
+.halo-core__icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition:
+    opacity 220ms,
+    transform 320ms var(--ease-out);
+}
+
+.halo-core__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.halo-core__icon--back {
+  opacity: 0;
+  transform: translateX(4px);
+}
+
+.halo-core.is-back .halo-core__icon--main {
+  opacity: 0;
+  transform: translateX(-4px);
+}
+
+.halo-core.is-back .halo-core__icon--back {
+  opacity: 1;
+  transform: none;
+}
+
+.halo-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.halo-item__disc {
+  position: absolute;
+  left: calc(var(--item-size) / -2);
+  top: calc(var(--item-size) / -2);
+  width: var(--item-size);
+  height: var(--item-size);
+  padding: 0;
+  border-radius: var(--radius-full);
+  background: var(--glass-solid);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition:
+    border-color 200ms,
+    background-color 200ms,
+    transform 260ms var(--ease-out),
+    box-shadow 260ms;
+}
+
+.halo-item__disc svg {
+  width: 18px;
+  height: 18px;
+}
+
+.halo-item__disc:hover {
+  border-color: var(--line-strong);
+  background: rgba(22, 24, 44, 0.8);
+  transform: scale(1.07);
+}
+
+.halo-item__label {
+  position: absolute;
+  left: -70px;
+  width: 140px;
+  top: 25px;
+  text-align: center;
+  font-size: 10.5px;
+  line-height: 14px;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: color 200ms;
+}
+
+.halo-item:hover .halo-item__label,
+.halo-item:focus-within .halo-item__label {
+  color: var(--ink);
+}
+
+.halo-item.is-selected .halo-item__disc {
+  border-color: var(--accent-live);
+  box-shadow: 0 0 14px -3px var(--accent-live);
+}
+
+.halo-item.is-selected .halo-item__label {
+  color: var(--ink);
+}
+
+/* ---------- Settings panel ---------- */
+
+.halo-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--core-bottom) + var(--core-size) + var(--space-6));
+  width: var(--panel-w);
+  margin-left: calc(var(--panel-w) / -2);
+  padding: 14px var(--space-4) var(--space-3);
+  border-radius: var(--radius-panel);
+  background: var(--glass-panel);
+  border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  backdrop-filter: blur(20px) saturate(120%);
+  box-shadow: var(--shadow-panel);
+  color: var(--ink);
+  z-index: 4;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(14px) scale(0.98);
+  transform-origin: 50% 100%;
+  pointer-events: none;
+  transition:
+    opacity 260ms var(--ease-in),
+    transform 300ms var(--ease-in),
+    visibility 0s linear 300ms;
+}
+
+.halo-panel.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  transition:
+    opacity 360ms var(--ease-out),
+    transform 480ms var(--ease-out),
+    visibility 0s;
+}
+
+.halo-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 10px;
+}
+
+.halo-panel__title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}
+
+.halo-panel__x {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.halo-panel__x:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.halo-panel__x svg {
+  width: 14px;
+  height: 14px;
+}
+
+.halo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 40px;
+  border-top: 1px solid var(--hairline);
+}
+
+.halo-row__label {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--ink);
+}
+
+.halo-row__value {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.halo-panel__foot {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ink-faint);
+}
+
+.halo-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 132px;
+  height: 16px;
+  background: transparent;
+  margin: 0;
+  cursor: pointer;
+}
+
+.halo-range::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--ink) 0 var(--fill, 50%), rgba(255, 255, 255, 0.18) var(--fill, 50%) 100%);
+}
+
+.halo-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  margin-top: -5px;
+  border: 0;
+}
+
+.halo-range::-moz-range-track {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.halo-range::-moz-range-progress {
+  height: 2px;
+  background: var(--ink);
+}
+
+.halo-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 0;
+}
+
+.halo-toggle {
+  width: 30px;
+  height: 18px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  position: relative;
+  cursor: pointer;
+  transition:
+    background-color 200ms,
+    border-color 200ms;
+}
+
+.halo-toggle span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink-muted);
+  transition:
+    transform 260ms var(--ease-out),
+    background-color 200ms;
+}
+
+.halo-toggle[aria-checked='true'] {
+  background: var(--accent-live);
+  border-color: var(--accent-live);
+}
+
+.halo-toggle[aria-checked='true'] span {
+  transform: translateX(12px);
+  background: var(--on-accent);
+}
+
+.halo-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line);
+}
+
+.halo-seg button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.halo-seg button:hover {
+  color: var(--ink);
+}
+
+.halo-seg button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+/* ---------- focus & motion ---------- */
+
+.halo-stage :focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.halo-stage button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .halo-dock,
+  .halo-guide,
+  .halo-panel,
+  .halo-core,
+  .halo-core__icon,
+  .halo-np {
+    transition-duration: 1ms !important;
+  }
+}

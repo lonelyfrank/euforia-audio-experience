@@ -1,0 +1,17 @@
+{
+  "name": "Spectrum",
+  "author": "Halo",
+  "version": 2,
+  "audio": { "sensitivity": 1, "smoothing": 1 },
+  "camera": { "fov": 45, "distance": 22, "drift": 0.6 },
+  "bloom": { "strength": 0.9, "radius": 0.5, "threshold": 0.25 },
+  "visual": {
+    "radius": 2.2,
+    "barWidth": 0.05,
+    "barDepth": 0.05,
+    "maxLength": 2.6,
+    "rotationSpeed": 0.05,
+    "coreSize": 1.1,
+    "dustCount": 1500
+  }
+}

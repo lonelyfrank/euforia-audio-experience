@@ -1,0 +1,18 @@
+[package]
+name = "music-visualizer"
+description = "Real-time music visualizer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "music_visualizer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+audio-capture = { path = "../native/audio-capture" }

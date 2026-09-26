@@ -1,0 +1,29 @@
+{
+  "name": "Particle Field",
+  "author": "Halo",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 0.9
+  },
+  "camera": {
+    "fov": 60,
+    "distance": 0,
+    "drift": 0.5
+  },
+  "bloom": {
+    "strength": 0.9,
+    "radius": 0.6,
+    "threshold": 0.05
+  },
+  "visual": {
+    "count": 60000,
+    "depth": 120,
+    "spread": 26,
+    "baseSpeed": 6,
+    "midSpeed": 16,
+    "beatPush": 14,
+    "size": 0.18,
+    "swirl": 0.35
+  }
+}

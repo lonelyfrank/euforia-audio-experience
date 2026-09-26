@@ -1,0 +1,70 @@
+/*
+ * Halo design tokens (source: Halo design system, tokens.json v1).
+ * One dark theme. Use the custom properties, never copied values.
+ */
+:root {
+  /* colour */
+  --void: #05060d;
+  --abyss: #0b0e24;
+  --floor: #03040a;
+  --glass: rgba(10, 12, 26, 0.55);
+  --glass-solid: rgba(12, 14, 30, 0.72);
+  --glass-panel: rgba(10, 12, 26, 0.8);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.16);
+  --line-strong: rgba(255, 255, 255, 0.34);
+  --guide: rgba(255, 255, 255, 0.14);
+  --ink: #f3f1fa;
+  --ink-muted: #a6a4b8;
+  --ink-faint: #7c7a8e;
+  --violet: #9b7bff;
+  --electric: #4f8dff;
+  --magenta: #e27bd8;
+  /* Rewritten at runtime from the active preset's first hue. */
+  --accent-live: var(--violet);
+  --on-accent: #0a0b16;
+  --focus: #c9b8ff;
+
+  /* type */
+  --font-sans: 'Geist Variable', 'Geist', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+
+  /* spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* radius */
+  --radius-full: 999px;
+  --radius-panel: 16px;
+  --radius-control: 8px;
+
+  /* shadow */
+  --glow-core: 0 0 18px rgba(155, 123, 255, 0.3);
+  --shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.45);
+
+  /* layout */
+  --core-size: 56px;
+  --core-bottom: 96px;
+  --dock-lift: 84px;
+  --wheel-r: 110px;
+  --item-size: 38px;
+  --meta-x: 3.5%;
+  --meta-y: 22%;
+  --panel-w: 320px;
+
+  /* opacity */
+  --idle-meta: 0.35;
+  --idle-controls: 0;
+
+  /* timing */
+  --dur-expand: 560ms;
+  --dur-collapse: 240ms;
+  --dur-fade: 1200ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}

@@ -1,0 +1,36 @@
+{
+  "name": "Infinite Tunnel",
+  "author": "Visualizer",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 75,
+    "distance": 0,
+    "drift": 0.5
+  },
+  "bloom": {
+    "strength": 0.8,
+    "radius": 0.45,
+    "threshold": 0.2
+  },
+  "visual": {
+    "radius": 4,
+    "length": 160,
+    "radialSegments": 96,
+    "lengthSegments": 320,
+    "baseSpeed": 8,
+    "midSpeed": 16,
+    "beatPush": 12,
+    "ringDensity": 0.5,
+    "segments": 24,
+    "bend": 3,
+    "lobes": 5,
+    "deform": 0.35,
+    "fog": 0.05,
+    "hueSpeed": 0.02,
+    "sparkCount": 1200
+  }
+}

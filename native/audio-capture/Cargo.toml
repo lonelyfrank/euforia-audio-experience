@@ -1,0 +1,15 @@
+[package]
+name = "audio-capture"
+description = "Cross-platform system audio / microphone capture (WASAPI loopback on Windows)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cpal = "0.18"
+thiserror = "2"
+
+# Linux: the PulseAudio host (pure Rust, works with PipeWire's pulse server)
+# exposes the ".monitor" sources used to capture system audio.
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { version = "0.18", features = ["pulseaudio"] }
