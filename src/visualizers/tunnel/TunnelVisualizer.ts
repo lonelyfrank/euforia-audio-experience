@@ -332,23 +332,24 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
     // Bass: the section's depth (weight) and lobes (pitch: higher notes, more lobes; per song a base count).
-    u.uShape.value = p.deform * weight;
+    // Each part fades with its band: the section with the bass, the ring lines with the lead, the fine grid with the highs.
+    u.uShape.value = p.deform * weight * response.lowAudible;
     u.uLobes.value = (3 + 4 * vary[0]) * (1 + 0.5 * Math.max(Math.log2(music.bassPitch / 40), 0));
     u.uShapePhase.value = this.shapePhase;
     u.uRing.value = p.ringTrace * (1 + 0.8 * music.drop);
     // Mids: lead-shaped ring lines, twist and bend.
-    u.uLeadWobble.value = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice);
+    u.uLeadWobble.value = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice) * response.midAudible;
     u.uLeadCycles.value = (2 + 3 * vary[3]) * (1 + 0.3 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
     u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow;
     u.uBend.value = p.bend * (0.3 + 0.7 * flow);
     // Highs: fine grid; brightness from energy, hits and drops.
-    u.uDetail.value = detail;
+    u.uDetail.value = detail * response.highAudible;
     u.uDensity.value = density;
     u.uFlash.value = 0.5 * music.drop;
     const s = this.sparkMaterial.uniforms;
     s.uSparkTravel.value = this.sparkTravel;
-    s.uSparks.value = detail * (0.3 + 0.7 * music.highPercussion);
+    s.uSparks.value = detail * (0.3 + 0.7 * music.highPercussion) * response.highAudible;
 
     // A slow roll with the mids; no zoom or shake on beats.
     this.camera.rotation.z = Math.sin(this.roll) * 0.25 * this.preset.camera.drift;

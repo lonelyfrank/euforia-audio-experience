@@ -1,4 +1,5 @@
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
+import { Audibility } from './Audibility';
 import { Envelope } from './Envelope';
 import { MusicContext } from './MusicContext';
 import { hzToPosition, sampleSpectrumRange } from './spectrum';
@@ -41,6 +42,10 @@ export class VisualResponse {
     lowShare: 1 / 3,
     midShare: 1 / 3,
     highShare: 1 / 3,
+    lowAudible: 0,
+    midAudible: 0,
+    highAudible: 0,
+    audible: 0,
     music: this.context.frame,
   };
 
@@ -54,6 +59,9 @@ export class VisualResponse {
   private readonly midShare = new Envelope(...SHARE);
   private readonly highShare = new Envelope(...SHARE);
   private readonly highReference = new Envelope(HIGH_REFERENCE_TAU, HIGH_REFERENCE_TAU);
+  private readonly lowAudible = new Audibility();
+  private readonly midAudible = new Audibility();
+  private readonly highAudible = new Audibility();
 
   constructor() {
     this.reset();
@@ -93,6 +101,13 @@ export class VisualResponse {
     const hit = Math.max(audio.beatPulse, audio.onset * audio.onset) * Math.min(presence(out.lowShare), 1);
     out.impact = this.impact.update(silent ? 0 : hit, dt);
     out.density = this.density.update(silent ? 0 : audio.energy, dt);
+    // Percussive regions have natural gaps between hits: hold drops longer there; sustained sound cuts sharply.
+    const music = this.context.frame;
+    const beat = 60 / Math.max(music.tempo, 60);
+    out.lowAudible = this.lowAudible.update(audio.lowDb, dt, holdFor(music.lowPercussion, beat));
+    out.midAudible = this.midAudible.update(audio.midDb, dt, holdFor(music.midPercussion, beat));
+    out.highAudible = this.highAudible.update(audio.highDb, dt, holdFor(music.highPercussion, beat));
+    out.audible = Math.max(out.lowAudible, out.midAudible, out.highAudible);
     this.context.update(audio, out, dt);
     return out;
   }
@@ -102,6 +117,8 @@ export class VisualResponse {
     for (const e of [this.lowShare, this.midShare, this.highShare]) e.reset(1 / 3);
     Object.assign(this.frame, { weight: 0, flow: 0, detail: 0, shimmer: 0, impact: 0, density: 0 });
     this.frame.lowShare = this.frame.midShare = this.frame.highShare = 1 / 3;
+    for (const a of [this.lowAudible, this.midAudible, this.highAudible]) a.reset();
+    this.frame.lowAudible = this.frame.midAudible = this.frame.highAudible = this.frame.audible = 0;
     this.context.reset();
   }
 }
@@ -115,6 +132,15 @@ export class VisualResponse {
  */
 function presence(share: number): number {
   return smoothstep(0.01, 0.12, share) + 0.2 * smoothstep(0.4, 0.65, share);
+}
+
+/**
+ * How long a drop is held before it shows (s): 0.12 for sustained sound; a
+ * percussive part is silent between its hits, so there it covers a beat of
+ * the song (a hard cut then shows after about a beat).
+ */
+function holdFor(percussion: number, beat: number): number {
+  return 0.12 + Math.min(percussion * 3, 1) * beat * 1.1;
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {

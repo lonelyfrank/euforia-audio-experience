@@ -24,6 +24,7 @@ export const CompositeShader = {
     tB: { value: null },
     uMix: { value: 1 },
     uReflection: { value: 1 },
+    uAudible: { value: 1 },
     uTime: { value: 0 },
     uLevel: { value: 0 },
     uResolution: { value: new Vector2(1, 1) },
@@ -47,6 +48,8 @@ export const CompositeShader = {
     uniform sampler2D tB;
     uniform float uMix;
     uniform float uReflection;
+    // How audible the music is: the scene vanishes with it (fading or cut), the sky stays.
+    uniform float uAudible;
     uniform float uTime;
     uniform float uLevel;
     uniform vec2 uResolution;
@@ -66,7 +69,7 @@ export const CompositeShader = {
     }
 
     vec3 scene(vec2 uv) {
-      return mix(texture2D(tA, uv).rgb, texture2D(tB, uv).rgb, uMix);
+      return mix(texture2D(tA, uv).rgb, texture2D(tB, uv).rgb, uMix) * uAudible;
     }
 
     // Background of the sky: void, a haze tinted by the palette, twinkling stars.

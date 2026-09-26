@@ -63,6 +63,14 @@ export interface AudioFrame {
   flatness: number;
   /** Absolute loudness (RMS, -60..0 dBFS → 0..1), not auto-gained: for comparing sections. Smoothed. */
   loudness: number;
+  /**
+   * Raw level (dB, not normalized, not smoothed) of the low (20–250 Hz, ~20 ms
+   * window), mid (250 Hz–2 kHz) and high (2–16 kHz) regions: they follow fades
+   * and cuts as they happen. SILENCE_DB when silent.
+   */
+  lowDb: number;
+  midDb: number;
+  highDb: number;
 
   /** The bass line (40–300 Hz): pitch and the real shape of one cycle. */
   bassVoice: VoiceFrame;
@@ -112,6 +120,17 @@ export interface VisualResponseFrame {
   lowShare: number;
   midShare: number;
   highShare: number;
+  /**
+   * How audible each region is right now compared with its recent level
+   * (0..1): 1 through ordinary dynamics, falling as the region fades (at the
+   * speed of the fade) and dropping at once on a hard cut, back to 1 on the
+   * next attack. Short rhythmic gaps are held. Elements tied to a region
+   * should vanish with it; `audible` is the loudest region (the whole scene).
+   */
+  lowAudible: number;
+  midAudible: number;
+  highAudible: number;
+  audible: number;
   /** Slow musical context: tempo clock, song sections, character and per-song variation. */
   music: MusicContextFrame;
 }

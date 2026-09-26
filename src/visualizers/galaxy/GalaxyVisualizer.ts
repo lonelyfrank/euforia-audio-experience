@@ -1,8 +1,9 @@
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, type WebGLRenderer } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, Vector3, type WebGLRenderer } from 'three';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
+import { audibleGlsl } from '../shared/audibleGlsl';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { SignalTexture } from '../shared/SignalTexture';
@@ -35,6 +36,7 @@ const LOW_END = hzToPosition(250);
 const vertexShader = /* glsl */ `
   ${voiceGlsl}
   ${traceGlsl}
+  ${audibleGlsl}
   uniform sampler2D tSpectrum;
   uniform float uSpin;
   uniform float uRadius;
@@ -88,7 +90,8 @@ const vertexShader = /* glsl */ `
     gl_PointSize = size * uPixelRatio * (300.0 / -mv.z);
     int arm = int(aStar.z);
     vec3 color = arm == 0 ? uColors[0] : arm == 1 ? uColors[1] : uColors[2];
-    vColor = color * (0.35 + 0.65 * (1.0 - r)) * (0.35 + 0.65 * level);
+    // Each radius vanishes with its band (core = bass, rim = highs).
+    vColor = color * (0.35 + 0.65 * (1.0 - r)) * (0.35 + 0.65 * level) * audibleAt(r);
   }
 `;
 
@@ -170,6 +173,7 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
         uLevel: { value: 0 },
         uDigital: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
+        uAudible: { value: new Vector3() },
         uColors: { value: [new Color(), new Color(), new Color()] },
       },
     });
@@ -212,6 +216,7 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
     u.uTwinkle.value = detail * music.highPercussion;
     u.uSeed.value = this.twinkleSeed;
     u.uLevel.value = density + 0.4 * music.drop;
+    (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
 
     const { distance, drift } = this.preset.camera;
     const tilt = p.tilt + Math.sin(this.drift * 0.06) * 0.06 * drift;

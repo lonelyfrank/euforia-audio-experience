@@ -107,15 +107,17 @@ export class OscilloscopeVisualizer implements Visualizer {
     const leadCycles = 4 + 2 * Math.max(Math.log2(music.leadPitch / 180), 0);
     fillVoice(bass.values, music.bassLine, bassCycles, this.bassPhase, digital);
     fillVoice(lead.values, music.leadLine, leadCycles, this.leadPhase, digital);
-    this.write(bass, p.offsetY - p.voiceSpacing, p.voiceAmplitude * weight);
-    this.write(lead, p.offsetY + p.voiceSpacing, p.voiceAmplitude * flow * (0.4 + 0.6 * music.leadVoice));
+    // Each channel flattens and fades with its region (slowly on a fade, at once on a cut).
+    const { lowAudible, midAudible, audible } = response;
+    this.write(bass, p.offsetY - p.voiceSpacing, p.voiceAmplitude * weight * lowAudible);
+    this.write(lead, p.offsetY + p.voiceSpacing, p.voiceAmplitude * flow * (0.4 + 0.6 * music.leadVoice) * midAudible);
 
     // Bass → trace width, highs → brightness, drop → flash.
     const flash = 0.3 * music.drop;
     input.material.linewidth = p.traceWidth * (1 + 0.6 * weight);
-    input.material.opacity = Math.min(1, 0.75 + 0.25 * detail + flash);
-    bass.material.opacity = Math.min(1, 0.45 + 0.4 * weight + flash);
-    lead.material.opacity = Math.min(1, 0.45 + 0.4 * flow + flash);
+    input.material.opacity = Math.min(1, 0.75 + 0.25 * detail + flash) * audible;
+    bass.material.opacity = Math.min(1, 0.45 + 0.4 * weight + flash) * lowAudible;
+    lead.material.opacity = Math.min(1, 0.45 + 0.4 * flow + flash) * midAudible;
     this.gridMaterial.opacity = p.graticule * (0.8 + 0.4 * density);
 
     // Hits lengthen the phosphor's persistence for a moment.

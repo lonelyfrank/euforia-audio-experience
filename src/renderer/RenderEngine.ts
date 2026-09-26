@@ -250,6 +250,7 @@ export class RenderEngine {
     u.uMix.value = this.mix;
     u.uTime.value = this.time;
     u.uLevel.value = frame.volume;
+    u.uAudible.value = response.audible;
     this.composer.render(dt);
 
     if (!this.paused && this.quality.sample(rawDt)) this.applyQuality();

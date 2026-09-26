@@ -1,8 +1,9 @@
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, type WebGLRenderer } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, Vector3, type WebGLRenderer } from 'three';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
+import { audibleGlsl } from '../shared/audibleGlsl';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { SignalTexture } from '../shared/SignalTexture';
@@ -34,6 +35,7 @@ const SHELLS = 6;
 const vertexShader = /* glsl */ `
   ${voiceGlsl}
   ${traceGlsl}
+  ${audibleGlsl}
   uniform sampler2D tSpectrum;
   uniform float uTravel;
   uniform float uSparkTravel;
@@ -96,12 +98,14 @@ const vertexShader = /* glsl */ `
 
     // Emission: a density-dependent share of the field; sparks fade in with the hi-hats.
     float visible = step(aSeed.w, uDensity) * (1.0 - spark) + spark * uSparks;
-    float size = uSize * mix(1.0 + uWeight * 1.2 * (1.0 - band), 0.5 + uSparks * 1.5, spark);
+    // Each particle vanishes with its band.
+    float heard = audibleAt(band);
+    float size = uSize * mix(1.0 + uWeight * 1.2 * (1.0 - band), 0.5 + uSparks * 1.5, spark) * heard;
     gl_PointSize = visible > 0.01 ? min(size * (300.0 / -mvPosition.z), 9.0) * uPixelRatio : 0.0;
 
     vMix = aSeed.x;
     vSpark = spark * uSparks;
-    vGlow = 0.35 + level * 1.1;
+    vGlow = (0.35 + level * 1.1) * heard;
     // Fade in from the far end, fade out right before the camera.
     vFade = smoothstep(-uDepth, -uDepth * 0.6, z) * smoothstep(0.0, -4.0, z);
   }
@@ -191,6 +195,7 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
         uFlow: { value: 0 },
         uDigital: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
+        uAudible: { value: new Vector3() },
         uColorA: { value: new Color() },
         uColorB: { value: new Color() },
         uSparkColor: { value: new Color() },
@@ -246,6 +251,7 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
     u.uEnergy.value = density;
     u.uFlash.value = 0.6 * music.drop;
     u.uDensity.value = this.density;
+    (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
 
     // The camera sways with the mids only.
     const sway = this.preset.camera.drift;

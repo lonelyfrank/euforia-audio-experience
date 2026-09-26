@@ -68,6 +68,9 @@ const RIGHT: Section[] = [
       ['Shimmer', COLORS.high, (_, r) => r.shimmer],
       ['Impact', COLORS.hit, (_, r) => r.impact],
       ['Density', COLORS.level, (_, r) => r.density],
+      ['Audible L', COLORS.low, (_, r) => r.lowAudible],
+      ['Audible M', COLORS.mid, (_, r) => r.midAudible],
+      ['Audible H', COLORS.high, (_, r) => r.highAudible],
     ],
   ],
   [

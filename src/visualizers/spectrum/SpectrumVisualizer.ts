@@ -1,8 +1,9 @@
-import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial } from 'three';
+import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector3 } from 'three';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, SceneLayout, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
+import { audibleGlsl } from '../shared/audibleGlsl';
 import { disposeObject } from '../shared/dispose';
 import { SignalTexture } from '../shared/SignalTexture';
 import { VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
@@ -56,6 +57,7 @@ const vertexShader = /* glsl */ `
 const fragmentShader = /* glsl */ `
   #define MAX_ECHOES ${MAX_ECHOES}
   ${voiceGlsl}
+  ${audibleGlsl}
   uniform sampler2D tHistory;
   uniform int uEchoes;
   uniform float uProgress;
@@ -118,7 +120,8 @@ const fragmentShader = /* glsl */ `
     float pos = 1.0 - clamp(abs(angle) / uSpan, 0.0, 1.0);
     float turn = angle / 6.2831853 + uRotation;
     float px = fwidth(r) * uLineWidth;
-    vec3 hue = regionColor(pos);
+    // Each part of the ring (and its echoes) vanishes with its band.
+    vec3 hue = regionColor(pos) * audibleAt(pos);
     vec3 color = vec3(0.0);
 
     // Polar graticule: rings and spokes, like a radar screen.
@@ -147,16 +150,16 @@ const fragmentShader = /* glsl */ `
 
     // The lead's orbit and the bass line's core: polar traces of the voices' real shapes.
     float lead = uLeadRadius * (1.0 + uLeadShape * polarVoice(1.0, turn, uLeadLobes, uLeadPhase));
-    color += uColors[1] * line(r - lead, px) * (0.2 + 0.5 * min(uLeadShape * 8.0, 1.0) + 0.2 * uDensity);
+    color += uColors[1] * line(r - lead, px) * (0.2 + 0.5 * min(uLeadShape * 8.0, 1.0) + 0.2 * uDensity) * uAudible.y;
     float core = uCoreRadius * (1.0 + 0.25 * uWeight + uCoreShape * polarVoice(0.0, turn, uCoreLobes, uCorePhase));
-    color += uColors[0] * (line(r - core, px) * (0.4 + 0.6 * uWeight) + step(r, core) * 0.05 * uWeight);
+    color += uColors[0] * (line(r - core, px) * (0.4 + 0.6 * uWeight) + step(r, core) * 0.05 * uWeight) * uAudible.x;
 
     // Sparks beyond the ring with the hi-hats (a new scatter on every hit).
     if (uSparks > 0.0 && r > uRingRadius && r < uRingRadius + uRingLength + uEchoSpread) {
       vec2 cell = floor(vPos * 90.0);
       float h = hash(cell + uSparkSeed);
       float d = length(fract(vPos * 90.0) - 0.5);
-      color += mix(uColors[2], vec3(1.0), 0.5) * step(1.0 - 0.008 * uSparks, h) * smoothstep(0.5, 0.1, d) * uSparks;
+      color += mix(uColors[2], vec3(1.0), 0.5) * step(1.0 - 0.008 * uSparks, h) * smoothstep(0.5, 0.1, d) * uSparks * uAudible.z;
     }
 
     gl_FragColor = vec4(color * (0.75 + 0.35 * uDensity), 1.0);
@@ -221,6 +224,7 @@ export class SpectrumVisualizer implements Visualizer {
         uSparks: { value: 0 },
         uSparkSeed: { value: 0 },
         uDigital: { value: 0 },
+        uAudible: { value: new Vector3() },
         uColors: { value: [new Color(), new Color(), new Color()] },
       },
     });
@@ -279,6 +283,7 @@ export class SpectrumVisualizer implements Visualizer {
     u.uFlash.value = 0.6 * music.drop;
     u.uSparks.value = detail * music.highPercussion;
     u.uSparkSeed.value = this.sparkSeed;
+    (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
   }
 
   setLayout(layout: SceneLayout): void {

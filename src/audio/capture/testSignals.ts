@@ -11,6 +11,7 @@ export const TEST_SIGNALS = [
   { id: 'beat174', label: 'Beat 174 BPM' },
   { id: 'tempoRamp', label: 'Tempo ramp 100 ↔ 140' },
   { id: 'buildDrop', label: 'Ambient → build → drop' },
+  { id: 'fadeCut', label: 'Fade-out, then hard cut' },
   { id: 'low', label: 'Low tone 60 Hz' },
   { id: 'mid', label: 'Mid tone 1 kHz' },
   { id: 'high', label: 'High tone 8 kHz' },
@@ -88,6 +89,8 @@ export class SignalGenerator {
       }
       case 'buildDrop':
         return this.buildDrop(t);
+      case 'fadeCut':
+        return this.beat(t, 124) * fadeCutGain(t);
       case 'snares': {
         const beatLength = 60 / 100;
         // Beats 2 and 4 of each bar.
@@ -249,6 +252,21 @@ export class SignalGenerator {
 }
 
 const ROOTS = [55, 55, 65.41, 49];
+
+/**
+ * 12 s cycle: 4 s of music, a 4 s fade-out (linear in dB down to -60), 1 s
+ * of silence, 2 s of music, then a hard cut and 1 s of silence.
+ */
+export const FADE_CUT = { cycle: 12, fadeStart: 4, fadeEnd: 8, restart: 9, cut: 11 } as const;
+
+function fadeCutGain(t: number): number {
+  const c = t % FADE_CUT.cycle;
+  if (c < FADE_CUT.fadeStart) return 1;
+  if (c < FADE_CUT.fadeEnd) return 10 ** ((-60 * (c - FADE_CUT.fadeStart)) / (FADE_CUT.fadeEnd - FADE_CUT.fadeStart) / 20);
+  if (c < FADE_CUT.restart) return 0;
+  if (c < FADE_CUT.cut) return 1;
+  return 0;
+}
 /** Bass line (A1, A1, C2, G1) and lead melody (A3 C4 E4 G4 A4 G4 E4 C4) for the synth voices. */
 const BASS_NOTES = [55, 55, 65.41, 49];
 const LEAD_NOTES = [220, 261.63, 329.63, 392, 440, 392, 329.63, 261.63];

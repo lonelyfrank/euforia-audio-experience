@@ -160,6 +160,9 @@ export class AudioAnalyzer {
       highFlux: 0,
       flatness: 0,
       loudness: 0,
+      lowDb: SILENCE_DB,
+      midDb: SILENCE_DB,
+      highDb: SILENCE_DB,
       bassVoice: this.bassVoice.state,
       leadVoice: this.leadVoice.state,
     };
@@ -224,6 +227,10 @@ export class AudioAnalyzer {
       frame[band.name] = smoother.apply(frame[band.name], shape(band.range.normalize(db, dt, sensitivity)));
     }
     const energyDb = bandPowerDb(this.magnitudes, this.energyFrom, this.energyTo, this.powerScale);
+    // Raw region levels (the regions of the transients): they follow fades and cuts as they happen.
+    frame.lowDb = frame.silent ? SILENCE_DB : Math.max(bassDb, SILENCE_DB);
+    frame.midDb = frame.silent ? SILENCE_DB : Math.max(this.regionPowerDb(1), SILENCE_DB);
+    frame.highDb = frame.silent ? SILENCE_DB : Math.max(this.regionPowerDb(2), SILENCE_DB);
     frame.energy = smoother.apply(frame.energy, shape(this.energyRange.normalize(energyDb, dt, sensitivity)));
 
     this.updateSpectrum(dt, sensitivity);
@@ -314,6 +321,12 @@ export class AudioAnalyzer {
       else if (r === 1) frame.midFlux = value;
       else frame.highFlux = value;
     }
+  }
+
+  /** Total (not per-bin) power of a transient region, dB: a few loud partials among many bins still count. */
+  private regionPowerDb(region: number): number {
+    const { from, to } = this.flux[region];
+    return bandPowerDb(this.magnitudes, from, to, this.powerScale) + 10 * Math.log10(Math.max(to - from, 1));
   }
 
   /** Geometric over arithmetic mean power (250 Hz–8 kHz), scaled so white noise reads 1. */

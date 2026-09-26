@@ -345,6 +345,8 @@ export class LiquidVisualizer implements Visualizer {
       // The voice this ribbon draws: the bass line at the bottom, the lead in the middle, the air on top.
       // Its cycle repeats at a length set by the pitch (higher notes, tighter waves).
       const row = t >= 0.6 ? BASS_ROW : t >= 0.2 ? LEAD_ROW : AIR_ROW;
+      // The ribbon vanishes with its voice's region: slowly on a fade, at once on a cut.
+      const heard = row === BASS_ROW ? response.lowAudible : row === LEAD_ROW ? response.midAudible : response.highAudible;
       this.voiceRows[k] = row;
       const octave = row === BASS_ROW ? Math.log2(music.bassPitch / 40) : Math.log2(music.leadPitch / 180);
       const cycles = (row === AIR_ROW ? 2 : (row === BASS_ROW ? 1.2 : 2.2) + 1.1 * Math.max(octave, 0)) * swellScale * (1 + 0.4 * (k % 2));
@@ -358,7 +360,7 @@ export class LiquidVisualizer implements Visualizer {
         this.material.uniforms.uHorizonY.value + (1 - k / this.ribbons) * stackHeight,
         cycles,
         (this.swellPhase[k] + k * 1.3) / (2 * Math.PI) + lowness * (music.beats / 4),
-        amplitude * presence * drive * (1 + 0.4 * drop * lowness),
+        amplitude * presence * heard * drive * (1 + 0.4 * drop * lowness),
       );
       const freq = (2 + 4.5 * highness) * swellScale;
       // MID: secondary curvature; with shear, neighbouring ribbons drift in opposite directions.
@@ -372,17 +374,17 @@ export class LiquidVisualizer implements Visualizer {
         // TRANSIENT: shock rings, strongest near the horizon, when there is a kick pattern.
         p.shock * amplitude * (0.35 + 0.65 * lowness) * shockGate,
       );
-      band.z = glints ? (0.5 * detail + shimmer) * highness * 1.6 * glintGate * presence : 0;
+      band.z = glints ? (0.5 * detail + shimmer) * highness * 1.6 * glintGate * presence * heard : 0;
       // Trace height; with shear, every other ribbon draws downwards.
       band.w = p.trace * amplitude * (k % 2 === 0 ? 1 : 2 * vary[1] - 1);
       this.traces.record(k, traceValue(frame, response, t, zone));
 
       // The bass deepens the lower bodies; the highs pull the upper edges towards the highlight hue.
       const hue = this.hues[k];
-      this.body[k].copy(hue).multiplyScalar(0.5 * presence * (p.fill * (0.7 + 0.6 * density) + 0.02 * weight * lowness));
+      this.body[k].copy(hue).multiplyScalar(0.5 * presence * heard * (p.fill * (0.7 + 0.6 * density) + 0.02 * weight * lowness));
       this.scratch.copy(hue).lerp(this.highlight, Math.min(accent * 1.3 * detail * highness + 0.3 * build * highness, 1));
       // A faint trace stays visible in silence, like an idle oscilloscope.
-      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, 0.06 + presence * (0.2 + 0.18 * density + 0.3 * zone) + flash);
+      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, heard * (0.06 + presence * (0.2 + 0.18 * density + 0.3 * zone) + flash));
     }
 
     this.material.uniforms.uImprint.value = p.imprint * amplitude * imprint;
