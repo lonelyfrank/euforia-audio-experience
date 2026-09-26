@@ -24,6 +24,8 @@ export interface LiquidParams {
   waveDepth: number;
   /** Height of the shock ripples sent by impacts (× amplitude). */
   shock: number;
+  /** Height of each ribbon's rolling trace of its band (× amplitude). */
+  trace: number;
 }
 
 const MAX_RIBBONS = 8;
@@ -36,6 +38,10 @@ const ZONE_WIDTH = 0.3;
 /** An impact above this, rising, sends a shock ripple. */
 const SHOCK_THRESHOLD = 0.5;
 const SHOCK_MIN_INTERVAL = 0.15;
+/** Samples in each ribbon's rolling trace (centre = now, edges = oldest). */
+const TRACE_POINTS = 128;
+/** The trace spans this many beats of the song, so its hits line up with the tempo. */
+const TRACE_BEATS = 8;
 
 const vertexShader = /* glsl */ `
   varying vec2 vPos;
@@ -69,7 +75,7 @@ const fragmentShader = /* glsl */ `
   uniform vec4 uCurve[MAX_RIBBONS];
   // Per ribbon: phase and amplitude of the fine ripple, waveform and shock amplitudes.
   uniform vec4 uDetailTerms[MAX_RIBBONS];
-  // Per ribbon: spectrum band (start, width), glint amount.
+  // Per ribbon: spectrum band (start, width), glint amount, trace height.
   uniform vec4 uBand[MAX_RIBBONS];
   uniform vec3 uBody[MAX_RIBBONS];
   // Per ribbon: edge colour and glow.
@@ -78,6 +84,9 @@ const fragmentShader = /* glsl */ `
   uniform vec4 uShocks[SHOCKS];
   uniform sampler2D tSpectrum;
   uniform sampler2D tWave;
+  // One row per ribbon: its band's recent activity, newest first.
+  uniform sampler2D tTrace;
+  uniform float uTraceShift;
   varying vec2 vPos;
 
   float hash(vec2 p) {
@@ -116,13 +125,16 @@ const fragmentShader = /* glsl */ `
       vec4 band = uBand[k];
       // Spectrum imprint: the ribbon's own band, its low end at the centre.
       float spectrum = texture2D(tSpectrum, vec2(band.x + mirror * band.y, 0.5)).r;
+      // Rolling trace: what this band did, written at the centre and scrolling out to the edges.
+      float trace = texture2D(tTrace, vec2(mirror - uTraceShift, (float(k) + 0.5) / float(MAX_RIBBONS))).r;
       float y = swell.x
         + sin(v * swell.y + swell.z) * swell.w
         + sin(v * curve.x + curve.y) * curve.z
         + sin(v * curve.w + terms.x) * terms.y
         + spectrum * uImprint * taper
         + wave * terms.z
-        + shock * terms.w;
+        + shock * terms.w
+        + trace * band.w * (1.0 - 0.55 * mirror);
       float d = vPos.y - y;
       // Body between the ribbon and the horizon.
       if (d < 0.0 && vPos.y > uHorizonY) color += uBody[k];
@@ -164,6 +176,12 @@ export class LiquidVisualizer implements Visualizer {
   private readonly spectrumTexture = new SignalTexture(SPECTRUM_BINS);
   private readonly waveTexture = new SignalTexture(WAVE_POINTS);
   private readonly wave = new Float32Array(WAVE_POINTS);
+  private readonly traceTexture = new SignalTexture(TRACE_POINTS, MAX_RIBBONS);
+  /** Per ribbon, newest first. */
+  private readonly trace = new Float32Array(TRACE_POINTS * MAX_RIBBONS);
+  /** Loudest value of each ribbon since the last trace sample (so short hits are never skipped). */
+  private readonly tracePeak = new Float32Array(MAX_RIBBONS);
+  private traceProgress = 0;
   /** Spectrum blurred along frequency, so a pure tone shapes a soft hill, not a spike. */
   private readonly softSpectrum = new Float32Array(SPECTRUM_BINS);
   private readonly blurScratch = new Float32Array(SPECTRUM_BINS);
@@ -230,6 +248,8 @@ export class LiquidVisualizer implements Visualizer {
         uShocks: { value: this.shocks },
         tSpectrum: { value: this.spectrumTexture.texture },
         tWave: { value: this.waveTexture.texture },
+        tTrace: { value: this.traceTexture.texture },
+        uTraceShift: { value: 0 },
       },
     });
     // Scaled to twice the view in resize(), so it still covers it after the scene-centre offset.
@@ -265,10 +285,11 @@ export class LiquidVisualizer implements Visualizer {
     const rippleGrain = 20 + 14 * vary[6];
     const shear = 2 * vary[7] - 1;
 
-    // Pace: the song's tempo (or free pace), a little faster while building.
+    // Like an oscilloscope, nothing moves on its own: every motion is driven by the sound
+    // (silence leaves flat, still traces). Pace: the song's tempo, a little faster while building.
     const pace = music.pace * (1 + 0.25 * build);
-    const drift = dt * p.speed * pace * (0.7 + 0.3 * density);
-    const push = dt * p.speed * pace * (0.1 + 1.2 * flow);
+    const drift = dt * p.speed * pace * 1.2 * density;
+    const push = dt * p.speed * pace * 1.2 * flow;
     // Section and texture: shock rings need a kick pattern, glints need hats, the waveform needs tonal content.
     const shockGate = 0.4 + 0.6 * smoothstep(0.1, 0.4, music.lowPercussion);
     const glintGate = 0.4 + 0.6 * music.highPercussion;
@@ -298,32 +319,37 @@ export class LiquidVisualizer implements Visualizer {
         this.material.uniforms.uHorizonY.value + (1 - k / this.ribbons) * stackHeight,
         freq,
         this.swellPhase[k] + lowness * ((2 * Math.PI * music.beats) / 4) + k * 1.3,
-        amplitude * presence * (0.5 + 0.4 * zone + 1.2 * weight * lowness) * (1 + 0.4 * drop * lowness),
+        amplitude * presence * (0.4 * zone + 1.2 * weight * lowness) * (1 + 0.4 * drop * lowness),
       );
       // MID: secondary curvature; with shear, neighbouring ribbons drift in opposite directions.
       this.curve[k].set(freq * curveRatio, this.curvePhase[k] + k * 2.1, amplitude * presence * 0.55 * flow * (0.35 + 0.65 * midness), rippleGrain + 6 * k);
       this.detailTerms[k].set(
         // HIGH: fine ripples, mostly on the upper ribbons; tighter while building.
         this.ripplePhase[k] + k,
-        p.ripple * presence * (0.1 + 1.1 * detail) * (0.3 + 0.7 * highness) * (1 + 0.6 * build) * this.detailQuality,
+        p.ripple * presence * 1.2 * detail * (0.3 + 0.7 * highness) * (1 + 0.6 * build) * this.detailQuality,
         // Waveform: organic local shape on the middle ribbons, for tonal content (voice, pads).
         p.waveDepth * amplitude * midness * midness * (0.35 + 0.65 * flow) * waveGate,
         // TRANSIENT: shock rings, strongest near the horizon, when there is a kick pattern.
         p.shock * amplitude * (0.35 + 0.65 * lowness) * shockGate,
       );
       band.z = glints ? (0.5 * detail + shimmer) * highness * 1.6 * glintGate * presence : 0;
+      // Trace height; with shear, every other ribbon draws downwards.
+      band.w = p.trace * amplitude * (k % 2 === 0 ? 1 : 2 * vary[1] - 1);
+      this.tracePeak[k] = Math.max(this.tracePeak[k], this.traceValue(frame, response, t, zone));
 
       // The bass deepens the lower bodies; the highs pull the upper edges towards the highlight hue.
       const hue = this.hues[k];
       this.body[k].copy(hue).multiplyScalar(0.5 * presence * (p.fill * (0.7 + 0.6 * density) + 0.02 * weight * lowness));
       this.scratch.copy(hue).lerp(this.highlight, Math.min(accent * 1.3 * detail * highness + 0.3 * build * highness, 1));
-      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, presence * (0.26 + 0.18 * density + 0.3 * zone) + flash);
+      // A faint trace stays visible in silence, like an idle oscilloscope.
+      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, 0.06 + presence * (0.2 + 0.18 * density + 0.3 * zone) + flash);
     }
 
     this.material.uniforms.uImprint.value = p.imprint * amplitude * imprint;
     this.updateSpectrum(frame.spectrum);
     this.updateWave(frame.waveform, dt);
     this.updateShocks(response.impact, drop, dt);
+    this.updateTrace(music.tempo, dt);
 
     const u = this.material.uniforms;
     u.uClock.value = this.clock;
@@ -342,8 +368,46 @@ export class LiquidVisualizer implements Visualizer {
   dispose(): void {
     this.spectrumTexture.dispose();
     this.waveTexture.dispose();
+    this.traceTexture.dispose();
     disposeObject(this.scene);
     this.scene.clear();
+  }
+
+  /**
+   * What a ribbon's trace records: its band's level plus the transients of
+   * its region (hi-hats on top, snares in the middle, kicks at the bottom).
+   * Transients of a region absent from the band count only partly (leakage).
+   */
+  private traceValue(frame: AudioFrame, response: VisualResponseFrame, t: number, zone: number): number {
+    const low = Math.max(response.impact, frame.lowFlux * 0.7);
+    const transient = t < 0.5 ? frame.highFlux + (frame.midFlux - frame.highFlux) * t * 2 : frame.midFlux + (low - frame.midFlux) * (t * 2 - 1);
+    const value = 0.6 * zone ** 1.5 + 0.9 * transient * (0.35 + 0.65 * smoothstep(0.05, 0.25, zone));
+    return frame.silent ? 0 : Math.min(value, 1);
+  }
+
+  /**
+   * Rolls the traces: a new sample every TRACE_BEATS / TRACE_POINTS beats (so
+   * the trace spans 8 beats at any tempo); between samples the shader shifts
+   * by the fraction elapsed, so the scroll is smooth.
+   */
+  private updateTrace(tempo: number, dt: number): void {
+    const interval = (60 / Math.max(tempo, 1)) * (TRACE_BEATS / TRACE_POINTS);
+    this.traceProgress += dt / interval;
+    const pushes = Math.min(Math.floor(this.traceProgress), TRACE_POINTS);
+    this.traceProgress -= Math.floor(this.traceProgress);
+    if (pushes > 0) {
+      const trace = this.trace;
+      for (let k = 0; k < this.ribbons; k++) {
+        const row = k * TRACE_POINTS;
+        for (let i = 0; i < pushes; i++) {
+          trace.copyWithin(row + 1, row, row + TRACE_POINTS - 1);
+          trace[row] = this.tracePeak[k];
+        }
+        this.tracePeak[k] = 0;
+        this.traceTexture.write(trace, false, k, row, TRACE_POINTS);
+      }
+    }
+    this.material.uniforms.uTraceShift.value = (this.traceProgress - 0.5) / TRACE_POINTS;
   }
 
   /** 0 = top ribbon … 1 = bottom ribbon. */
