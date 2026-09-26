@@ -1,7 +1,12 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, type WebGLRenderer } from 'three';
-import type { AudioFrame } from '../../types/audio';
+import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
+import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
+import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
+import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
+import { SignalTexture } from '../shared/SignalTexture';
+import { VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
 
 export interface GalaxyParams {
   count: number;
@@ -11,17 +16,39 @@ export interface GalaxyParams {
   twist: number;
   thickness: number;
   size: number;
-  /** Base angular speed (inner stars turn faster). */
+  /** Angular speed at full flow (inner stars turn faster). */
   spin: number;
   /** Camera elevation, radians. */
   tilt: number;
+  /** How far the arms follow the lead's shape (radians). */
+  armWave: number;
+  /** Depth of the core shaped by the bass line (× radius). */
+  coreShape: number;
+  /** Height of the waves sent through the arms by kicks (× radius). */
+  ringTrace: number;
+  /** Sample-and-hold stepping of the drawn voices, scaled by how percussive the style is. */
+  digital: number;
 }
 
+const LOW_END = hzToPosition(250);
+
 const vertexShader = /* glsl */ `
+  ${voiceGlsl}
+  ${traceGlsl}
+  uniform sampler2D tSpectrum;
   uniform float uSpin;
   uniform float uRadius;
   uniform float uSize;
-  uniform float uKick;
+  uniform float uWeight;
+  uniform float uArmWave;
+  uniform float uArmCycles;
+  uniform float uArmPhase;
+  uniform float uCoreShape;
+  uniform float uLobes;
+  uniform float uRing;
+  uniform float uTwinkle;
+  uniform float uSeed;
+  uniform float uDigital;
   uniform float uPixelRatio;
   uniform vec3 uColors[3];
 
@@ -31,19 +58,37 @@ const vertexShader = /* glsl */ `
 
   varying vec3 vColor;
 
+  float hash(float n) {
+    return fract(sin(n) * 43758.5453);
+  }
+
   void main() {
     float r = aStar.x;
     // Differential rotation: the core turns faster than the rim.
     float angle = aStar.y + uSpin * (0.4 + 1.0 * (1.0 - r));
-    vec3 p = vec3(cos(angle) * r, aHeight * (1.0 - r), sin(angle) * r) * uRadius;
+    // The arms follow the lead's shape along the radius.
+    angle += voiceAt(1.0, r * uArmCycles + uArmPhase, uDigital) * uArmWave * r;
+    // The core breathes with the bass and takes the bass line's shape (whole lobes: no seam).
+    float core = 1.0 - smoothstep(0.0, 0.35, r);
+    float turn = angle / 6.2831853;
+    float lobes = floor(uLobes);
+    float section = mix(voiceAt(0.0, turn * lobes, uDigital), voiceAt(0.0, turn * (lobes + 1.0), uDigital), fract(uLobes));
+    float radius = r * (1.0 + core * (uWeight * 0.3 + uCoreShape * section));
+    // Kicks travel out through the arms as a wave of height.
+    float wave = traceAt(0.0, 1.0, r) * uRing;
+    vec3 p = vec3(cos(angle) * radius, aHeight * (1.0 - r) + wave, sin(angle) * radius) * uRadius;
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
-    // Kicks swell the inner stars.
-    float size = uSize * aStar.w * (1.0 + uKick * 0.6 * (1.0 - r));
+
+    // Each radius stands for a part of the spectrum: the core the bass, the rim the highs.
+    float level = texture2D(tSpectrum, vec2(r, 0.5)).r;
+    // Hi-hats make the stars twinkle (a new pattern on every hit).
+    float twinkle = 1.0 + uTwinkle * step(0.9, hash(aStar.y * 91.7 + uSeed)) * 0.6;
+    float size = uSize * aStar.w * (1.0 + uWeight * 0.6 * core) * twinkle;
     gl_PointSize = size * uPixelRatio * (300.0 / -mv.z);
     int arm = int(aStar.z);
     vec3 color = arm == 0 ? uColors[0] : arm == 1 ? uColors[1] : uColors[2];
-    vColor = color * (0.35 + 0.65 * (1.0 - r));
+    vColor = color * (0.35 + 0.65 * (1.0 - r)) * (0.35 + 0.65 * level);
   }
 `;
 
@@ -53,19 +98,30 @@ const fragmentShader = /* glsl */ `
   void main() {
     float d = length(gl_PointCoord - 0.5);
     if (d > 0.5) discard;
-    gl_FragColor = vec4(vColor * smoothstep(0.5, 0.0, d) * (0.5 + uLevel * 0.7), 1.0);
+    gl_FragColor = vec4(vColor * smoothstep(0.5, 0.0, d) * (0.45 + uLevel * 0.45), 1.0);
   }
 `;
 
 /**
  * A three-armed spiral galaxy seen at a low angle. Positions are computed on
- * the GPU from per-star seeds; the CPU only integrates the spin.
- * kick → size of the inner stars, mids → spin speed, volume → brightness.
+ * the GPU from per-star seeds; the CPU only integrates the spin. Nothing
+ * moves without sound.
+ * Radius = spectrum (core = bass, rim = highs, each glows with its band);
+ * the core breathes with the bass and takes the bass line's shape; the arms
+ * follow the lead's shape; the mids spin it; kicks send waves out through the
+ * arms; hi-hats make the stars twinkle; energy sets the overall glow.
  */
 export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
   private material!: ShaderMaterial;
   private renderer!: WebGLRenderer;
+  private readonly voices = new VoiceTextures();
+  private readonly traces = new RollingTraces(1);
+  private readonly spectrum = new SignalTexture(SPECTRUM_BINS);
   private spin = 0;
+  private armPhase = 0;
+  private drift = 0;
+  private twinkleSeed = 0;
+  private lastHighFlux = 0;
 
   init({ quality, renderer }: VisualizerContext): void {
     const p = this.preset.visual;
@@ -95,11 +151,24 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
       depthWrite: false,
       blending: AdditiveBlending,
       uniforms: {
+        tVoices: { value: this.voices.texture },
+        tTrace: { value: this.traces.texture },
+        tSpectrum: { value: this.spectrum.texture },
+        uTraceShift: { value: 0 },
         uSpin: { value: 0 },
         uRadius: { value: p.radius },
         uSize: { value: p.size },
-        uKick: { value: 0 },
+        uWeight: { value: 0 },
+        uArmWave: { value: 0 },
+        uArmCycles: { value: 2 },
+        uArmPhase: { value: 0 },
+        uCoreShape: { value: 0 },
+        uLobes: { value: 3 },
+        uRing: { value: 0 },
+        uTwinkle: { value: 0 },
+        uSeed: { value: 0 },
         uLevel: { value: 0 },
+        uDigital: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
         uColors: { value: [new Color(), new Color(), new Color()] },
       },
@@ -111,20 +180,42 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
 
   setPalette(colors: PaletteColors): void {
     const target = this.material.uniforms.uColors.value as Color[];
-    colors.forEach((color, i) => target[i].copy(color));
+    for (let i = 0; i < 3; i++) target[i].copy(colors[i]);
   }
 
-  update(frame: AudioFrame, dt: number, time: number): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
-    this.spin += dt * p.spin * (1 + frame.mid * 1.5);
+    const { weight, flow, detail, density, music } = response;
+    const vary = music.variation;
+    this.spin += dt * p.spin * flow * music.pace * 1.5;
+    this.armPhase -= dt * flow * music.pace * 0.3;
+    this.drift += dt * flow * music.pace;
+    if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) this.twinkleSeed = (this.twinkleSeed + 17.13) % 1000;
+    this.lastHighFlux = frame.highFlux;
+
+    this.traces.record(0, traceValue(frame, response, 1, sampleSpectrumRange(frame.spectrum, 0, LOW_END)));
+    this.traces.update(music.tempo, dt);
+    this.voices.update(frame, music, dt, p.digital);
+    this.spectrum.write(frame.spectrum);
+
     const u = this.material.uniforms;
     u.uSpin.value = this.spin;
-    u.uKick.value = Math.max(frame.beatPulse, frame.bass * 0.5);
-    u.uLevel.value = frame.volume;
+    u.uTraceShift.value = this.traces.shift;
+    u.uDigital.value = this.voices.digital;
+    u.uWeight.value = weight * (1 + 0.5 * music.drop);
+    u.uArmWave.value = p.armWave * flow * (0.4 + 0.6 * music.leadVoice);
+    u.uArmCycles.value = (1.5 + 2 * vary[3]) * (1 + 0.4 * Math.max(Math.log2(music.leadPitch / 180), 0));
+    u.uArmPhase.value = this.armPhase;
+    u.uCoreShape.value = p.coreShape * weight;
+    u.uLobes.value = (3 + 3 * vary[0]) * (1 + 0.4 * Math.max(Math.log2(music.bassPitch / 40), 0));
+    u.uRing.value = p.ringTrace * (1 + music.drop);
+    u.uTwinkle.value = detail * music.highPercussion;
+    u.uSeed.value = this.twinkleSeed;
+    u.uLevel.value = density + 0.4 * music.drop;
 
     const { distance, drift } = this.preset.camera;
-    const tilt = p.tilt + Math.sin(time * 0.06) * 0.06 * drift;
-    const yaw = Math.sin(time * 0.04) * 0.3 * drift;
+    const tilt = p.tilt + Math.sin(this.drift * 0.06) * 0.06 * drift;
+    const yaw = Math.sin(this.drift * 0.04) * 0.3 * drift;
     this.camera.position.set(Math.sin(yaw) * Math.cos(tilt) * distance, Math.sin(tilt) * distance, Math.cos(yaw) * Math.cos(tilt) * distance);
     this.camera.lookAt(0, 0, 0);
   }
@@ -132,5 +223,12 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
   override resize(width: number, height: number): void {
     super.resize(width, height);
     this.material.uniforms.uPixelRatio.value = this.renderer.getPixelRatio();
+  }
+
+  override dispose(): void {
+    this.voices.dispose();
+    this.traces.dispose();
+    this.spectrum.dispose();
+    super.dispose();
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "Galaxy",
   "author": "Halo",
-  "version": 1,
+  "version": 2,
   "audio": { "sensitivity": 1, "smoothing": 1 },
   "camera": { "fov": 50, "distance": 15, "drift": 0.5 },
   "bloom": { "strength": 0.85, "radius": 0.55, "threshold": 0.1 },
@@ -13,6 +13,10 @@
     "thickness": 0.35,
     "size": 0.09,
     "spin": 0.12,
-    "tilt": 0.42
+    "tilt": 0.42,
+    "armWave": 0.35,
+    "coreShape": 0.25,
+    "ringTrace": 0.06,
+    "digital": 0.5
   }
 }
