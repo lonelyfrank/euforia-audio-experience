@@ -1,7 +1,7 @@
 {
   "name": "Infinite Tunnel",
   "author": "Visualizer",
-  "version": 1,
+  "version": 2,
   "audio": {
     "sensitivity": 1,
     "smoothing": 1
@@ -21,16 +21,14 @@
     "length": 160,
     "radialSegments": 96,
     "lengthSegments": 320,
-    "baseSpeed": 8,
-    "midSpeed": 16,
-    "beatPush": 12,
     "ringDensity": 0.5,
     "segments": 24,
     "bend": 3,
-    "lobes": 5,
-    "deform": 0.35,
+    "deform": 0.3,
+    "ringTrace": 0.14,
+    "leadWobble": 0.6,
     "fog": 0.05,
-    "hueSpeed": 0.02,
-    "sparkCount": 1200
+    "sparkCount": 1200,
+    "digital": 0.5
   }
 }
