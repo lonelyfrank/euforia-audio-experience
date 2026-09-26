@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AudioAnalyzer, FFT_SIZE } from '../analysis/AudioAnalyzer';
+import { AudioAnalyzer, FFT_SIZE, VOICE_WINDOW } from '../analysis/AudioAnalyzer';
+import { SHAPE_SIZE } from '../analysis/VoiceTracker';
 import { SignalGenerator, type TestSignal } from '../capture/testSignals';
 import type { AudioFrame, MusicContextFrame } from '../../types/audio';
 import { VisualResponse } from './VisualResponse';
@@ -10,7 +11,8 @@ const SAMPLE_RATE = 48000;
 class Rig {
   readonly analyzer = new AudioAnalyzer();
   readonly response = new VisualResponse();
-  private readonly window = new Float32Array(FFT_SIZE);
+  private readonly window = new Float32Array(VOICE_WINDOW);
+  private readonly fft = this.window.subarray(VOICE_WINDOW - FFT_SIZE);
   private generator: SignalGenerator;
 
   constructor(
@@ -29,8 +31,8 @@ class Rig {
     const frames = Math.round(seconds * this.fps);
     for (let f = 0; f < frames; f++) {
       this.window.copyWithin(0, perFrame);
-      this.generator.fill(this.window, FFT_SIZE - perFrame, perFrame);
-      const audio = this.analyzer.analyze(this.window, SAMPLE_RATE, 1 / this.fps);
+      this.generator.fill(this.window, VOICE_WINDOW - perFrame, perFrame);
+      const audio = this.analyzer.analyze(this.fft, SAMPLE_RATE, 1 / this.fps, this.window);
       const music = this.response.update(audio, 1 / this.fps).music;
       each?.(music, audio, audio.time);
     }
@@ -38,7 +40,8 @@ class Rig {
   }
 }
 
-describe('MusicContext', () => {
+// These tests run minutes of audio through the whole analysis: allow them time.
+describe('MusicContext', { timeout: 60000 }, () => {
   it('follows the tempo: slow songs move slower than fast ones', () => {
     const slow = new Rig('beat90').run(16);
     const fast = new Rig('beat174').run(16);
@@ -137,4 +140,54 @@ describe('MusicContext', () => {
     expect(second.song).toBe(song + 1);
     expect(second.songLock).toBeLessThan(0.5);
   });
+
+  it('draws the real shape of each voice: saw bass, square and sine leads', () => {
+    const saw = new Rig('sawBass').run(6);
+    expect(saw.bassVoice).toBeGreaterThan(0.7);
+    expect([49, 55, 65.41].some((hz) => Math.abs(saw.bassPitch - hz) / hz < 0.02)).toBe(true);
+    const [, sawH2, sawH3] = harmonics(saw.bassLine);
+    expect(sawH2).toBeGreaterThan(0.35);
+    expect(sawH3).toBeGreaterThan(0.2);
+
+    const square = new Rig('squareLead').run(6);
+    expect(square.leadVoice).toBeGreaterThan(0.7);
+    const [, squareH2, squareH3] = harmonics(square.leadLine);
+    expect(squareH2).toBeLessThan(0.1);
+    expect(squareH3).toBeGreaterThan(0.2);
+
+    const sine = new Rig('sineLead').run(6);
+    const [, sineH2, sineH3] = harmonics(sine.leadLine);
+    expect(Math.max(sineH2, sineH3)).toBeLessThan(0.1);
+
+    const noise = new Rig('noise').run(6);
+    expect(Math.max(noise.bassVoice, noise.leadVoice)).toBeLessThan(0.3);
+  });
+
+  it('learns the style slowly, keeps it through songs, and adapts to new music', () => {
+    const rig = new Rig('sawBass');
+    rig.run(40);
+    expect(harmonics(rig.response.frame.music.bassStyle)[1]).toBeGreaterThan(0.3);
+    // A sine bass (the beat's bass line): the style moves towards it only gradually.
+    rig.play('beat124');
+    rig.run(8);
+    expect(harmonics(rig.response.frame.music.bassStyle)[1]).toBeGreaterThan(0.15);
+    rig.run(80);
+    expect(harmonics(rig.response.frame.music.bassStyle)[1]).toBeLessThan(0.15);
+  });
 });
+
+/** Harmonic amplitudes 1..4 of one cycle, relative to the fundamental. */
+function harmonics(cycle: Float32Array): number[] {
+  const amplitudes: number[] = [];
+  for (let h = 1; h <= 4; h++) {
+    let re = 0;
+    let im = 0;
+    for (let i = 0; i < SHAPE_SIZE; i++) {
+      const angle = (2 * Math.PI * h * i) / SHAPE_SIZE;
+      re += cycle[i] * Math.cos(angle);
+      im += cycle[i] * Math.sin(angle);
+    }
+    amplitudes.push(Math.hypot(re, im));
+  }
+  return amplitudes.map((a) => a / amplitudes[0]);
+}

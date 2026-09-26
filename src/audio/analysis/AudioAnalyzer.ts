@@ -2,10 +2,13 @@ import type { AudioFrame } from '../../types/audio';
 import { BeatDetector } from './BeatDetector';
 import { FFT } from './FFT';
 import { DynamicRange, PeakTracker, SILENCE_DB, Smoother } from './Smoother';
+import { VoiceTracker } from './VoiceTracker';
 
 export const FFT_SIZE = 2048;
 export const SPECTRUM_BINS = 128;
 export const WAVEFORM_SIZE = 1024;
+/** Samples the voice trackers look at (longer than the FFT: low bass notes need ~2 periods). */
+export const VOICE_WINDOW = 4096;
 
 /** Frequency range of the display spectrum (log-spaced bins). */
 export const MIN_FREQ = 30;
@@ -35,6 +38,9 @@ const NOISE_FLATNESS = 0.56;
 const FLATNESS_FROM = 250;
 const FLATNESS_TO = 8000;
 const LOUDNESS_RANGE_DB = 60;
+/** Voice bands: the bass line and the lead (see VoiceTracker). */
+const BASS_VOICE = { highPass: 30, lowPass: 600, minPitch: 40, maxPitch: 300, decimation: 4, maxWindow: 600 };
+const LEAD_VOICE = { highPass: 180, lowPass: 5000, minPitch: 180, maxPitch: 1400, decimation: 2, maxWindow: 1024 };
 
 interface FluxState {
   from: number;
@@ -109,6 +115,8 @@ export class AudioAnalyzer {
   private readonly flux: FluxState[] = [0, 1, 2].map(() => ({ from: 0, to: 0, level: 0, strongest: MIN_FLUX_DB }));
   private flatnessFrom = 1;
   private flatnessTo = 1;
+  private readonly bassVoice = new VoiceTracker(BASS_VOICE, VOICE_WINDOW);
+  private readonly leadVoice = new VoiceTracker(LEAD_VOICE, VOICE_WINDOW);
 
   private readonly smoother = new Smoother();
   private readonly bassRange = new DynamicRange();
@@ -152,6 +160,8 @@ export class AudioAnalyzer {
       highFlux: 0,
       flatness: 0,
       loudness: 0,
+      bassVoice: this.bassVoice.state,
+      leadVoice: this.leadVoice.state,
     };
   }
 
@@ -168,14 +178,20 @@ export class AudioAnalyzer {
     this.waveformPeak.reset();
     this.beats.reset();
     this.binAverageReady = false;
+    this.bassVoice.reset();
+    this.leadVoice.reset();
     for (const f of this.flux) {
       f.level = 0;
       f.strongest = MIN_FLUX_DB;
     }
   }
 
-  /** `samples` must contain FFT_SIZE mono samples, oldest first. */
-  analyze(samples: Float32Array, sampleRate: number, dt: number): AudioFrame {
+  /**
+   * `samples` must contain FFT_SIZE mono samples, oldest first. `voiceWindow`
+   * (VOICE_WINDOW samples ending at the same point) feeds the voice trackers;
+   * without it the voices are not updated.
+   */
+  analyze(samples: Float32Array, sampleRate: number, dt: number, voiceWindow?: Float32Array): AudioFrame {
     if (sampleRate !== this.sampleRate) this.configureFrequencyMap(sampleRate);
     const { frame, settings, smoother } = this;
     const sensitivity = settings.sensitivity;
@@ -214,6 +230,10 @@ export class AudioAnalyzer {
     this.updateWaveform(samples, dt);
     this.updateFlux(dt, frame.silent);
     frame.flatness = smoother.apply(frame.flatness, frame.silent ? 0 : this.measureFlatness());
+    if (voiceWindow) {
+      this.bassVoice.update(voiceWindow, sampleRate, dt, frame.silent);
+      this.leadVoice.update(voiceWindow, sampleRate, dt, frame.silent);
+    }
 
     this.beats.update(kickDb, frame.silent, frame.time, dt);
     frame.beat = settings.beatResponse && this.beats.beat;

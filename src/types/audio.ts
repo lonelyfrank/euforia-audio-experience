@@ -63,6 +63,26 @@ export interface AudioFrame {
   flatness: number;
   /** Absolute loudness (RMS, -60..0 dBFS → 0..1), not auto-gained: for comparing sections. Smoothed. */
   loudness: number;
+
+  /** The bass line (40–300 Hz): pitch and the real shape of one cycle. */
+  bassVoice: VoiceFrame;
+  /** The lead (180–1400 Hz fundamental): melody, vocals, lead synths. */
+  leadVoice: VoiceFrame;
+}
+
+/**
+ * One voice of the mix as a digital oscilloscope in averaging mode would show
+ * it: its cycles stacked at its pitch, so the shape of the sound itself remains
+ * (sawtooth, square, sine, clipped…). A voice band can pick up other
+ * instruments when its own is absent: weight it by the region's presence.
+ */
+export interface VoiceFrame {
+  /** Fundamental (Hz); 0 while the voice is unpitched or silent. */
+  pitch: number;
+  /** 0..1: how clearly periodic the voice is. */
+  clarity: number;
+  /** One cycle, SHAPE_SIZE samples in -1..1, aligned so its fundamental is a sine starting at 0. Smoothed. */
+  shape: Float32Array;
 }
 
 /**
@@ -139,6 +159,29 @@ export interface MusicContextFrame {
    * shape choices. They glide when they change.
    */
   variation: Float32Array;
+
+  /**
+   * What to draw for the bass line and the lead: one cycle (SHAPE_SIZE
+   * samples, -1..1) — the voice's current shape when it is clear, else the
+   * learned style. Changes glide.
+   */
+  bassLine: Float32Array;
+  leadLine: Float32Array;
+  /** Voice pitch (Hz), held while unpitched and gliding; drives wave lengths. */
+  bassPitch: number;
+  leadPitch: number;
+  /** 0..1: how present and clear each voice is (clarity × presence of its region). */
+  bassVoice: number;
+  leadVoice: number;
+  /**
+   * Learned style, a memory of ≈ 20 s that is never reset between songs, so
+   * the scene adapts little by little to what is playing: typical cycle
+   * shapes of the bass and lead, and how tonal and percussive the music is.
+   */
+  bassStyle: Float32Array;
+  leadStyle: Float32Array;
+  styleTonality: number;
+  stylePercussion: number;
 }
 
 export type AudioSourceId = 'system' | 'microphone' | 'file' | 'fake';

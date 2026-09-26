@@ -1,4 +1,4 @@
-import { ClampToEdgeWrapping, DataTexture, LinearFilter, RedFormat, UnsignedByteType } from 'three';
+import { ClampToEdgeWrapping, DataTexture, LinearFilter, RedFormat, RepeatWrapping, UnsignedByteType } from 'three';
 
 /**
  * 1D signals (spectrum, waveform, histories…) as an N×rows single-channel
@@ -13,12 +13,14 @@ export class SignalTexture {
   constructor(
     readonly size: number,
     readonly rows = 1,
+    /** Periodic signals (one cycle per row): filtering wraps around instead of clamping. */
+    periodic = false,
   ) {
     this.data = new Uint8Array(size * rows);
     this.texture = new DataTexture(this.data, size, rows, RedFormat, UnsignedByteType);
     this.texture.magFilter = LinearFilter;
     this.texture.minFilter = LinearFilter;
-    this.texture.wrapS = ClampToEdgeWrapping;
+    this.texture.wrapS = periodic ? RepeatWrapping : ClampToEdgeWrapping;
     this.texture.wrapT = ClampToEdgeWrapping;
     this.texture.generateMipmaps = false;
     this.texture.needsUpdate = true;

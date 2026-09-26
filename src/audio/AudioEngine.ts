@@ -1,5 +1,5 @@
 import type { AudioFrame, AudioSourceId, CaptureStatus, VisualResponseFrame } from '../types/audio';
-import { AudioAnalyzer, FFT_SIZE, type AnalyzerSettings } from './analysis/AudioAnalyzer';
+import { AudioAnalyzer, FFT_SIZE, VOICE_WINDOW, type AnalyzerSettings } from './analysis/AudioAnalyzer';
 import type { AudioCaptureProvider, Playback } from './capture/AudioCaptureProvider';
 import { createCaptureProvider, type SourceOptions } from './capture/createCaptureProvider';
 import { VisualResponse } from './visual-response/VisualResponse';
@@ -20,7 +20,9 @@ export class AudioEngine {
   readonly analyzer = new AudioAnalyzer();
   readonly response = new VisualResponse();
   private provider: AudioCaptureProvider | null = null;
-  private readonly samples = new Float32Array(FFT_SIZE);
+  /** Latest samples: the voice window, whose newest FFT_SIZE samples (a fixed view) feed the FFT. */
+  private readonly samples = new Float32Array(VOICE_WINDOW);
+  private readonly fftSamples = this.samples.subarray(VOICE_WINDOW - FFT_SIZE);
   private readonly listeners = new Set<(state: AudioEngineState) => void>();
   private switchToken = 0;
   /** Seconds the analysis lags the capture, to line up with output latency (e.g. Bluetooth). */
@@ -90,7 +92,7 @@ export class AudioEngine {
   update(dt: number): AudioFrame {
     if (this.provider) this.provider.readSamples(this.samples, Math.round(this.delay * this.provider.sampleRate));
     else this.samples.fill(0);
-    const frame = this.analyzer.analyze(this.samples, this.provider?.sampleRate ?? 48000, dt);
+    const frame = this.analyzer.analyze(this.fftSamples, this.provider?.sampleRate ?? 48000, dt, this.samples);
     this.response.update(frame, dt);
     return frame;
   }

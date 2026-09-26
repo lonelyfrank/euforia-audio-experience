@@ -20,6 +20,10 @@ export const TEST_SIGNALS = [
   { id: 'noise', label: 'Pink noise' },
   { id: 'sweep', label: 'Sweep 30 Hz → 16 kHz' },
   { id: 'pad', label: 'Sustained chord' },
+  { id: 'sawBass', label: 'Saw bass line' },
+  { id: 'squareLead', label: 'Square lead melody' },
+  { id: 'sineLead', label: 'Sine lead melody' },
+  { id: 'synthPop', label: 'Synth pop (saw bass, square lead, drums)' },
   { id: 'silence', label: 'Silence' },
 ] as const;
 
@@ -53,6 +57,9 @@ export class SignalGenerator {
   private beats = 0;
   /** One-pole low-pass state for the snare noise. */
   private snareLow = 0;
+  /** Oscillator phases (cycles, 0..1) for the synth voices. */
+  private bassPhase = 0;
+  private leadPhase = 0;
 
   constructor(
     readonly signal: TestSignal,
@@ -108,6 +115,18 @@ export class SignalGenerator {
         const hz = SWEEP_FROM * (SWEEP_TO / SWEEP_FROM) ** pos;
         this.sweepPhase = (this.sweepPhase + (TWO_PI * hz) / this.sampleRate) % TWO_PI;
         return Math.sin(this.sweepPhase) * 0.3;
+      }
+      case 'sawBass':
+        return this.saw('bass', BASS_NOTES[Math.floor(t / 2) % BASS_NOTES.length]) * 0.4;
+      case 'squareLead':
+        return this.square(LEAD_NOTES[Math.floor(t / 0.5) % LEAD_NOTES.length]) * 0.25;
+      case 'sineLead':
+        return Math.sin(2 * Math.PI * this.advance('lead', LEAD_NOTES[Math.floor(t / 0.5) % LEAD_NOTES.length])) * 0.3;
+      case 'synthPop': {
+        const beats = (t * 120) / 60;
+        const bass = this.saw('bass', BASS_NOTES[Math.floor(beats / 4) % BASS_NOTES.length]) * 0.25;
+        const lead = this.square(LEAD_NOTES[Math.floor(beats) % LEAD_NOTES.length]) * 0.1;
+        return this.groove(beats, 120, t, 0.8, 0.6) * 0.6 + bass + lead;
       }
       case 'pad':
         return this.pad(t, 110) * 0.12;
@@ -173,6 +192,27 @@ export class SignalGenerator {
     return Math.sin(TWO_PI * 190 * pos) * Math.exp(-pos * 30) * 0.6 + this.snareLow * Math.exp(-pos * 22);
   }
 
+  /** Advances an oscillator phase by one sample at `hz`; returns the phase (cycles, 0..1). */
+  private advance(voice: 'bass' | 'lead', hz: number): number {
+    const step = hz / this.sampleRate;
+    if (voice === 'bass') return (this.bassPhase = (this.bassPhase + step) % 1);
+    return (this.leadPhase = (this.leadPhase + step) % 1);
+  }
+
+  /** Band-limited sawtooth (polyBLEP), -1..1. */
+  private saw(voice: 'bass' | 'lead', hz: number): number {
+    const step = hz / this.sampleRate;
+    const phase = this.advance(voice, hz);
+    return 2 * phase - 1 - polyBlep(phase, step);
+  }
+
+  /** Band-limited square (polyBLEP), -1..1. */
+  private square(hz: number): number {
+    const step = hz / this.sampleRate;
+    const phase = this.advance('lead', hz);
+    return (phase < 0.5 ? 1 : -1) + polyBlep(phase, step) - polyBlep((phase + 0.5) % 1, step);
+  }
+
   /** Minor chord on `root` × 4 with a slow tremolo. */
   private pad(t: number, root: number): number {
     const lfo = 0.5 + 0.5 * Math.sin(TWO_PI * 0.15 * t);
@@ -209,3 +249,19 @@ export class SignalGenerator {
 }
 
 const ROOTS = [55, 55, 65.41, 49];
+/** Bass line (A1, A1, C2, G1) and lead melody (A3 C4 E4 G4 A4 G4 E4 C4) for the synth voices. */
+const BASS_NOTES = [55, 55, 65.41, 49];
+const LEAD_NOTES = [220, 261.63, 329.63, 392, 440, 392, 329.63, 261.63];
+
+/** PolyBLEP residual: smooths an oscillator's discontinuity at phase 0 (removes aliasing). */
+function polyBlep(phase: number, step: number): number {
+  if (phase < step) {
+    const x = phase / step;
+    return x + x - x * x - 1;
+  }
+  if (phase > 1 - step) {
+    const x = (phase - 1) / step;
+    return x * x + x + x + 1;
+  }
+  return 0;
+}

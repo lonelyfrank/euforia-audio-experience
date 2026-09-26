@@ -1,7 +1,7 @@
 {
   "name": "Liquid",
   "author": "Halo",
-  "version": 3,
+  "version": 4,
   "audio": { "sensitivity": 1, "smoothing": 1.2 },
   "camera": { "fov": 50, "distance": 1, "drift": 0 },
   "bloom": { "strength": 0.7, "radius": 0.5, "threshold": 0.12 },
@@ -12,9 +12,12 @@
     "speed": 1,
     "fill": 0.03,
     "lineWidth": 1.6,
-    "imprint": 0.8,
+    "imprint": 0.5,
     "waveDepth": 0.5,
     "shock": 0.7,
-    "trace": 1.1
+    "trace": 0.6,
+    "digital": 0.6,
+    "graticule": 0.04,
+    "phosphor": 0.55
   }
 }

@@ -50,8 +50,9 @@ export abstract class WebAudioProvider extends BaseCaptureProvider {
       return;
     }
     this.analyser.getFloatTimeDomainData(this.tap);
+    // Plain copy: a subarray view per frame would allocate in the render loop.
     const n = Math.min(out.length, TAP_SIZE);
-    out.set(this.tap.subarray(TAP_SIZE - n));
+    for (let i = 0; i < n; i++) out[i] = this.tap[TAP_SIZE - n + i];
     out.fill(0, n);
   }
 }

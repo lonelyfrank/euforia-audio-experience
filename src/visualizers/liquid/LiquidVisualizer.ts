@@ -1,8 +1,10 @@
 import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4 } from 'three';
+import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
+import { SHAPE_SIZE } from '../../audio/analysis/VoiceTracker';
 import { Envelope } from '../../audio/visual-response/Envelope';
 import { sampleSpectrumRange } from '../../audio/visual-response/spectrum';
-import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
+import type { AudioFrame, MusicContextFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
 import { HORIZON, SCENE_CENTER } from '../../renderer/compositeShader';
 import { disposeObject } from '../shared/dispose';
@@ -26,6 +28,12 @@ export interface LiquidParams {
   shock: number;
   /** Height of each ribbon's rolling trace of its band (× amplitude). */
   trace: number;
+  /** Sample-and-hold stepping of the drawn voices (0 = smooth … 1 = stepped), scaled by how percussive the style is. */
+  digital: number;
+  /** Brightness of the measuring grid behind the traces (0 = off). */
+  graticule: number;
+  /** Phosphor persistence (afterimage damping, 0 = off); High quality only. */
+  phosphor: number;
 }
 
 const MAX_RIBBONS = 8;
@@ -42,6 +50,15 @@ const SHOCK_MIN_INTERVAL = 0.15;
 const TRACE_POINTS = 128;
 /** The trace spans this many beats of the song, so its hits line up with the tempo. */
 const TRACE_BEATS = 8;
+/** Rows of the voice texture: the bass line, the lead, and the "air" (a jagged line redrawn on high hits). */
+const BASS_ROW = 0;
+const LEAD_ROW = 1;
+const AIR_ROW = 2;
+const VOICE_ROWS = 3;
+/** Points per cycle of the air zig-zag. */
+const AIR_KNOTS = 16;
+/** Sample-and-hold steps per cycle when the voices are drawn stepped. */
+const DIGITAL_STEPS = 24;
 
 const vertexShader = /* glsl */ `
   varying vec2 vPos;
@@ -69,7 +86,7 @@ const fragmentShader = /* glsl */ `
   uniform float uClock;
   uniform float uGlintRate;
   uniform vec3 uGlintColor;
-  // Per ribbon: (base, frequency, phase, amplitude) of the macro swell.
+  // Per ribbon: (base, cycles across the view, phase, amplitude) of its voice.
   uniform vec4 uSwell[MAX_RIBBONS];
   // Per ribbon: (frequency, phase, amplitude) of the mid curvature, frequency of the fine ripple.
   uniform vec4 uCurve[MAX_RIBBONS];
@@ -87,6 +104,12 @@ const fragmentShader = /* glsl */ `
   // One row per ribbon: its band's recent activity, newest first.
   uniform sampler2D tTrace;
   uniform float uTraceShift;
+  // One cycle per row: bass line, lead, air. Each ribbon draws one of them.
+  uniform sampler2D tVoices;
+  uniform float uVoiceRow[MAX_RIBBONS];
+  uniform float uDigital;
+  uniform float uGraticule;
+  uniform vec3 uGridColor;
   varying vec2 vPos;
 
   float hash(vec2 p) {
@@ -117,6 +140,14 @@ const fragmentShader = /* glsl */ `
     vec2 glintSeed = vec2(floor(v * 160.0), floor(uClock * 7.0));
     vec3 color = vec3(0.0);
 
+    // Measuring grid, like an instrument's graticule: faint, only in the sky.
+    if (uGraticule > 0.0 && vPos.y > uHorizonY) {
+      vec2 cell = vec2(vPos.x, vPos.y - uHorizonY) * 5.0;
+      vec2 line = abs(fract(cell + 0.5) - 0.5) / fwidth(cell);
+      float grid = 1.0 - min(min(line.x, line.y), 1.0);
+      color += uGridColor * grid * uGraticule;
+    }
+
     for (int k = 0; k < MAX_RIBBONS; k++) {
       if (k >= uRibbons) break;
       vec4 swell = uSwell[k];
@@ -127,8 +158,12 @@ const fragmentShader = /* glsl */ `
       float spectrum = texture2D(tSpectrum, vec2(band.x + mirror * band.y, 0.5)).r;
       // Rolling trace: what this band did, written at the centre and scrolling out to the edges.
       float trace = texture2D(tTrace, vec2(mirror - uTraceShift, (float(k) + 0.5) / float(MAX_RIBBONS))).r;
+      // The voice: one real cycle of the sound, repeated at a length set by its pitch; optionally stepped.
+      float x = v * swell.y + swell.z;
+      x = mix(x, floor(x * float(${DIGITAL_STEPS})) / float(${DIGITAL_STEPS}), uDigital);
+      float voice = texture2D(tVoices, vec2(x, (uVoiceRow[k] + 0.5) / float(${VOICE_ROWS}))).r * 2.0 - 1.0;
       float y = swell.x
-        + sin(v * swell.y + swell.z) * swell.w
+        + voice * swell.w
         + sin(v * curve.x + curve.y) * curve.z
         + sin(v * curve.w + terms.x) * terms.y
         + spectrum * uImprint * taper
@@ -177,6 +212,14 @@ export class LiquidVisualizer implements Visualizer {
   private readonly waveTexture = new SignalTexture(WAVE_POINTS);
   private readonly wave = new Float32Array(WAVE_POINTS);
   private readonly traceTexture = new SignalTexture(TRACE_POINTS, MAX_RIBBONS);
+  private readonly voiceTexture = new SignalTexture(SHAPE_SIZE, VOICE_ROWS, true);
+  private readonly voiceRows = new Float32Array(MAX_RIBBONS);
+  /** The air line: jagged values redrawn on each high hit, and eased towards. */
+  private readonly air = new Float32Array(SHAPE_SIZE);
+  private readonly airTarget = new Float32Array(SHAPE_SIZE);
+  private readonly airKnots = new Float32Array(AIR_KNOTS);
+  private airSeed = 1;
+  private lastHighFlux = 0;
   /** Per ribbon, newest first. */
   private readonly trace = new Float32Array(TRACE_POINTS * MAX_RIBBONS);
   /** Loudest value of each ribbon since the last trace sample (so short hits are never skipped). */
@@ -210,7 +253,7 @@ export class LiquidVisualizer implements Visualizer {
 
   constructor(private readonly preset: VisualizerPreset<LiquidParams>) {}
 
-  init({ renderer, quality }: VisualizerContext): void {
+  init({ renderer, quality, addPass }: VisualizerContext): void {
     const p = this.preset.visual;
     this.ribbons = Math.min(p.ribbons, MAX_RIBBONS);
     // Lower quality trims the fine detail (ripples, glints), never the low/mid response.
@@ -250,8 +293,16 @@ export class LiquidVisualizer implements Visualizer {
         tWave: { value: this.waveTexture.texture },
         tTrace: { value: this.traceTexture.texture },
         uTraceShift: { value: 0 },
+        tVoices: { value: this.voiceTexture.texture },
+        uVoiceRow: { value: this.voiceRows },
+        uDigital: { value: 0 },
+        uGraticule: { value: p.graticule },
+        uGridColor: { value: new Color() },
       },
     });
+    // Phosphor: each frame fades into the next, like the persistence of a scope screen. A full-screen
+    // pass (~7 ms at 1080p on an integrated GPU): High only, so Auto drops it when it steps down.
+    if (p.phosphor > 0 && quality.density >= 0.9) addPass(new AfterimagePass(p.phosphor), 'pre-bloom');
     // Scaled to twice the view in resize(), so it still covers it after the scene-centre offset.
     this.mesh = new Mesh(new PlaneGeometry(2, 2), this.material);
     this.scene.add(this.mesh);
@@ -264,6 +315,7 @@ export class LiquidVisualizer implements Visualizer {
       else this.hues[k].copy(secondary).lerp(primary, t * 2 - 1);
     }
     this.highlight.copy(highlight);
+    (this.material.uniforms.uGridColor.value as Color).copy(secondary).lerp(this.scratch.setRGB(1, 1, 1), 0.3);
     (this.material.uniforms.uGlintColor.value as Color).copy(highlight).lerp(this.scratch.setRGB(1, 1, 1), 0.5);
   }
 
@@ -313,22 +365,33 @@ export class LiquidVisualizer implements Visualizer {
       this.curvePhase[k] -= push * 1.4 * dir;
       this.ripplePhase[k] += drift * 2.6 * dir;
 
-      // LOW: long heavy swells; the lower ribbons breathe once per bar, locked to the beat clock.
-      const freq = (2 + 4.5 * highness) * swellScale;
+      // The voice this ribbon draws: the bass line at the bottom, the lead in the middle, the air on top.
+      // Its cycle repeats at a length set by the pitch (higher notes, tighter waves).
+      const row = t >= 0.6 ? BASS_ROW : t >= 0.2 ? LEAD_ROW : AIR_ROW;
+      this.voiceRows[k] = row;
+      const octave = row === BASS_ROW ? Math.log2(music.bassPitch / 40) : Math.log2(music.leadPitch / 180);
+      const cycles = (row === AIR_ROW ? 2 : (row === BASS_ROW ? 1.2 : 2.2) + 1.1 * Math.max(octave, 0)) * swellScale * (1 + 0.4 * (k % 2));
+      // Amplitude from the ribbon's role: weight for the bass, flow for the lead, detail for the air.
+      const drive =
+        row === BASS_ROW ? 0.4 * zone + 1.1 * weight * lowness : row === LEAD_ROW ? 0.35 * zone + 0.9 * flow * (0.5 + 0.5 * music.leadVoice) : 0.2 * zone + 0.6 * detail;
+      // The voice leads; the synthetic curvature and fine ripples stay only where no voice is drawn.
+      const voiced = row === AIR_ROW ? 0 : 1;
+      // Phase in cycles: travels with the music; the lower ribbons also advance one cycle per bar with the beat clock.
       this.swell[k].set(
         this.material.uniforms.uHorizonY.value + (1 - k / this.ribbons) * stackHeight,
-        freq,
-        this.swellPhase[k] + lowness * ((2 * Math.PI * music.beats) / 4) + k * 1.3,
-        amplitude * presence * (0.4 * zone + 1.2 * weight * lowness) * (1 + 0.4 * drop * lowness),
+        cycles,
+        (this.swellPhase[k] + k * 1.3) / (2 * Math.PI) + lowness * (music.beats / 4),
+        amplitude * presence * drive * (1 + 0.4 * drop * lowness),
       );
+      const freq = (2 + 4.5 * highness) * swellScale;
       // MID: secondary curvature; with shear, neighbouring ribbons drift in opposite directions.
-      this.curve[k].set(freq * curveRatio, this.curvePhase[k] + k * 2.1, amplitude * presence * 0.55 * flow * (0.35 + 0.65 * midness), rippleGrain + 6 * k);
+      this.curve[k].set(freq * curveRatio, this.curvePhase[k] + k * 2.1, amplitude * presence * 0.55 * flow * (0.35 + 0.65 * midness) * (1 - 0.8 * voiced), rippleGrain + 6 * k);
       this.detailTerms[k].set(
         // HIGH: fine ripples, mostly on the upper ribbons; tighter while building.
         this.ripplePhase[k] + k,
-        p.ripple * presence * 1.2 * detail * (0.3 + 0.7 * highness) * (1 + 0.6 * build) * this.detailQuality,
+        p.ripple * presence * 1.2 * detail * (0.3 + 0.7 * highness) * (1 + 0.6 * build) * this.detailQuality * (1 - voiced),
         // Waveform: organic local shape on the middle ribbons, for tonal content (voice, pads).
-        p.waveDepth * amplitude * midness * midness * (0.35 + 0.65 * flow) * waveGate,
+        p.waveDepth * amplitude * midness * midness * (0.35 + 0.65 * flow) * waveGate * (1 - voiced),
         // TRANSIENT: shock rings, strongest near the horizon, when there is a kick pattern.
         p.shock * amplitude * (0.35 + 0.65 * lowness) * shockGate,
       );
@@ -346,6 +409,7 @@ export class LiquidVisualizer implements Visualizer {
     }
 
     this.material.uniforms.uImprint.value = p.imprint * amplitude * imprint;
+    this.updateVoices(frame, music, dt);
     this.updateSpectrum(frame.spectrum);
     this.updateWave(frame.waveform, dt);
     this.updateShocks(response.impact, drop, dt);
@@ -369,8 +433,38 @@ export class LiquidVisualizer implements Visualizer {
     this.spectrumTexture.dispose();
     this.waveTexture.dispose();
     this.traceTexture.dispose();
+    this.voiceTexture.dispose();
     disposeObject(this.scene);
     this.scene.clear();
+  }
+
+  /**
+   * Uploads the drawn voices: the bass line and the lead as the music context
+   * gives them (current shape or learned style), and the air line, redrawn
+   * at random on each high hit and eased towards. Stepping follows the style:
+   * the more percussive the music, the more "digital".
+   */
+  private updateVoices(frame: AudioFrame, music: MusicContextFrame, dt: number): void {
+    if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) {
+      // A new zig-zag: AIR_KNOTS random points per cycle, joined by straight segments.
+      for (let knot = 0; knot < AIR_KNOTS; knot++) {
+        this.airSeed = (this.airSeed * 1664525 + 1013904223) >>> 0;
+        this.airKnots[knot] = this.airSeed / 2147483648 - 1;
+      }
+      const span = SHAPE_SIZE / AIR_KNOTS;
+      for (let i = 0; i < SHAPE_SIZE; i++) {
+        const knot = Math.floor(i / span);
+        const t = i / span - knot;
+        this.airTarget[i] = this.airKnots[knot] * (1 - t) + this.airKnots[(knot + 1) % AIR_KNOTS] * t;
+      }
+    }
+    this.lastHighFlux = frame.highFlux;
+    const follow = 1 - Math.exp(-dt / 0.04);
+    for (let i = 0; i < SHAPE_SIZE; i++) this.air[i] += (this.airTarget[i] - this.air[i]) * follow;
+    this.voiceTexture.write(music.bassLine, true, BASS_ROW);
+    this.voiceTexture.write(music.leadLine, true, LEAD_ROW);
+    this.voiceTexture.write(this.air, true, AIR_ROW);
+    this.material.uniforms.uDigital.value = this.preset.visual.digital * (0.3 + 0.7 * music.stylePercussion);
   }
 
   /**

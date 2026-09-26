@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SPECTRUM_BINS, WAVEFORM_SIZE } from '../analysis/AudioAnalyzer';
+import { SHAPE_SIZE } from '../analysis/VoiceTracker';
 import type { AudioFrame } from '../../types/audio';
 import { hzToPosition } from './spectrum';
 import { VisualResponse } from './VisualResponse';
@@ -40,6 +41,8 @@ function frame(values: Partial<AudioFrame> = {}, regions: Region[] = []): AudioF
     highFlux: 0,
     flatness: 0,
     loudness: 0,
+    bassVoice: { pitch: 0, clarity: 0, shape: new Float32Array(SHAPE_SIZE) },
+    leadVoice: { pitch: 0, clarity: 0, shape: new Float32Array(SHAPE_SIZE) },
     ...values,
   };
 }

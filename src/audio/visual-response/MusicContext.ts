@@ -1,4 +1,5 @@
-import type { AudioFrame, MusicContextFrame, VisualResponseFrame } from '../../types/audio';
+import { SHAPE_SIZE } from '../analysis/VoiceTracker';
+import type { AudioFrame, MusicContextFrame, VisualResponseFrame, VoiceFrame } from '../../types/audio';
 import { Envelope } from './Envelope';
 import { hzToPosition, sampleSpectrumRange } from './spectrum';
 
@@ -50,6 +51,14 @@ const SONG_GAP = 1.2;
 const LEARN_SECONDS = 12;
 const VARIATION_GLIDE = 1.5;
 export const VARIATIONS = 8;
+/** Memory of the learned style (s). */
+const STYLE_TAU = 20;
+/** A voice this clear (× presence) is drawn as it is; below, the style shows through. */
+const VOICE_SHOWN_FROM = 0.45;
+const VOICE_SHOWN_TO = 0.85;
+/** Glide of the drawn lines and of the pitch (s). */
+const LINE_TAU = 0.1;
+const PITCH_TAU = 0.08;
 
 /** Fingerprint features: tempo, low share, high share, brightness, tonality, percussion. */
 const FEATURES = 6;
@@ -86,6 +95,16 @@ export class MusicContext {
     song: 0,
     songLock: 0,
     variation: new Float32Array(VARIATIONS).fill(0.5),
+    bassLine: sineCycle(),
+    leadLine: sineCycle(),
+    bassPitch: 55,
+    leadPitch: 330,
+    bassVoice: 0,
+    leadVoice: 0,
+    bassStyle: sineCycle(),
+    leadStyle: sineCycle(),
+    styleTonality: 0.5,
+    stylePercussion: 0.3,
   };
 
   private readonly lock = new Envelope(...LOCK);
@@ -129,9 +148,42 @@ export class MusicContext {
     }
     this.updateTempo(audio, dt);
     if (!audio.silent) this.learn(roles, dt);
+    out.bassVoice = this.updateVoice(audio.bassVoice, presenceOf(roles.lowShare), out.bassLine, out.bassStyle, dt, true);
+    out.leadVoice = this.updateVoice(audio.leadVoice, presenceOf(roles.midShare), out.leadLine, out.leadStyle, dt, false);
+    if (!audio.silent) {
+      const style = 1 - Math.exp(-dt / STYLE_TAU);
+      out.styleTonality += (out.tonality - out.styleTonality) * style;
+      const percussion = Math.max(out.lowPercussion, out.midPercussion, out.highPercussion);
+      out.stylePercussion += (percussion - out.stylePercussion) * style;
+    }
     const glide = 1 - Math.exp(-dt / VARIATION_GLIDE);
     for (let i = 0; i < VARIATIONS; i++) out.variation[i] += (this.targets[i] - out.variation[i]) * glide;
     return out;
+  }
+
+  /**
+   * A voice's drawn line: its current cycle when it is clear and its region
+   * present, else the style; the style itself learns the shapes it hears,
+   * weighted by how clear they are. Returns the voice's strength (0..1).
+   */
+  private updateVoice(voice: VoiceFrame, presence: number, line: Float32Array, style: Float32Array, dt: number, bass: boolean): number {
+    const out = this.frame;
+    const strength = voice.pitch > 0 ? voice.clarity * presence : 0;
+    if (strength > 0) {
+      const learn = (1 - Math.exp(-dt / STYLE_TAU)) * strength;
+      for (let i = 0; i < SHAPE_SIZE; i++) style[i] += (voice.shape[i] - style[i]) * learn;
+      const glide = 1 - Math.exp(-dt / PITCH_TAU);
+      // Glide in octaves, so jumps between notes take the same time up or down.
+      if (bass) out.bassPitch *= 2 ** (Math.log2(voice.pitch / out.bassPitch) * glide);
+      else out.leadPitch *= 2 ** (Math.log2(voice.pitch / out.leadPitch) * glide);
+    }
+    const shown = smoothstep(VOICE_SHOWN_FROM, VOICE_SHOWN_TO, strength);
+    const follow = 1 - Math.exp(-dt / LINE_TAU);
+    for (let i = 0; i < SHAPE_SIZE; i++) {
+      const target = style[i] + (voice.shape[i] - style[i]) * shown;
+      line[i] += (target - line[i]) * follow;
+    }
+    return strength;
   }
 
   /** A new song: forget the song-level references and learn its character again. */
@@ -290,6 +342,17 @@ export class MusicContext {
     }
   }
 
+}
+
+/** How much a region is in the mix, from its spectrum share (absent below ~5%). */
+function presenceOf(share: number): number {
+  return smoothstep(0.03, 0.15, share);
+}
+
+function sineCycle(): Float32Array {
+  const cycle = new Float32Array(SHAPE_SIZE);
+  for (let i = 0; i < SHAPE_SIZE; i++) cycle[i] = Math.sin((2 * Math.PI * i) / SHAPE_SIZE);
+  return cycle;
 }
 
 /** Spectral centroid as a position on the log spectrum (0..1). */

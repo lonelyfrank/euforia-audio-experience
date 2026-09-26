@@ -9,7 +9,8 @@ export const SCENE_CENTER = { x: 0.52, y: 0.38 };
  * Final composition of the Halo frame, in linear colour:
  * 1. sky: crossfade of the outgoing/incoming scene + navy haze + stars;
  * 2. floor: the sky mirrored below the horizon with sinusoidal ripples,
- *    darkened toward the bottom edge;
+ *    darkened toward the bottom edge; ripples and twinkle follow the level,
+ *    so silence leaves a still picture;
  * 3. a thin luminous horizon line where the scene touches the water.
  */
 export const CompositeShader = {
@@ -77,7 +78,8 @@ export const CompositeShader = {
       if (r > 0.55) {
         vec2 pos = vec2(hash(cell + 7.1), hash(cell + 3.7));
         float dist = length((fract(grid) - pos) * 26.0);
-        float twinkle = 0.2 + 0.35 * sin(uTime * 1.3 + r * 40.0);
+        // Stars hold still in silence and twinkle with the sound.
+        float twinkle = 0.2 + 0.35 * uLevel * sin(uTime * 1.3 + r * 40.0);
         color += vec3(0.62, 0.66, 1.0) * max(twinkle, 0.0) * 0.5 * smoothstep(1.4, 0.0, dist);
       }
       return color;
@@ -98,7 +100,8 @@ export const CompositeShader = {
         // 0 at the horizon, 1 at the bottom edge.
         float k = (uHorizon - uv.y) / uHorizon;
         float row = (uHorizon - uv.y) * uResolution.y * 0.5;
-        float amp = (1.5 + k * k * 42.0) * (unit / 1400.0) * (0.7 + uLevel * 0.5);
+        // The water only moves with the sound: silence leaves a still mirror.
+        float amp = (1.5 + k * k * 42.0) * (unit / 1400.0) * uLevel * 1.2;
         float dx = sin(row * 0.21 / (1.0 + k * 3.0) + uTime * 1.4) * amp + sin(row * 0.05 + uTime * 0.6) * amp * 0.8;
         vec2 mirrored = vec2(uv.x + dx / uResolution.x, uHorizon + (uHorizon - uv.y) * 1.02);
         mirrored.y = min(mirrored.y, 1.0);
