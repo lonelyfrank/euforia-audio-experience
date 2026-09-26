@@ -1,14 +1,15 @@
 import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4 } from 'three';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
-import { SHAPE_SIZE } from '../../audio/analysis/VoiceTracker';
 import { Envelope } from '../../audio/visual-response/Envelope';
 import { sampleSpectrumRange } from '../../audio/visual-response/spectrum';
-import type { AudioFrame, MusicContextFrame, VisualResponseFrame } from '../../types/audio';
+import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
 import { HORIZON, SCENE_CENTER } from '../../renderer/compositeShader';
 import { disposeObject } from '../shared/dispose';
+import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { SignalTexture } from '../shared/SignalTexture';
+import { AIR_ROW, BASS_ROW, LEAD_ROW, VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
 
 export interface LiquidParams {
   /** Number of layered ribbons (max 8). */
@@ -46,19 +47,6 @@ const ZONE_WIDTH = 0.3;
 /** An impact above this, rising, sends a shock ripple. */
 const SHOCK_THRESHOLD = 0.5;
 const SHOCK_MIN_INTERVAL = 0.15;
-/** Samples in each ribbon's rolling trace (centre = now, edges = oldest). */
-const TRACE_POINTS = 128;
-/** The trace spans this many beats of the song, so its hits line up with the tempo. */
-const TRACE_BEATS = 8;
-/** Rows of the voice texture: the bass line, the lead, and the "air" (a jagged line redrawn on high hits). */
-const BASS_ROW = 0;
-const LEAD_ROW = 1;
-const AIR_ROW = 2;
-const VOICE_ROWS = 3;
-/** Points per cycle of the air zig-zag. */
-const AIR_KNOTS = 16;
-/** Sample-and-hold steps per cycle when the voices are drawn stepped. */
-const DIGITAL_STEPS = 24;
 
 const vertexShader = /* glsl */ `
   varying vec2 vPos;
@@ -101,11 +89,9 @@ const fragmentShader = /* glsl */ `
   uniform vec4 uShocks[SHOCKS];
   uniform sampler2D tSpectrum;
   uniform sampler2D tWave;
-  // One row per ribbon: its band's recent activity, newest first.
-  uniform sampler2D tTrace;
-  uniform float uTraceShift;
-  // One cycle per row: bass line, lead, air. Each ribbon draws one of them.
-  uniform sampler2D tVoices;
+  // Rolling traces (one row per ribbon) and voices (bass line, lead, air): each ribbon draws one voice.
+  ${traceGlsl}
+  ${voiceGlsl}
   uniform float uVoiceRow[MAX_RIBBONS];
   uniform float uDigital;
   uniform float uGraticule;
@@ -157,11 +143,9 @@ const fragmentShader = /* glsl */ `
       // Spectrum imprint: the ribbon's own band, its low end at the centre.
       float spectrum = texture2D(tSpectrum, vec2(band.x + mirror * band.y, 0.5)).r;
       // Rolling trace: what this band did, written at the centre and scrolling out to the edges.
-      float trace = texture2D(tTrace, vec2(mirror - uTraceShift, (float(k) + 0.5) / float(MAX_RIBBONS))).r;
+      float trace = traceAt(float(k), float(MAX_RIBBONS), mirror);
       // The voice: one real cycle of the sound, repeated at a length set by its pitch; optionally stepped.
-      float x = v * swell.y + swell.z;
-      x = mix(x, floor(x * float(${DIGITAL_STEPS})) / float(${DIGITAL_STEPS}), uDigital);
-      float voice = texture2D(tVoices, vec2(x, (uVoiceRow[k] + 0.5) / float(${VOICE_ROWS}))).r * 2.0 - 1.0;
+      float voice = voiceAt(uVoiceRow[k], v * swell.y + swell.z, uDigital);
       float y = swell.x
         + voice * swell.w
         + sin(v * curve.x + curve.y) * curve.z
@@ -211,20 +195,9 @@ export class LiquidVisualizer implements Visualizer {
   private readonly spectrumTexture = new SignalTexture(SPECTRUM_BINS);
   private readonly waveTexture = new SignalTexture(WAVE_POINTS);
   private readonly wave = new Float32Array(WAVE_POINTS);
-  private readonly traceTexture = new SignalTexture(TRACE_POINTS, MAX_RIBBONS);
-  private readonly voiceTexture = new SignalTexture(SHAPE_SIZE, VOICE_ROWS, true);
+  private readonly traces = new RollingTraces(MAX_RIBBONS);
+  private readonly voices = new VoiceTextures();
   private readonly voiceRows = new Float32Array(MAX_RIBBONS);
-  /** The air line: jagged values redrawn on each high hit, and eased towards. */
-  private readonly air = new Float32Array(SHAPE_SIZE);
-  private readonly airTarget = new Float32Array(SHAPE_SIZE);
-  private readonly airKnots = new Float32Array(AIR_KNOTS);
-  private airSeed = 1;
-  private lastHighFlux = 0;
-  /** Per ribbon, newest first. */
-  private readonly trace = new Float32Array(TRACE_POINTS * MAX_RIBBONS);
-  /** Loudest value of each ribbon since the last trace sample (so short hits are never skipped). */
-  private readonly tracePeak = new Float32Array(MAX_RIBBONS);
-  private traceProgress = 0;
   /** Spectrum blurred along frequency, so a pure tone shapes a soft hill, not a spike. */
   private readonly softSpectrum = new Float32Array(SPECTRUM_BINS);
   private readonly blurScratch = new Float32Array(SPECTRUM_BINS);
@@ -291,9 +264,9 @@ export class LiquidVisualizer implements Visualizer {
         uShocks: { value: this.shocks },
         tSpectrum: { value: this.spectrumTexture.texture },
         tWave: { value: this.waveTexture.texture },
-        tTrace: { value: this.traceTexture.texture },
+        tTrace: { value: this.traces.texture },
         uTraceShift: { value: 0 },
-        tVoices: { value: this.voiceTexture.texture },
+        tVoices: { value: this.voices.texture },
         uVoiceRow: { value: this.voiceRows },
         uDigital: { value: 0 },
         uGraticule: { value: p.graticule },
@@ -398,7 +371,7 @@ export class LiquidVisualizer implements Visualizer {
       band.z = glints ? (0.5 * detail + shimmer) * highness * 1.6 * glintGate * presence : 0;
       // Trace height; with shear, every other ribbon draws downwards.
       band.w = p.trace * amplitude * (k % 2 === 0 ? 1 : 2 * vary[1] - 1);
-      this.tracePeak[k] = Math.max(this.tracePeak[k], this.traceValue(frame, response, t, zone));
+      this.traces.record(k, traceValue(frame, response, t, zone));
 
       // The bass deepens the lower bodies; the highs pull the upper edges towards the highlight hue.
       const hue = this.hues[k];
@@ -409,11 +382,13 @@ export class LiquidVisualizer implements Visualizer {
     }
 
     this.material.uniforms.uImprint.value = p.imprint * amplitude * imprint;
-    this.updateVoices(frame, music, dt);
+    this.voices.update(frame, music, dt, p.digital);
+    this.material.uniforms.uDigital.value = this.voices.digital;
     this.updateSpectrum(frame.spectrum);
     this.updateWave(frame.waveform, dt);
     this.updateShocks(response.impact, drop, dt);
-    this.updateTrace(music.tempo, dt);
+    this.traces.update(music.tempo, dt);
+    this.material.uniforms.uTraceShift.value = this.traces.shift;
 
     const u = this.material.uniforms;
     u.uClock.value = this.clock;
@@ -432,76 +407,10 @@ export class LiquidVisualizer implements Visualizer {
   dispose(): void {
     this.spectrumTexture.dispose();
     this.waveTexture.dispose();
-    this.traceTexture.dispose();
-    this.voiceTexture.dispose();
+    this.traces.dispose();
+    this.voices.dispose();
     disposeObject(this.scene);
     this.scene.clear();
-  }
-
-  /**
-   * Uploads the drawn voices: the bass line and the lead as the music context
-   * gives them (current shape or learned style), and the air line, redrawn
-   * at random on each high hit and eased towards. Stepping follows the style:
-   * the more percussive the music, the more "digital".
-   */
-  private updateVoices(frame: AudioFrame, music: MusicContextFrame, dt: number): void {
-    if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) {
-      // A new zig-zag: AIR_KNOTS random points per cycle, joined by straight segments.
-      for (let knot = 0; knot < AIR_KNOTS; knot++) {
-        this.airSeed = (this.airSeed * 1664525 + 1013904223) >>> 0;
-        this.airKnots[knot] = this.airSeed / 2147483648 - 1;
-      }
-      const span = SHAPE_SIZE / AIR_KNOTS;
-      for (let i = 0; i < SHAPE_SIZE; i++) {
-        const knot = Math.floor(i / span);
-        const t = i / span - knot;
-        this.airTarget[i] = this.airKnots[knot] * (1 - t) + this.airKnots[(knot + 1) % AIR_KNOTS] * t;
-      }
-    }
-    this.lastHighFlux = frame.highFlux;
-    const follow = 1 - Math.exp(-dt / 0.04);
-    for (let i = 0; i < SHAPE_SIZE; i++) this.air[i] += (this.airTarget[i] - this.air[i]) * follow;
-    this.voiceTexture.write(music.bassLine, true, BASS_ROW);
-    this.voiceTexture.write(music.leadLine, true, LEAD_ROW);
-    this.voiceTexture.write(this.air, true, AIR_ROW);
-    this.material.uniforms.uDigital.value = this.preset.visual.digital * (0.3 + 0.7 * music.stylePercussion);
-  }
-
-  /**
-   * What a ribbon's trace records: its band's level plus the transients of
-   * its region (hi-hats on top, snares in the middle, kicks at the bottom).
-   * Transients of a region absent from the band count only partly (leakage).
-   */
-  private traceValue(frame: AudioFrame, response: VisualResponseFrame, t: number, zone: number): number {
-    const low = Math.max(response.impact, frame.lowFlux * 0.7);
-    const transient = t < 0.5 ? frame.highFlux + (frame.midFlux - frame.highFlux) * t * 2 : frame.midFlux + (low - frame.midFlux) * (t * 2 - 1);
-    const value = 0.6 * zone ** 1.5 + 0.9 * transient * (0.35 + 0.65 * smoothstep(0.05, 0.25, zone));
-    return frame.silent ? 0 : Math.min(value, 1);
-  }
-
-  /**
-   * Rolls the traces: a new sample every TRACE_BEATS / TRACE_POINTS beats (so
-   * the trace spans 8 beats at any tempo); between samples the shader shifts
-   * by the fraction elapsed, so the scroll is smooth.
-   */
-  private updateTrace(tempo: number, dt: number): void {
-    const interval = (60 / Math.max(tempo, 1)) * (TRACE_BEATS / TRACE_POINTS);
-    this.traceProgress += dt / interval;
-    const pushes = Math.min(Math.floor(this.traceProgress), TRACE_POINTS);
-    this.traceProgress -= Math.floor(this.traceProgress);
-    if (pushes > 0) {
-      const trace = this.trace;
-      for (let k = 0; k < this.ribbons; k++) {
-        const row = k * TRACE_POINTS;
-        for (let i = 0; i < pushes; i++) {
-          trace.copyWithin(row + 1, row, row + TRACE_POINTS - 1);
-          trace[row] = this.tracePeak[k];
-        }
-        this.tracePeak[k] = 0;
-        this.traceTexture.write(trace, false, k, row, TRACE_POINTS);
-      }
-    }
-    this.material.uniforms.uTraceShift.value = (this.traceProgress - 0.5) / TRACE_POINTS;
   }
 
   /** 0 = top ribbon … 1 = bottom ribbon. */
