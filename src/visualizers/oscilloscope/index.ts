@@ -6,7 +6,7 @@ import { OscilloscopeVisualizer, type OscilloscopeParams } from './OscilloscopeV
 export default defineVisualizer<OscilloscopeParams>({
   id: 'oscilloscope',
   name: 'Oscilloscope',
-  description: 'Three luminous waveform lines with phosphor persistence.',
+  description: 'Three-channel scope: the input, the bass line and the lead, with phosphor persistence.',
   order: 6,
   icon: 'scope',
   preset: preset satisfies VisualizerPreset<OscilloscopeParams>,

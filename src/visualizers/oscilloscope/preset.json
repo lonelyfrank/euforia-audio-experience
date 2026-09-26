@@ -1,15 +1,18 @@
 {
   "name": "Oscilloscope",
   "author": "Halo",
-  "version": 2,
+  "version": 3,
   "audio": { "sensitivity": 1, "smoothing": 0.8 },
   "camera": { "fov": 50, "distance": 1, "drift": 0 },
   "bloom": { "strength": 0.9, "radius": 0.45, "threshold": 0.05 },
   "visual": {
     "traceWidth": 1.8,
-    "amplitude": 0.32,
-    "offsetY": 0.1,
+    "amplitude": 0.2,
+    "offsetY": 0.14,
     "persistence": 0.78,
-    "echo": 0.82
+    "voiceAmplitude": 0.11,
+    "voiceSpacing": 0.24,
+    "graticule": 0.07,
+    "digital": 0.5
   }
 }
