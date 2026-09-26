@@ -1,5 +1,5 @@
 import { PerspectiveCamera, Scene } from 'three';
-import type { AudioFrame } from '../../types/audio';
+import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
 import { disposeObject } from './dispose';
 
@@ -17,7 +17,7 @@ export abstract class BaseVisualizer<TVisual> implements Visualizer {
 
   abstract init(context: VisualizerContext): void;
   abstract setPalette(colors: PaletteColors): void;
-  abstract update(frame: AudioFrame, deltaTime: number, time: number): void;
+  abstract update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame): void;
 
   resize(width: number, height: number): void {
     this.camera.aspect = width / height;

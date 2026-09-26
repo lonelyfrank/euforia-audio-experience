@@ -1,11 +1,12 @@
 import { Color } from 'three';
 import { AudioEngine, type AudioEngineState } from '../audio/AudioEngine';
 import type { NativeSource } from '../audio/capture/NativeAudioCapture';
+import { TEST_SIGNALS, type TestSignal } from '../audio/capture/testSignals';
 import { isFullscreen, setFullscreen } from '../platform';
 import { RenderEngine } from '../renderer/RenderEngine';
 import { settingsStore, type Settings } from '../stores/settingsStore';
 import type { AudioSourceId } from '../types/audio';
-import type { QualitySetting } from '../types/visualizer';
+import type { QualitySetting, SceneInput } from '../types/visualizer';
 import { Dial, type DialMenu } from '../ui/Dial';
 import { h } from '../ui/dom';
 import { swatch } from '../ui/icons';
@@ -36,6 +37,8 @@ const QUALITIES: { id: QualitySetting; label: string; icon: 'qauto' | 'qlow' | '
  */
 export class App {
   readonly audio = new AudioEngine();
+  /** Handed to the render engine every frame; both objects are updated in place. */
+  private readonly sceneInput: SceneInput = { audio: this.audio.frame, response: this.audio.visual };
   private readonly stage: HTMLElement;
   private readonly render: RenderEngine;
   private readonly nowPlaying = new NowPlaying();
@@ -69,6 +72,8 @@ export class App {
     settingsStore.subscribe((s, previous) => this.applySettings(s, previous));
     this.audio.subscribe((state) => this.onAudioState(state));
     this.installInput();
+    // Development-only audio/visual debug overlay (?debug or Shift+D); not part of the production bundle.
+    if (import.meta.env.DEV) void import('./debug/DebugOverlay').then((m) => m.installDebugOverlay(this));
   }
 
   async start(): Promise<void> {
@@ -81,7 +86,7 @@ export class App {
 
   // ---- frame ---------------------------------------------------------------
 
-  private onFrame(dt: number) {
+  private onFrame(dt: number): SceneInput {
     const frame = this.audio.update(dt);
     // The core and the waveform pulse with the beat over a floor of loudness.
     const level = Math.min(1, frame.volume * 0.35 + frame.beatPulse * 0.65);
@@ -89,7 +94,7 @@ export class App {
     const playback = this.audio.playback;
     if (playback) this.nowPlaying.setPosition(playback.position);
     this.nowPlaying.draw(level, performance.now());
-    return frame;
+    return this.sceneInput;
   }
 
   // ---- wheel ---------------------------------------------------------------
@@ -264,6 +269,13 @@ export class App {
     await this.audio.setSource(source, { file });
   }
 
+  /** Plays a synthetic test signal (debug tool); the persisted source is left unchanged. */
+  async playTestSignal(signal: TestSignal): Promise<void> {
+    window.clearTimeout(this.retryTimer);
+    this.retriesLeft = 0;
+    await this.audio.setSource('fake', { signal });
+  }
+
   private onAudioState(state: AudioEngineState): void {
     if (!state.source) return;
     const track = this.trackFor(state.source, state.deviceName, this.audio.playback?.duration ?? 0);
@@ -292,7 +304,7 @@ export class App {
       case 'file':
         return { title: name.replace(/\.[^.]+$/, ''), artist: 'Local file', source: name, live: false, duration };
       case 'fake':
-        return { title: 'Test Signal', artist: 'Synthetic beat', source: 'Generator', live: true, duration: 0 };
+        return { title: 'Test Signal', artist: 'Synthetic', source: name || TEST_SIGNALS[0].label, live: true, duration: 0 };
     }
   }
 

@@ -5,10 +5,13 @@ import { BrowserMicrophoneCapture } from './BrowserMicrophoneCapture';
 import { FakeAudioProvider } from './FakeAudioProvider';
 import { FileAudioProvider } from './FileAudioProvider';
 import { NativeAudioCapture } from './NativeAudioCapture';
+import type { TestSignal } from './testSignals';
 
 export interface SourceOptions {
   /** Required for the `file` source. */
   file?: File | null;
+  /** Signal for the `fake` source (default: a 124 BPM beat). */
+  signal?: TestSignal;
 }
 
 /** Whether a source can work in the current environment. */
@@ -27,6 +30,6 @@ export function createCaptureProvider(source: AudioSourceId, options: SourceOpti
       if (!options.file) throw new Error('No audio file selected.');
       return new FileAudioProvider(options.file);
     case 'fake':
-      return new FakeAudioProvider();
+      return new FakeAudioProvider(options.signal);
   }
 }

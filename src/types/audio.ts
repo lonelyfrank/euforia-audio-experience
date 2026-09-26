@@ -42,10 +42,39 @@ export interface AudioFrame {
   beat: boolean;
   /** Decaying pulse that jumps to 1 on each beat and falls back to 0. */
   beatPulse: number;
-  /** Spectral-flux onset strength, 0..1. */
+  /** Kick onset strength, 0..1: rise of the sub-120 Hz level over its running average (not full-band flux). */
   onset: number;
   /** Rough tempo estimate; 0 while unknown. */
   bpm: number;
+}
+
+/**
+ * Musical roles derived from an AudioFrame by the VisualResponse layer, so
+ * scenes can give each part of the music its own visual job instead of
+ * pulsing everything with loudness. All values 0..1, frame-rate independent.
+ *
+ * - LOW  → `weight`: mass, scale, depth, slow pressure (never jitter).
+ * - MID  → `flow`: form, curvature, twist, lateral motion.
+ * - HIGH → `detail` (sustained) and `shimmer` (rising edges): fine detail, sparkle.
+ * - TRANSIENT → `impact`: short events (shockwaves, brief glow), not continuous control.
+ * - ENERGY → `density`: moderate global multiplier.
+ *
+ * Band levels in AudioFrame are each normalized to their own recent history,
+ * so they say "this band is moving", not "this band is present". The `*Share`
+ * values come from the (globally normalized) spectrum and say how much of the
+ * mix sits in each region; the roles above are already weighted by them.
+ */
+export interface VisualResponseFrame {
+  weight: number;
+  flow: number;
+  detail: number;
+  shimmer: number;
+  impact: number;
+  density: number;
+  /** Share of the spectrum in 30–250 Hz, 250 Hz–2 kHz, 2–16 kHz (sum ≈ 1, balanced mix ≈ 1/3 each). */
+  lowShare: number;
+  midShare: number;
+  highShare: number;
 }
 
 export type AudioSourceId = 'system' | 'microphone' | 'file' | 'fake';

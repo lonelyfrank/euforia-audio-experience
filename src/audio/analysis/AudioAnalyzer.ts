@@ -7,8 +7,9 @@ export const FFT_SIZE = 2048;
 export const SPECTRUM_BINS = 128;
 export const WAVEFORM_SIZE = 1024;
 
-const MIN_FREQ = 30;
-const MAX_FREQ = 16000;
+/** Frequency range of the display spectrum (log-spaced bins). */
+export const MIN_FREQ = 30;
+export const MAX_FREQ = 16000;
 /** Display tilt so high frequencies are not dwarfed by the bass (dB/octave around 1 kHz). */
 const SPECTRUM_TILT = 3;
 /** dB window shown by the spectrum, below its tracked peak. */

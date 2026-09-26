@@ -1,7 +1,8 @@
-import type { AudioFrame, AudioSourceId, CaptureStatus } from '../types/audio';
+import type { AudioFrame, AudioSourceId, CaptureStatus, VisualResponseFrame } from '../types/audio';
 import { AudioAnalyzer, FFT_SIZE, type AnalyzerSettings } from './analysis/AudioAnalyzer';
 import type { AudioCaptureProvider, Playback } from './capture/AudioCaptureProvider';
 import { createCaptureProvider, type SourceOptions } from './capture/createCaptureProvider';
+import { VisualResponse } from './visual-response/VisualResponse';
 
 export interface AudioEngineState {
   source: AudioSourceId | null;
@@ -12,11 +13,12 @@ export interface AudioEngineState {
 
 /**
  * Glue between a capture provider and the analyzer. Owns the active provider,
- * pulls samples once per frame and exposes the resulting AudioFrame.
- * Knows nothing about visualizers.
+ * pulls samples once per frame and exposes the resulting AudioFrame and the
+ * VisualResponseFrame derived from it. Knows nothing about visualizers.
  */
 export class AudioEngine {
   readonly analyzer = new AudioAnalyzer();
+  readonly response = new VisualResponse();
   private provider: AudioCaptureProvider | null = null;
   private readonly samples = new Float32Array(FFT_SIZE);
   private readonly listeners = new Set<(state: AudioEngineState) => void>();
@@ -31,6 +33,10 @@ export class AudioEngine {
 
   get frame(): AudioFrame {
     return this.analyzer.frame;
+  }
+
+  get visual(): VisualResponseFrame {
+    return this.response.frame;
   }
 
   /** Timeline of the active source, or null for live input. */
@@ -76,14 +82,17 @@ export class AudioEngine {
     }
     this.provider = provider;
     this.analyzer.reset();
+    this.response.reset();
     this.setState({ source, status: 'running', deviceName: provider.deviceName, error: null });
   }
 
-  /** Pull + analyse. Call once per rendered frame. */
+  /** Pull + analyse + derive the visual response. Call once per rendered frame. */
   update(dt: number): AudioFrame {
     if (this.provider) this.provider.readSamples(this.samples, Math.round(this.delay * this.provider.sampleRate));
     else this.samples.fill(0);
-    return this.analyzer.analyze(this.samples, this.provider?.sampleRate ?? 48000, dt);
+    const frame = this.analyzer.analyze(this.samples, this.provider?.sampleRate ?? 48000, dt);
+    this.response.update(frame, dt);
+    return frame;
   }
 
   private async releaseProvider(): Promise<void> {

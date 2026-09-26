@@ -1,6 +1,6 @@
 import type { Camera, Color, Scene, WebGLRenderer } from 'three';
 import type { Pass } from 'three/addons/postprocessing/Pass.js';
-import type { AudioFrame } from './audio';
+import type { AudioFrame, VisualResponseFrame } from './audio';
 
 export type QualitySetting = 'auto' | 'low' | 'medium' | 'high';
 
@@ -45,6 +45,12 @@ export interface VisualizerPreset<TVisual = Record<string, unknown>> {
   visual: TVisual;
 }
 
+/** Per-frame audio input of the render engine: stable objects, updated in place. */
+export interface SceneInput {
+  audio: AudioFrame;
+  response: VisualResponseFrame;
+}
+
 /** What the engine hands to a visualizer when it is mounted. */
 export interface VisualizerContext {
   renderer: WebGLRenderer;
@@ -71,7 +77,8 @@ export interface Visualizer {
   init(context: VisualizerContext): void;
   /** Called after init and whenever the preset (palette) changes. Must not allocate. */
   setPalette(colors: PaletteColors): void;
-  update(frame: AudioFrame, deltaTime: number, time: number): void;
+  /** `response` is derived from `frame` (musical roles: weight, flow, detail, impact…); both are read-only and reused. */
+  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame): void;
   resize(width: number, height: number): void;
   dispose(): void;
 }

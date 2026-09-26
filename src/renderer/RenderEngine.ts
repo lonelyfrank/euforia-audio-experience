@@ -5,8 +5,7 @@ import type { Pass } from 'three/addons/postprocessing/Pass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import type { AudioFrame } from '../types/audio';
-import type { PaletteColors, QualityProfile, QualitySetting, Visualizer, VisualizerPreset } from '../types/visualizer';
+import type { PaletteColors, QualityProfile, QualitySetting, SceneInput, Visualizer, VisualizerPreset } from '../types/visualizer';
 import { CompositeShader, SCENE_CENTER } from './compositeShader';
 import { QualityController } from './quality';
 
@@ -118,7 +117,7 @@ export class RenderEngine {
 
   constructor(
     private readonly container: HTMLElement,
-    private readonly frameSource: (dt: number) => AudioFrame,
+    private readonly frameSource: (dt: number) => SceneInput,
   ) {
     this.renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setClearColor(0x000000, 1);
@@ -183,7 +182,7 @@ export class RenderEngine {
     this.lastTime = now;
     const dt = Math.min(rawDt, MAX_DELTA);
 
-    const frame = this.frameSource(dt);
+    const { audio: frame, response } = this.frameSource(dt);
     const current = this.current;
     if (!current) return;
 
@@ -196,8 +195,8 @@ export class RenderEngine {
     }
     if (!this.paused) {
       this.time += dt;
-      current.visualizer.update(frame, dt, this.time);
-      this.previous?.visualizer.update(frame, dt, this.time);
+      current.visualizer.update(frame, dt, this.time, response);
+      this.previous?.visualizer.update(frame, dt, this.time, response);
     }
     current.render(dt);
     this.previous?.render(dt);
