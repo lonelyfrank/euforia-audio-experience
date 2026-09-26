@@ -33,6 +33,13 @@ function frame(values: Partial<AudioFrame> = {}, regions: Region[] = []): AudioF
     beatPulse: 0,
     onset: 0,
     bpm: 0,
+    tempoConfidence: 0,
+    beatPhase: 0,
+    lowFlux: 0,
+    midFlux: 0,
+    highFlux: 0,
+    flatness: 0,
+    loudness: 0,
     ...values,
   };
 }

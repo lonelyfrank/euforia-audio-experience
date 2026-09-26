@@ -46,6 +46,23 @@ export interface AudioFrame {
   onset: number;
   /** Rough tempo estimate; 0 while unknown. */
   bpm: number;
+  /** 0..1: how far the tempo can be trusted (0 for beatless music, pads, noise). */
+  tempoConfidence: number;
+  /** Position inside the current beat, 0..1 (0 = on the beat); 0 while no tempo is known. */
+  beatPhase: number;
+
+  /**
+   * Transients per region (spectral flux above its own running level, 0..1,
+   * instantaneous): 30–250 Hz (kick, bass attacks), 250 Hz–2 kHz (snare,
+   * claps, plucks), 2–16 kHz (hi-hats, cymbals, consonants).
+   */
+  lowFlux: number;
+  midFlux: number;
+  highFlux: number;
+  /** Spectral flatness 250 Hz–8 kHz, 0 = tonal (notes, voice) … 1 = noisy (noise, cymbals). Smoothed. */
+  flatness: number;
+  /** Absolute loudness (RMS, -60..0 dBFS → 0..1), not auto-gained: for comparing sections. Smoothed. */
+  loudness: number;
 }
 
 /**
@@ -75,6 +92,53 @@ export interface VisualResponseFrame {
   lowShare: number;
   midShare: number;
   highShare: number;
+  /** Slow musical context: tempo clock, song sections, character and per-song variation. */
+  music: MusicContextFrame;
+}
+
+/**
+ * What the song is doing over seconds rather than frames, so scenes can move
+ * at the song's pace, evolve with its sections and look different from song
+ * to song. Everything glides; nothing here jumps between frames.
+ */
+export interface MusicContextFrame {
+  /** Tempo the motion follows (BPM): the detected tempo when trusted, else a pace from the music's activity. */
+  tempo: number;
+  /** 0..1: how locked the motion is to the detected tempo. */
+  tempoLock: number;
+  /**
+   * Musical clock in beats: advances at `tempo` and, when locked, stays
+   * aligned to the detected beats. Use it for cyclic motion (one swell per
+   * bar = beats / 4) so it lands on the music.
+   */
+  beats: number;
+  /** Motion speed multiplier from the tempo, 1 at 120 BPM (≈ 0.6–1.5). */
+  pace: number;
+  /** 0..1: loudness of the current section relative to the song's quiet and loud parts. */
+  intensity: number;
+  /** 0..1 while the intensity keeps rising (a build-up). */
+  build: number;
+  /** Pulse (1 → 0 over ~2 s) when a loud section lands after a quiet or rising one. */
+  drop: number;
+  /** How percussive each region has been over the last seconds (0 = none … 1 = ≥ 4 hits/s). */
+  lowPercussion: number;
+  midPercussion: number;
+  highPercussion: number;
+  /** Spectral centroid, 0 = dark … 1 = bright. */
+  brightness: number;
+  /** 0 = noisy … 1 = tonal (notes, voice, pads). */
+  tonality: number;
+  /** Increments on a new song (source change, or sound after ≥ 1.2 s of silence). */
+  song: number;
+  /** 0..1 while the song's character is being learned (first seconds), then 1: `variation` is fixed. */
+  songLock: number;
+  /**
+   * Per-song variation values (0..1), derived from the song's character
+   * (tempo, balance, brightness, tonality, percussion): the same song gives
+   * the same values, different songs different ones. Scenes map them to
+   * shape choices. They glide when they change.
+   */
+  variation: Float32Array;
 }
 
 export type AudioSourceId = 'system' | 'microphone' | 'file' | 'fake';

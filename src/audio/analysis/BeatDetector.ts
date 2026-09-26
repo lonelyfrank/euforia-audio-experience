@@ -35,12 +35,30 @@ const PHASE_CORRECTION = 0.6;
 /** Predicted beats kept without any supporting onset before tracking stops. */
 const MAX_MISSED = 4;
 const PULSE_DECAY = 8; // 1/s
+/** How fast the beat support follows confirmed (up) and unconfirmed (down) predicted beats. */
+const SUPPORT_GAIN = 0.25;
+const SUPPORT_LOSS = 0.2;
+/** Periodicity (normalized autocorrelation at the tempo) mapped to confidence between these. */
+const PERIODICITY_LOW = 0.1;
+const PERIODICITY_HIGH = 0.35;
+/** Onset-strength variance below which the history is considered flat (no rhythm). */
+const MIN_ONSET_VARIANCE = 1e-3;
 
 export class BeatDetector {
   beat = false;
   pulse = 0;
   onset = 0;
   bpm = 0;
+  /**
+   * 0..1: how much the tempo can be trusted. Periodicity of the onsets times
+   * the share of recent predicted beats that an onset confirmed, so a steady
+   * but beatless texture (pads, tremolo) does not pass for a groove.
+   */
+  confidence = 0;
+
+  private periodicity = 0;
+  private support = 0;
+  private readonly scores = new Float32Array(Math.round((60 / MIN_BPM) * RATE) + 2);
 
   private average = Number.NaN;
   private previousRise = 0;
@@ -79,6 +97,7 @@ export class BeatDetector {
 
     this.beat = this.track(isOnset, silent, time);
     this.pulse = this.beat ? 1 : this.pulse * Math.exp(-dt * PULSE_DECAY);
+    this.confidence = this.period === 0 ? 0 : smoothstep(PERIODICITY_LOW, PERIODICITY_HIGH, this.periodicity) * this.support;
   }
 
   reset(): void {
@@ -96,6 +115,16 @@ export class BeatDetector {
     this.pulse = 0;
     this.bpm = 0;
     this.beat = false;
+    this.confidence = 0;
+    this.periodicity = 0;
+    this.support = 0;
+  }
+
+  /** Position inside the current beat, 0..1 (0 = on the beat); 0 while no tempo is known. */
+  phase(time: number): number {
+    if (this.period === 0) return 0;
+    const p = 1 - (this.nextBeat - time) / this.period;
+    return p < 0 ? 0 : p > 1 ? p - Math.floor(p) : p;
   }
 
   /** Returns whether a beat falls on this frame. */
@@ -110,6 +139,7 @@ export class BeatDetector {
       if (Math.abs(nearest) < period * PHASE_WINDOW) {
         this.nextBeat = time - nearest * (1 - PHASE_CORRECTION) + period;
         this.missed = 0;
+        this.support += (1 - this.support) * SUPPORT_GAIN;
         // Fire unless the predicted beat already fired a moment ago (onset slightly late).
         return error >= 0 || nearest <= 0;
       }
@@ -118,9 +148,11 @@ export class BeatDetector {
     if (time >= this.nextBeat) {
       // No onset at the predicted time: keep the rhythm going for a while.
       this.nextBeat += period;
+      this.support *= 1 - SUPPORT_LOSS;
       if (silent || ++this.missed > MAX_MISSED) {
         this.period = 0;
         this.bpm = 0;
+        this.support = 0;
         return false;
       }
       return true;
@@ -168,36 +200,60 @@ export class BeatDetector {
     mean /= n;
     let energy = 0;
     for (let i = 0; i < n; i++) energy += (history[(start + i) % HISTORY] - mean) ** 2;
-    if (energy <= 0) return;
+    // Onset strength that barely varies (steady tones, numerical noise) has no rhythm to find.
+    if (energy / n < MIN_ONSET_VARIANCE) {
+      this.periodicity = 0;
+      return;
+    }
 
     const minLag = Math.round((60 / MAX_BPM) * RATE);
     const maxLag = Math.round((60 / MIN_BPM) * RATE);
     let bestLag = 0;
     let bestScore = 0;
-    for (let lag = minLag; lag <= maxLag; lag++) {
+    const { scores } = this;
+    for (let lag = minLag - 1; lag <= maxLag + 1; lag++) {
       let r = 0;
       for (let i = lag; i < n; i++) {
         r += (history[(start + i) % HISTORY] - mean) * (history[(start + i - lag) % HISTORY] - mean);
       }
+      scores[lag] = r / energy;
+      if (lag < minLag || lag > maxLag) continue;
       const bpm = (60 * RATE) / lag;
       // Log-normal prior around the preferred tempo.
       const prior = Math.exp(-0.5 * (Math.log2(bpm / PREFERRED_BPM) / 0.9) ** 2);
-      const score = (r / energy) * prior;
+      const score = scores[lag] * prior;
       if (score > bestScore) {
         bestScore = score;
         bestLag = lag;
       }
     }
     // Weak periodicity: no reliable tempo.
-    if (bestScore < 0.08) return;
-    const period = bestLag / RATE;
+    if (bestScore < 0.08) {
+      this.periodicity *= 0.5;
+      return;
+    }
+    this.periodicity = scores[bestLag];
+    // Parabolic interpolation around the peak: sub-bin lag, so the tempo is not quantized to 10 ms.
+    const a = scores[bestLag - 1];
+    const b = scores[bestLag];
+    const c = scores[bestLag + 1];
+    const curvature = a - 2 * b + c;
+    const offset = curvature < 0 ? Math.max(-0.5, Math.min(0.5, (0.5 * (a - c)) / curvature)) : 0;
+    const period = (bestLag + offset) / RATE;
     if (this.period === 0) {
       this.period = period;
       this.nextBeat = time - this.phaseAgo(bestLag, start, n) / RATE + period;
       this.missed = 0;
+      // Support is earned: only onsets that land on predicted beats raise it.
+      this.support = 0;
     } else {
       this.period += (period - this.period) * 0.3;
     }
     this.bpm = 60 / this.period;
   }
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
+  return t * t * (3 - 2 * t);
 }

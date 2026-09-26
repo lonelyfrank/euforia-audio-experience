@@ -9,11 +9,14 @@ export const TEST_SIGNALS = [
   { id: 'beat124', label: 'Beat 124 BPM' },
   { id: 'beat90', label: 'Beat 90 BPM' },
   { id: 'beat174', label: 'Beat 174 BPM' },
+  { id: 'tempoRamp', label: 'Tempo ramp 100 ↔ 140' },
+  { id: 'buildDrop', label: 'Ambient → build → drop' },
   { id: 'low', label: 'Low tone 60 Hz' },
   { id: 'mid', label: 'Mid tone 1 kHz' },
   { id: 'high', label: 'High tone 8 kHz' },
   { id: 'bassPulse', label: 'Bass pulse 120 BPM' },
   { id: 'hats', label: 'Hi-hat transients' },
+  { id: 'snares', label: 'Snare 2 & 4' },
   { id: 'noise', label: 'Pink noise' },
   { id: 'sweep', label: 'Sweep 30 Hz → 16 kHz' },
   { id: 'pad', label: 'Sustained chord' },
@@ -29,6 +32,12 @@ const TWO_PI = Math.PI * 2;
 const SWEEP_SECONDS = 20;
 const SWEEP_FROM = 30;
 const SWEEP_TO = 16000;
+/** Tempo ramp: 100 → 140 BPM and back over this many seconds. */
+const RAMP_SECONDS = 60;
+/** Build/drop cycle (s) at 128 BPM: ambient until AMBIENT_END, build until BUILD_END, then the drop. */
+const CYCLE_SECONDS = 32;
+const AMBIENT_END = 10;
+const BUILD_END = 18;
 
 /** Generates one test signal sample by sample. Allocation-free. */
 export class SignalGenerator {
@@ -40,6 +49,10 @@ export class SignalGenerator {
   private p0 = 0;
   private p1 = 0;
   private p2 = 0;
+  /** Musical clock (beats) for signals whose tempo changes. */
+  private beats = 0;
+  /** One-pole low-pass state for the snare noise. */
+  private snareLow = 0;
 
   constructor(
     readonly signal: TestSignal,
@@ -60,6 +73,20 @@ export class SignalGenerator {
         return this.beat(t, 90);
       case 'beat174':
         return this.beat(t, 174);
+      case 'tempoRamp': {
+        const x = (t % RAMP_SECONDS) / RAMP_SECONDS;
+        const bpm = 100 + 40 * (1 - Math.abs(2 * x - 1));
+        this.beats += bpm / 60 / this.sampleRate;
+        return this.groove(this.beats, bpm, t, 1, 0);
+      }
+      case 'buildDrop':
+        return this.buildDrop(t);
+      case 'snares': {
+        const beatLength = 60 / 100;
+        // Beats 2 and 4 of each bar.
+        const beatInBar = Math.floor(t / beatLength) % 4;
+        return beatInBar % 2 === 1 ? this.snare(t % beatLength) * 0.5 : 0;
+      }
       case 'low':
         return Math.sin(TWO_PI * 60 * t) * 0.5;
       case 'mid':
@@ -91,9 +118,18 @@ export class SignalGenerator {
 
   /** Four-on-the-floor kick, bass line, pad and off-beat hi-hats. */
   private beat(t: number, bpm: number): number {
+    return this.groove((t * bpm) / 60, bpm, t, 1, 0);
+  }
+
+  /**
+   * Groove at a musical position `beats` (so the tempo may change): kick on
+   * every beat, bass line, pad, off-beat hats and, with `snare` > 0, a snare
+   * on 2 and 4. `drums` scales kick and hats.
+   */
+  private groove(beats: number, bpm: number, t: number, drums: number, snare: number): number {
     const beatLength = 60 / bpm;
-    const beatPos = t % beatLength;
-    const bar = Math.floor(t / (beatLength * 4));
+    const beatPos = (beats - Math.floor(beats)) * beatLength;
+    const bar = Math.floor(beats / 4);
 
     // Kick: pitch sweep 150 -> 45 Hz with a fast exponential decay.
     const kickEnv = Math.exp(-beatPos * 18);
@@ -102,10 +138,39 @@ export class SignalGenerator {
 
     // Bass: root note changes every bar.
     const root = ROOTS[bar % 4];
-    const bassEnv = 0.6 + 0.4 * Math.exp(-((t % (beatLength / 2)) * 8));
+    const bassEnv = 0.6 + 0.4 * Math.exp(-((beatPos % (beatLength / 2)) * 8));
     const bass = Math.sin(TWO_PI * root * t) * bassEnv;
 
-    return kick * 0.55 + bass * 0.22 + this.pad(t, root) * 0.05 + this.hat(t, bpm, 1) * 0.18;
+    // Hats on the off-beats.
+    const hatPos = (beatPos + beatLength / 2) % beatLength;
+    const snareHit = Math.floor(beats) % 2 === 1 ? this.snare(beatPos) : 0;
+
+    return (kick * 0.55 + this.hatAt(hatPos) * 0.18) * drums + bass * 0.22 + this.pad(t, root) * 0.05 + snareHit * 0.3 * snare;
+  }
+
+  /** Ambient pad, then a build (hats and snare roll speeding up, noise riser), then the full groove. */
+  private buildDrop(t: number): number {
+    const bpm = 128;
+    const beatLength = 60 / bpm;
+    const c = t % CYCLE_SECONDS;
+    if (c < AMBIENT_END) return this.pad(t, 55) * 0.1;
+    if (c < BUILD_END) {
+      const x = (c - AMBIENT_END) / (BUILD_END - AMBIENT_END);
+      // Snare roll: quarters, then eighths, sixteenths, thirty-seconds.
+      const step = beatLength / 2 ** Math.min(Math.floor(x * 4), 3);
+      const roll = this.snare(c % step) * (0.1 + 0.3 * x);
+      const hats = this.hatAt((c + step / 2) % step) * 0.2 * x;
+      const riser = this.white() * 0.12 * x * x;
+      return this.pad(t, 55) * 0.1 + roll + hats + riser;
+    }
+    return this.groove((c * bpm) / 60, bpm, t, 1.1, 1);
+  }
+
+  /** Snare `pos` seconds after its hit: a short 190 Hz body and low-passed noise. */
+  private snare(pos: number): number {
+    const noise = this.white();
+    this.snareLow += (noise - this.snareLow) * 0.35;
+    return Math.sin(TWO_PI * 190 * pos) * Math.exp(-pos * 30) * 0.6 + this.snareLow * Math.exp(-pos * 22);
   }
 
   /** Minor chord on `root` × 4 with a slow tremolo. */
@@ -117,7 +182,11 @@ export class SignalGenerator {
   /** High-passed noise bursts on the off-beats (`perBeat` = 2: every eighth). */
   private hat(t: number, bpm: number, perBeat: number): number {
     const step = 60 / bpm / perBeat;
-    const pos = (t + step / 2) % step;
+    return this.hatAt((t + step / 2) % step);
+  }
+
+  /** Hi-hat `pos` seconds after its hit (differenced noise = high-passed). */
+  private hatAt(pos: number): number {
     const noise = this.white();
     const hat = (noise - this.prevNoise) * Math.exp(-pos * 45);
     this.prevNoise = noise;

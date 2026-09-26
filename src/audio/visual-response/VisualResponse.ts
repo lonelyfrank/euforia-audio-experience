@@ -1,5 +1,6 @@
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import { Envelope } from './Envelope';
+import { MusicContext } from './MusicContext';
 import { hzToPosition, sampleSpectrumRange } from './spectrum';
 
 /*
@@ -25,9 +26,11 @@ const MID_END = hzToPosition(2000);
 /**
  * Derives a VisualResponseFrame from each AudioFrame: groups the bands into
  * musical roles, weights them by how present each region is in the mix and
- * gives every role its own attack/release. Allocation-free per frame.
+ * gives every role its own attack/release; then updates the slow musical
+ * context (tempo clock, sections, per-song variation). Allocation-free per frame.
  */
 export class VisualResponse {
+  private readonly context = new MusicContext();
   readonly frame: VisualResponseFrame = {
     weight: 0,
     flow: 0,
@@ -38,6 +41,7 @@ export class VisualResponse {
     lowShare: 1 / 3,
     midShare: 1 / 3,
     highShare: 1 / 3,
+    music: this.context.frame,
   };
 
   private readonly weight = new Envelope(...WEIGHT);
@@ -89,6 +93,7 @@ export class VisualResponse {
     const hit = Math.max(audio.beatPulse, audio.onset * audio.onset) * Math.min(presence(out.lowShare), 1);
     out.impact = this.impact.update(silent ? 0 : hit, dt);
     out.density = this.density.update(silent ? 0 : audio.energy, dt);
+    this.context.update(audio, out, dt);
     return out;
   }
 
@@ -97,6 +102,7 @@ export class VisualResponse {
     for (const e of [this.lowShare, this.midShare, this.highShare]) e.reset(1 / 3);
     Object.assign(this.frame, { weight: 0, flow: 0, detail: 0, shimmer: 0, impact: 0, density: 0 });
     this.frame.lowShare = this.frame.midShare = this.frame.highShare = 1 / 3;
+    this.context.reset();
   }
 }
 

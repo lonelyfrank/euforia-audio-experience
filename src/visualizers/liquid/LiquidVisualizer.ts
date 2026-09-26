@@ -148,6 +148,11 @@ const fragmentShader = /* glsl */ `
  * mids (curvature, shear, the waveform's local shape), the top ones the highs
  * (fine ripples, highlights, glints). Every ribbon is also shaped by its own
  * band of the spectrum, and impacts send shock rings out from the centre.
+ *
+ * Over seconds the scene follows the song (MusicContext): it moves at the
+ * song's tempo with the lower swells breathing once per bar, ribbons whose
+ * band is absent dim, builds tighten the ripples and drops flash and send a
+ * big ring; each song gets its own wave lengths, stacking and flow.
  */
 export class LiquidVisualizer implements Visualizer {
   readonly scene = new Scene();
@@ -179,8 +184,10 @@ export class LiquidVisualizer implements Visualizer {
   private shockSlot = 0;
   private sinceShock = 0;
   private lastImpact = 0;
-  private time = 0;
-  private flowPhase = 0;
+  private readonly presenceEnvelopes: Envelope[] = [];
+  private readonly swellPhase = new Float32Array(MAX_RIBBONS);
+  private readonly curvePhase = new Float32Array(MAX_RIBBONS);
+  private readonly ripplePhase = new Float32Array(MAX_RIBBONS);
   private clock = 0;
 
   constructor(private readonly preset: VisualizerPreset<LiquidParams>) {}
@@ -197,6 +204,8 @@ export class LiquidVisualizer implements Visualizer {
       this.band[k].y = ZONE_WIDTH;
       // Lower bands settle more slowly (weight), higher ones stay quick.
       this.zoneEnvelopes.push(new Envelope(0.05, 0.12 + 0.35 * t));
+      // Presence of the band over seconds: ribbons fade in quickly and out slowly.
+      this.presenceEnvelopes.push(new Envelope(1.5, 4));
     }
     this.material = new ShaderMaterial({
       vertexShader,
@@ -240,13 +249,31 @@ export class LiquidVisualizer implements Visualizer {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, shimmer, density } = response;
+    const { weight, flow, detail, shimmer, density, music } = response;
+    const { variation: vary, build, drop } = music;
     const amplitude = p.amplitude;
-    // Drift never stops; the mids push the flow (lateral motion, shear).
-    this.time += dt * p.speed * (0.7 + 0.3 * density);
-    this.flowPhase += dt * p.speed * (0.1 + 1.2 * flow);
     this.clock += dt;
     const glints = this.detailQuality > 0.6;
+
+    // Song character (fixed per song, see MusicContext.variation): wave lengths, stacking,
+    // curvature, imprint, accent, ripple grain and whether the layers flow together or shear.
+    const swellScale = 0.75 + 0.55 * vary[0];
+    const stackHeight = 0.4 + 0.2 * vary[2];
+    const curveRatio = 1.8 + 1.2 * vary[3];
+    const imprint = 0.5 + 0.6 * vary[4];
+    const accent = 0.25 + 0.35 * vary[5];
+    const rippleGrain = 20 + 14 * vary[6];
+    const shear = 2 * vary[7] - 1;
+
+    // Pace: the song's tempo (or free pace), a little faster while building.
+    const pace = music.pace * (1 + 0.25 * build);
+    const drift = dt * p.speed * pace * (0.7 + 0.3 * density);
+    const push = dt * p.speed * pace * (0.1 + 1.2 * flow);
+    // Section and texture: shock rings need a kick pattern, glints need hats, the waveform needs tonal content.
+    const shockGate = 0.4 + 0.6 * smoothstep(0.1, 0.4, music.lowPercussion);
+    const glintGate = 0.4 + 0.6 * music.highPercussion;
+    const waveGate = 0.4 + 0.6 * music.tonality;
+    const flash = 0.35 * drop;
 
     for (let k = 0; k < this.ribbons; k++) {
       // t: 0 = top ribbon (highs, in the sky) … 1 = bottom ribbon (lows, on the horizon).
@@ -254,46 +281,53 @@ export class LiquidVisualizer implements Visualizer {
       const lowness = t;
       const highness = 1 - t;
       const midness = 1 - Math.abs(2 * t - 1);
-      const dir = k % 2 === 0 ? 1 : -1;
+      const dir = k % 2 === 0 ? 1 : shear;
       const band = this.band[k];
       const zone = this.zoneEnvelopes[k].update(sampleSpectrumRange(frame.spectrum, band.x, band.x + band.y), dt);
+      // A ribbon whose band has been absent for a while dims and calms; it comes back when its band does.
+      const presence = 0.2 + 0.8 * smoothstep(0.08, 0.45, this.presenceEnvelopes[k].update(zone, dt));
 
-      // LOW: long heavy swells, deeper on the lower ribbons as the bass weighs in.
-      const freq = 2 + 4.5 * highness;
+      // Phases are integrated (rates may change with the song; phases never jump).
+      this.swellPhase[k] += drift * (0.25 + 0.35 * highness) * (1 - lowness) + push * (0.35 + 0.65 * midness) * dir;
+      this.curvePhase[k] -= push * 1.4 * dir;
+      this.ripplePhase[k] += drift * 2.6 * dir;
+
+      // LOW: long heavy swells; the lower ribbons breathe once per bar, locked to the beat clock.
+      const freq = (2 + 4.5 * highness) * swellScale;
       this.swell[k].set(
-        this.material.uniforms.uHorizonY.value + (1 - k / this.ribbons) * 0.5,
+        this.material.uniforms.uHorizonY.value + (1 - k / this.ribbons) * stackHeight,
         freq,
-        this.time * (0.25 + 0.35 * highness) + k * 1.3 + this.flowPhase * (0.35 + 0.65 * midness) * dir,
-        amplitude * (0.5 + 0.4 * zone + 1.2 * weight * lowness),
+        this.swellPhase[k] + lowness * ((2 * Math.PI * music.beats) / 4) + k * 1.3,
+        amplitude * presence * (0.5 + 0.4 * zone + 1.2 * weight * lowness) * (1 + 0.4 * drop * lowness),
       );
-      // MID: secondary curvature; neighbouring ribbons drift in opposite directions (shear).
-      this.curve[k].set(freq * 2.3, -this.flowPhase * 1.4 * dir + k * 2.1, amplitude * 0.55 * flow * (0.35 + 0.65 * midness), 26 + 6 * k);
+      // MID: secondary curvature; with shear, neighbouring ribbons drift in opposite directions.
+      this.curve[k].set(freq * curveRatio, this.curvePhase[k] + k * 2.1, amplitude * presence * 0.55 * flow * (0.35 + 0.65 * midness), rippleGrain + 6 * k);
       this.detailTerms[k].set(
-        // HIGH: fine ripples, mostly on the upper ribbons.
-        this.time * 2.6 * dir + k,
-        p.ripple * (0.1 + 1.1 * detail) * (0.3 + 0.7 * highness) * this.detailQuality,
-        // Waveform: organic local shape on the middle ribbons.
-        p.waveDepth * amplitude * midness * midness * (0.35 + 0.65 * flow),
-        // TRANSIENT: shock rings, strongest near the horizon.
-        p.shock * amplitude * (0.35 + 0.65 * lowness),
+        // HIGH: fine ripples, mostly on the upper ribbons; tighter while building.
+        this.ripplePhase[k] + k,
+        p.ripple * presence * (0.1 + 1.1 * detail) * (0.3 + 0.7 * highness) * (1 + 0.6 * build) * this.detailQuality,
+        // Waveform: organic local shape on the middle ribbons, for tonal content (voice, pads).
+        p.waveDepth * amplitude * midness * midness * (0.35 + 0.65 * flow) * waveGate,
+        // TRANSIENT: shock rings, strongest near the horizon, when there is a kick pattern.
+        p.shock * amplitude * (0.35 + 0.65 * lowness) * shockGate,
       );
-      // Glints along the upper edges: sparse with sustained highs, denser on high transients.
-      band.z = glints ? (0.5 * detail + shimmer) * highness * 1.6 : 0;
+      band.z = glints ? (0.5 * detail + shimmer) * highness * 1.6 * glintGate * presence : 0;
 
       // The bass deepens the lower bodies; the highs pull the upper edges towards the highlight hue.
       const hue = this.hues[k];
-      this.body[k].copy(hue).multiplyScalar(0.5 * (p.fill * (0.7 + 0.6 * density) + 0.02 * weight * lowness));
-      this.scratch.copy(hue).lerp(this.highlight, 0.45 * detail * highness);
-      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, 0.26 + 0.18 * density + 0.3 * zone);
+      this.body[k].copy(hue).multiplyScalar(0.5 * presence * (p.fill * (0.7 + 0.6 * density) + 0.02 * weight * lowness));
+      this.scratch.copy(hue).lerp(this.highlight, Math.min(accent * 1.3 * detail * highness + 0.3 * build * highness, 1));
+      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, presence * (0.26 + 0.18 * density + 0.3 * zone) + flash);
     }
 
+    this.material.uniforms.uImprint.value = p.imprint * amplitude * imprint;
     this.updateSpectrum(frame.spectrum);
     this.updateWave(frame.waveform, dt);
-    this.updateShocks(response.impact, dt);
+    this.updateShocks(response.impact, drop, dt);
 
     const u = this.material.uniforms;
     u.uClock.value = this.clock;
-    u.uGlintRate.value = 0.02 * detail + 0.12 * shimmer;
+    u.uGlintRate.value = (0.02 * detail + 0.12 * shimmer) * glintGate + 0.06 * build;
   }
 
   resize(width: number, height: number): void {
@@ -338,12 +372,13 @@ export class LiquidVisualizer implements Visualizer {
     this.waveTexture.write(this.wave, true);
   }
 
-  /** A rising impact sends a new ring (oldest slot reused); rings expand and fade. */
-  private updateShocks(impact: number, dt: number): void {
+  /** A rising impact sends a new ring (oldest slot reused), a drop a big one; rings expand and fade. */
+  private updateShocks(impact: number, drop: number, dt: number): void {
     this.sinceShock += dt;
-    if (impact > SHOCK_THRESHOLD && this.lastImpact <= SHOCK_THRESHOLD && this.sinceShock > SHOCK_MIN_INTERVAL) {
+    const hit = impact > SHOCK_THRESHOLD && this.lastImpact <= SHOCK_THRESHOLD && this.sinceShock > SHOCK_MIN_INTERVAL;
+    if (hit || drop === 1) {
       this.shockAge[this.shockSlot] = 0;
-      this.shockStrength[this.shockSlot] = impact;
+      this.shockStrength[this.shockSlot] = drop === 1 ? 1.6 : impact;
       this.shockSlot = (this.shockSlot + 1) % SHOCKS;
       this.sinceShock = 0;
     }
@@ -353,6 +388,11 @@ export class LiquidVisualizer implements Visualizer {
       this.shocks[i].set(this.shockAge[i], this.shockStrength[i] * Math.exp(-this.shockAge[i] * 2.5), 0, 0);
     }
   }
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
+  return t * t * (3 - 2 * t);
 }
 
 function vec4s(count: number): Vector4[] {
