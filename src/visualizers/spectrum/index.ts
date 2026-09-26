@@ -6,7 +6,7 @@ import { SpectrumVisualizer, type SpectrumParams } from './SpectrumVisualizer';
 export default defineVisualizer<SpectrumParams>({
   id: 'spectrum',
   name: 'Spectrum',
-  description: '128 radial bars around a pulsing core.',
+  description: 'Radial spectrogram: a spectrum ring with echoes, voice-shaped core and orbit.',
   order: 2,
   icon: 'spectrum',
   preset: preset satisfies VisualizerPreset<SpectrumParams>,
