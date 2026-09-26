@@ -5,14 +5,19 @@ import type { Pass } from 'three/addons/postprocessing/Pass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import type { PaletteColors, QualityProfile, QualitySetting, SceneInput, Visualizer, VisualizerPreset } from '../types/visualizer';
-import { CompositeShader, SCENE_CENTER } from './compositeShader';
+import type { PaletteColors, QualityProfile, QualitySetting, SceneInput, SceneLayout, Visualizer, VisualizerPreset } from '../types/visualizer';
+import { CompositeShader, HORIZON, OPEN_CENTER, OPEN_HORIZON, SCENE_CENTER } from './compositeShader';
 import { QualityController } from './quality';
 
 /** Longest step fed to visualizers, so a hiccup does not make them jump. */
 const MAX_DELTA = 1 / 20;
 /** Scene switch crossfade, seconds (linear). */
 const CROSSFADE = 0.9;
+/** Water reflection on/off transition, seconds. */
+const REFLECTION_FADE = 1;
+/** How far the scene floats without the reflection (fractions of the window). */
+const FLOAT_X = 0.04;
+const FLOAT_Y = 0.03;
 
 export interface SceneSource {
   create: () => Visualizer;
@@ -33,6 +38,7 @@ class Layer {
   readonly visualizer: Visualizer;
   private readonly composer: EffectComposer;
   private readonly passes: Pass[] = [];
+  private size: LayerSize = { width: 1, height: 1, pixelRatio: 1 };
 
   constructor(
     renderer: WebGLRenderer,
@@ -40,6 +46,7 @@ class Layer {
     quality: QualityProfile,
     size: LayerSize,
     palette: PaletteColors,
+    private layout: SceneLayout,
   ) {
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: quality.bloom ? 4 : 0 });
     this.composer = new EffectComposer(renderer, target);
@@ -56,6 +63,7 @@ class Layer {
       addPass: (pass, stage = 'post-bloom') => (stage === 'pre-bloom' ? preBloom : postBloom).push(pass),
     });
     this.visualizer.setPalette(palette);
+    this.visualizer.setLayout?.(layout);
 
     this.passes.push(new RenderPass(this.visualizer.scene, this.visualizer.camera), ...preBloom);
     const { strength, radius, threshold } = source.preset.bloom;
@@ -70,14 +78,28 @@ class Layer {
     return this.composer.readBuffer.texture;
   }
 
-  resize({ width, height, pixelRatio }: LayerSize): void {
-    this.composer.setPixelRatio(pixelRatio);
-    this.composer.setSize(width, height);
-    this.visualizer.resize(width, height);
-    // Shift the principal point so the scene centre lands at SCENE_CENTER.
+  resize(size: LayerSize): void {
+    this.size = size;
+    this.composer.setPixelRatio(size.pixelRatio);
+    this.composer.setSize(size.width, size.height);
+    this.visualizer.resize(size.width, size.height);
+    this.placeCamera();
+  }
+
+  /** New layout (shared object, updated in place by the engine). */
+  setLayout(layout: SceneLayout): void {
+    this.layout = layout;
+    this.placeCamera();
+    this.visualizer.setLayout?.(layout);
+  }
+
+  /** Shift the principal point so the scene centre lands at the layout's centre. */
+  private placeCamera(): void {
+    const { width, height } = this.size;
+    const { centerX, centerY } = this.layout;
     const camera = this.visualizer.camera;
     if (camera instanceof PerspectiveCamera || camera instanceof OrthographicCamera) {
-      camera.setViewOffset(width, height, (0.5 - SCENE_CENTER.x) * width, (SCENE_CENTER.y - 0.5) * -height, width, height);
+      camera.setViewOffset(width, height, (0.5 - centerX) * width, (centerY - 0.5) * -height, width, height);
     }
   }
 
@@ -114,6 +136,13 @@ export class RenderEngine {
   private lastTime = 0;
   private time = 0;
   private layerSize: LayerSize = { width: 1, height: 1, pixelRatio: 1 };
+  private readonly layout: SceneLayout = { centerX: SCENE_CENTER.x, centerY: SCENE_CENTER.y, horizon: HORIZON, reflection: 1 };
+  /** Water reflection: target (0/1) and the current, animated amount. */
+  private reflectionTarget = 1;
+  private reflection = 1;
+  private reflectionSet = false;
+  /** Phase of the gentle float without the reflection; advances only with the music. */
+  private floatPhase = 0;
 
   constructor(
     private readonly container: HTMLElement,
@@ -147,12 +176,22 @@ export class RenderEngine {
     (u.uSheen.value as Color).copy(this.palette[1]);
   }
 
+  /** Shows or hides the water reflection (animated, except the first time). */
+  setReflection(on: boolean): void {
+    this.reflectionTarget = on ? 1 : 0;
+    if (!this.reflectionSet) {
+      this.reflection = this.reflectionTarget;
+      this.reflectionSet = true;
+      this.updateLayout(0, 0);
+    }
+  }
+
   /** Mounts a scene. With one already showing, the two crossfade. */
   show(source: SceneSource): void {
     // A switch during a crossfade drops the oldest scene.
     this.previous?.dispose();
     this.previous = this.current;
-    this.current = new Layer(this.renderer, source, this.quality.profile, this.layerSize, this.palette);
+    this.current = new Layer(this.renderer, source, this.quality.profile, this.layerSize, this.palette, this.layout);
     this.mix = this.previous ? 0 : 1;
     this.quality.resetWindow();
   }
@@ -185,6 +224,10 @@ export class RenderEngine {
     const { audio: frame, response } = this.frameSource(dt);
     const current = this.current;
     if (!current) return;
+    if (!this.paused) {
+      this.floatPhase += dt * (0.6 * response.flow + 0.2 * response.density) * response.music.pace;
+      this.updateLayout(dt, this.floatPhase);
+    }
 
     if (this.previous) {
       this.mix = Math.min(this.mix + dt / CROSSFADE, 1);
@@ -211,6 +254,37 @@ export class RenderEngine {
 
     if (!this.paused && this.quality.sample(rawDt)) this.applyQuality();
   };
+
+  /**
+   * Layout between the Halo one (above the water) and the open one (whole
+   * window, floating gently with the music); pushed to the scenes and the
+   * composition only when it moves.
+   */
+  private updateLayout(dt: number, phase: number): void {
+    const target = this.reflectionTarget;
+    const previous = this.reflection;
+    const step = dt / REFLECTION_FADE;
+    this.reflection = target > previous ? Math.min(previous + step, target) : Math.max(previous - step, target);
+    const r = this.reflection * this.reflection * (3 - 2 * this.reflection);
+    const open = 1 - r;
+    const dx = (Math.sin(phase * 0.37) * 0.6 + Math.sin(phase * 0.13 + 1.7) * 0.4) * FLOAT_X * open;
+    const dy = (Math.cos(phase * 0.29) * 0.6 + Math.sin(phase * 0.11 + 0.6) * 0.4) * FLOAT_Y * open;
+    const layout = this.layout;
+    const centerX = OPEN_CENTER.x + (SCENE_CENTER.x - OPEN_CENTER.x) * r + dx;
+    const centerY = OPEN_CENTER.y + (SCENE_CENTER.y - OPEN_CENTER.y) * r + dy;
+    const horizon = OPEN_HORIZON + (HORIZON - OPEN_HORIZON) * r + dy;
+    const moved =
+      Math.abs(centerX - layout.centerX) + Math.abs(centerY - layout.centerY) + Math.abs(horizon - layout.horizon) + Math.abs(r - layout.reflection) > 1e-6;
+    this.composite.uniforms.uReflection.value = r;
+    if (!moved && dt > 0) return;
+    layout.centerX = centerX;
+    layout.centerY = centerY;
+    layout.horizon = horizon;
+    layout.reflection = r;
+    (this.composite.uniforms.uCenter.value as Vector2).set(centerX, 1 - centerY);
+    this.current?.setLayout(layout);
+    this.previous?.setLayout(layout);
+  }
 
   /** Quality can change geometry density, so the scene is rebuilt (crossfaded). */
   private applyQuality(): void {

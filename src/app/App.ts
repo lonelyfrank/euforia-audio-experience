@@ -327,6 +327,7 @@ export class App {
       this.render.setPalette(paletteColors(palette, this.paletteScratch));
       this.stage.style.setProperty('--accent-live', hslCss(palette.hues[0]));
     }
+    if (!previous || s.reflection !== previous.reflection) this.render.setReflection(s.reflection);
     if (!previous || s.quality !== previous.quality) this.render.setQuality(s.quality);
     if (!previous || s.scene !== previous.scene) this.render.show({ create: () => def.create(def.preset), preset: def.preset });
   }

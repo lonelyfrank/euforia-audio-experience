@@ -24,6 +24,8 @@ export interface Settings {
   hideCursor: boolean;
   /** Ms the visuals wait for the sound (output latency, e.g. Bluetooth headphones). */
   audioDelay: number;
+  /** Reflective water floor below the horizon; off = the scene uses the whole window. */
+  reflection: boolean;
 }
 
 const STORAGE_KEY = 'halo.settings.v1';
@@ -40,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideDelay: 5000,
   hideCursor: true,
   audioDelay: 0,
+  reflection: true,
 };
 
 function load(): Settings {

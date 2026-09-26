@@ -4,7 +4,7 @@ import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { Envelope } from '../../audio/visual-response/Envelope';
 import { sampleSpectrumRange } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
-import type { PaletteColors, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
+import type { PaletteColors, SceneLayout, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
 import { HORIZON, SCENE_CENTER } from '../../renderer/compositeShader';
 import { disposeObject } from '../shared/dispose';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
@@ -95,6 +95,8 @@ const fragmentShader = /* glsl */ `
   uniform float uVoiceRow[MAX_RIBBONS];
   uniform float uDigital;
   uniform float uGraticule;
+  // 1 without the water: the ground line is not an edge any more, so bodies and grid fade out above it.
+  uniform float uOpen;
   uniform vec3 uGridColor;
   varying vec2 vPos;
 
@@ -127,11 +129,12 @@ const fragmentShader = /* glsl */ `
     vec3 color = vec3(0.0);
 
     // Measuring grid, like an instrument's graticule: faint, only in the sky.
+    float ground = mix(1.0, smoothstep(uHorizonY, uHorizonY + 0.35, vPos.y), uOpen);
     if (uGraticule > 0.0 && vPos.y > uHorizonY) {
       vec2 cell = vec2(vPos.x, vPos.y - uHorizonY) * 5.0;
       vec2 line = abs(fract(cell + 0.5) - 0.5) / fwidth(cell);
       float grid = 1.0 - min(min(line.x, line.y), 1.0);
-      color += uGridColor * grid * uGraticule;
+      color += uGridColor * grid * uGraticule * ground;
     }
 
     for (int k = 0; k < MAX_RIBBONS; k++) {
@@ -156,7 +159,7 @@ const fragmentShader = /* glsl */ `
         + trace * band.w * (1.0 - 0.55 * mirror);
       float d = vPos.y - y;
       // Body between the ribbon and the horizon.
-      if (d < 0.0 && vPos.y > uHorizonY) color += uBody[k];
+      if (d < 0.0 && vPos.y > uHorizonY) color += uBody[k] * ground;
       // Bright edge, anti-aliased; glints only on the edge.
       float edge = 1.0 - smoothstep(0.0, px, abs(d));
       if (edge > 0.0) {
@@ -270,6 +273,7 @@ export class LiquidVisualizer implements Visualizer {
         uVoiceRow: { value: this.voiceRows },
         uDigital: { value: 0 },
         uGraticule: { value: p.graticule },
+        uOpen: { value: 0 },
         uGridColor: { value: new Color() },
       },
     });
@@ -393,6 +397,13 @@ export class LiquidVisualizer implements Visualizer {
     const u = this.material.uniforms;
     u.uClock.value = this.clock;
     u.uGlintRate.value = (0.02 * detail + 0.12 * shimmer) * glintGate + 0.06 * build;
+  }
+
+  /** The ribbons rest on the layout's horizon (the water's edge, or low in the open window). */
+  setLayout(layout: SceneLayout): void {
+    // Camera units: the scene centre is at y = 0, half-height = 1.
+    this.material.uniforms.uHorizonY.value = (layout.centerY - layout.horizon) * 2;
+    this.material.uniforms.uOpen.value = 1 - layout.reflection;
   }
 
   resize(width: number, height: number): void {

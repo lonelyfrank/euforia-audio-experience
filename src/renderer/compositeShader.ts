@@ -2,8 +2,11 @@ import { Color, Vector2 } from 'three';
 
 /** Horizon line, as a fraction of the height from the top (Halo layout). */
 export const HORIZON = 0.47;
-/** Scene centre, as fractions of the window from the top-left (Halo layout). */
+/** Scene centre, as fractions of the window from the top-left (Halo layout, with the water reflection). */
 export const SCENE_CENTER = { x: 0.52, y: 0.38 };
+/** Without the reflection the scene uses the whole window: centred, resting on a low ground line. */
+export const OPEN_CENTER = { x: 0.5, y: 0.5 };
+export const OPEN_HORIZON = 0.66;
 
 /**
  * Final composition of the Halo frame, in linear colour:
@@ -12,6 +15,7 @@ export const SCENE_CENTER = { x: 0.52, y: 0.38 };
  *    darkened toward the bottom edge; ripples and twinkle follow the level,
  *    so silence leaves a still picture;
  * 3. a thin luminous horizon line where the scene touches the water.
+ * `uReflection` fades 2–3 out (0 = the sky and the scene fill the window).
  */
 export const CompositeShader = {
   name: 'HaloCompositeShader',
@@ -19,6 +23,7 @@ export const CompositeShader = {
     tA: { value: null },
     tB: { value: null },
     uMix: { value: 1 },
+    uReflection: { value: 1 },
     uTime: { value: 0 },
     uLevel: { value: 0 },
     uResolution: { value: new Vector2(1, 1) },
@@ -41,6 +46,7 @@ export const CompositeShader = {
     uniform sampler2D tA;
     uniform sampler2D tB;
     uniform float uMix;
+    uniform float uReflection;
     uniform float uTime;
     uniform float uLevel;
     uniform vec2 uResolution;
@@ -94,7 +100,7 @@ export const CompositeShader = {
       vec3 color;
       float unit = min(uResolution.x, uResolution.y * 1.8);
 
-      if (uv.y >= uHorizon) {
+      if (uv.y >= uHorizon || uReflection <= 0.0) {
         color = sky(uv);
       } else {
         // 0 at the horizon, 1 at the bottom edge.
@@ -112,12 +118,14 @@ export const CompositeShader = {
         // Darken toward the bottom edge.
         float shade = k < 0.4 ? mix(0.08, 0.5, k / 0.4) : mix(0.5, 0.92, (k - 0.4) / 0.6);
         color = mix(color, uFloor, shade);
+        // Fading the water out reveals the sky and the scene below the horizon.
+        if (uReflection < 1.0) color = mix(sky(uv), color, uReflection);
       }
 
       // Horizon sheen.
       float line = 1.0 - smoothstep(0.0, 1.5, abs(uv.y - uHorizon) * uResolution.y);
       float across = 1.0 - smoothstep(0.0, 0.35, abs(uv.x - uCenter.x));
-      color += uSheen * line * across * (0.22 + uLevel * 0.18);
+      color += uSheen * line * across * (0.22 + uLevel * 0.18) * uReflection;
 
       gl_FragColor = vec4(color, 1.0);
     }

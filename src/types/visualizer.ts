@@ -45,6 +45,20 @@ export interface VisualizerPreset<TVisual = Record<string, unknown>> {
   visual: TVisual;
 }
 
+/**
+ * Where the scene sits in the window (fractions of width/height from the
+ * top-left). With the water reflection the scene sits above a fixed horizon;
+ * without it the scene uses the whole window and floats gently with the music.
+ */
+export interface SceneLayout {
+  centerX: number;
+  centerY: number;
+  /** Line ground-anchored scenes rest on (the water's edge when the reflection is on). */
+  horizon: number;
+  /** 0..1: how much of the water reflection is showing (animated when toggled). */
+  reflection: number;
+}
+
 /** Per-frame audio input of the render engine: stable objects, updated in place. */
 export interface SceneInput {
   audio: AudioFrame;
@@ -79,6 +93,8 @@ export interface Visualizer {
   setPalette(colors: PaletteColors): void;
   /** `response` is derived from `frame` (musical roles: weight, flow, detail, impact…); both are read-only and reused. */
   update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame): void;
+  /** Optional: called when the layout changes (reflection toggled, floating without it). Must not allocate. */
+  setLayout?(layout: SceneLayout): void;
   resize(width: number, height: number): void;
   dispose(): void;
 }

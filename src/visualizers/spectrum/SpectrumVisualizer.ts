@@ -2,7 +2,7 @@ import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial }
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
-import type { PaletteColors, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
+import type { PaletteColors, SceneLayout, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
 import { disposeObject } from '../shared/dispose';
 import { SignalTexture } from '../shared/SignalTexture';
 import { VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
@@ -36,8 +36,12 @@ const ROWS = MAX_ECHOES + 1;
 const ECHO_BEATS = 0.5;
 const LOW_END = hzToPosition(250);
 const MID_END = hzToPosition(2000);
-/** Angle from the top (radians) where the spectrum reaches its low end, just above the horizon. */
+/**
+ * Angle from the top (radians) where the spectrum reaches its low end: just
+ * above the horizon with the water reflection, the bottom of the circle without it.
+ */
 const SPAN = 0.6 * Math.PI;
+const OPEN_SPAN = Math.PI;
 /** Echoes left in silence fade over this time constant (s): the picture settles to still circles. */
 const SILENT_FADE = 0.5;
 
@@ -56,6 +60,7 @@ const fragmentShader = /* glsl */ `
   uniform int uEchoes;
   uniform float uProgress;
   uniform float uRotation;
+  uniform float uSpan;
   uniform float uCoreRadius;
   uniform float uLeadRadius;
   uniform float uRingRadius;
@@ -110,7 +115,7 @@ const fragmentShader = /* glsl */ `
     float angle = atan(vPos.x, vPos.y);
     // Frequency position, mirrored left/right: highs at the top (the sky), lows down at the
     // horizon on both sides (the lower half of the view is the reflective floor).
-    float pos = 1.0 - clamp(abs(angle) / ${SPAN.toFixed(4)}, 0.0, 1.0);
+    float pos = 1.0 - clamp(abs(angle) / uSpan, 0.0, 1.0);
     float turn = angle / 6.2831853 + uRotation;
     float px = fwidth(r) * uLineWidth;
     vec3 hue = regionColor(pos);
@@ -195,6 +200,7 @@ export class SpectrumVisualizer implements Visualizer {
         uEchoes: { value: quality.density >= 0.9 ? MAX_ECHOES : quality.density >= 0.6 ? 6 : 4 },
         uProgress: { value: 0 },
         uRotation: { value: 0 },
+        uSpan: { value: SPAN },
         uCoreRadius: { value: p.coreRadius },
         uLeadRadius: { value: p.leadRadius },
         uRingRadius: { value: p.ringRadius },
@@ -273,6 +279,10 @@ export class SpectrumVisualizer implements Visualizer {
     u.uFlash.value = 0.6 * music.drop;
     u.uSparks.value = detail * music.highPercussion;
     u.uSparkSeed.value = this.sparkSeed;
+  }
+
+  setLayout(layout: SceneLayout): void {
+    this.material.uniforms.uSpan.value = OPEN_SPAN + (SPAN - OPEN_SPAN) * layout.reflection;
   }
 
   resize(width: number, height: number): void {

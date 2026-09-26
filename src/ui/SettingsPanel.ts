@@ -3,7 +3,7 @@ import { h, svg } from './dom';
 import { icon } from './icons';
 
 type NumberKey = 'sensitivity' | 'smoothing' | 'audioDelay';
-type ToggleKey = 'beatResponse' | 'hideCursor';
+type ToggleKey = 'beatResponse' | 'hideCursor' | 'reflection';
 
 const VERSION = `Halo ${__APP_VERSION__}`;
 
@@ -41,6 +41,7 @@ export class SettingsPanel {
         ]),
       ),
       this.row('Hide cursor when idle', this.toggle('hideCursor', 'Hide cursor when idle')),
+      this.row('Water reflection', this.toggle('reflection', 'Water reflection')),
       this.delayRow(),
       h('div', { class: 'halo-panel__foot' }, h('span', {}, 'Esc to close'), h('span', {}, VERSION)),
     );
