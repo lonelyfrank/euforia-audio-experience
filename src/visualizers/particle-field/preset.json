@@ -1,7 +1,7 @@
 {
   "name": "Particle Field",
   "author": "Halo",
-  "version": 1,
+  "version": 2,
   "audio": {
     "sensitivity": 1,
     "smoothing": 0.9
@@ -20,10 +20,11 @@
     "count": 60000,
     "depth": 120,
     "spread": 26,
-    "baseSpeed": 6,
-    "midSpeed": 16,
-    "beatPush": 14,
+    "beatDistance": 6,
     "size": 0.18,
-    "swirl": 0.35
+    "swirl": 0.35,
+    "shape": 0.35,
+    "ringTrace": 0.3,
+    "digital": 0.5
   }
 }
