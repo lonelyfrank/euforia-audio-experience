@@ -41,9 +41,10 @@ function frame(values: Partial<AudioFrame> = {}, regions: Region[] = []): AudioF
     highFlux: 0,
     flatness: 0,
     loudness: 0,
-    lowDb: -96,
-    midDb: -96,
-    highDb: -96,
+    // Sound well above the noise floor (region levels ≈ dBFS), so presence is open.
+    lowDb: -20,
+    midDb: -20,
+    highDb: -20,
     bassVoice: { pitch: 0, clarity: 0, shape: new Float32Array(SHAPE_SIZE) },
     leadVoice: { pitch: 0, clarity: 0, shape: new Float32Array(SHAPE_SIZE) },
     ...values,

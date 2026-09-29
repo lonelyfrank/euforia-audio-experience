@@ -110,12 +110,34 @@ export interface VoiceFrame {
  * mix sits in each region; the roles above are already weighted by them.
  */
 export interface VisualResponseFrame {
+  /**
+   * Whether sound is really there (0..1), independent of its loudness: the
+   * mix against a learned noise floor, with hysteresis, a fast attack and a
+   * slow release. 0 in silence and over steady hiss or hum; every other role
+   * (and the `*Audible` values) is gated by it, so a scene built on them
+   * materializes with the sound and falls asleep without it.
+   */
+  presence: number;
   weight: number;
   flow: number;
   detail: number;
   shimmer: number;
   impact: number;
   density: number;
+  /**
+   * MESO (≈ 0.1–1 s): how much the music is moving — transients in any
+   * region, averaged over about a second. A sustained pad reads ~0, a busy
+   * groove high, even at the same loudness.
+   */
+  motion: number;
+  /** MACRO (≈ 2–5 s): how full and wide the sound is — how much of the spectrum it covers (a tone ≈ 0.2, a full mix ≈ 1). */
+  openness: number;
+  /** MACRO: build-up or noisy intensity (risers, washes of noise in a loud part). */
+  tension: number;
+  /** Memory of the last impacts (≈ 1 s): jumps with `impact`, then fades like an afterimage. */
+  trace: number;
+  /** Coarse state of the music over seconds; changes are confirmed and never flicker. */
+  state: MusicalState;
   /** Share of the spectrum in 30–250 Hz, 250 Hz–2 kHz, 2–16 kHz (sum ≈ 1, balanced mix ≈ 1/3 each). */
   lowShare: number;
   midShare: number;
@@ -202,6 +224,8 @@ export interface MusicContextFrame {
   styleTonality: number;
   stylePercussion: number;
 }
+
+export type MusicalState = 'silent' | 'calm' | 'rising' | 'active' | 'peak' | 'falling';
 
 export type AudioSourceId = 'system' | 'microphone' | 'file' | 'fake';
 

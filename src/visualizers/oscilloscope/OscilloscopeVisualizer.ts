@@ -94,10 +94,10 @@ export class OscilloscopeVisualizer implements Visualizer {
     const { weight, flow, detail, density, impact, music } = response;
     const [input, bass, lead] = this.channels;
 
-    // CH1: the input, resampled.
+    // CH1: the input, resampled; it flattens to a line as the sound goes (a bare noise floor included).
     const stride = WAVEFORM_SIZE / POINTS;
     for (let i = 0; i < POINTS; i++) input.values[i] = frame.waveform[Math.floor(i * stride)];
-    this.write(input, p.offsetY, p.amplitude * (0.5 + 0.8 * frame.volume));
+    this.write(input, p.offsetY, p.amplitude * (0.5 + 0.8 * frame.volume) * response.presence);
 
     // CH2 and CH3: one real cycle of each voice, repeated; they drift only with the music.
     const digital = p.digital * (0.3 + 0.7 * music.stylePercussion);

@@ -12,8 +12,14 @@ export const TEST_SIGNALS = [
   { id: 'tempoRamp', label: 'Tempo ramp 100 ↔ 140' },
   { id: 'buildDrop', label: 'Ambient → build → drop' },
   { id: 'fadeCut', label: 'Fade-out, then hard cut' },
+  { id: 'phrases', label: 'Phrases over hiss (4 s on / 4 s off)' },
+  { id: 'hiss', label: 'Noise floor only (≈ −60 dB hiss)' },
+  { id: 'tone50', label: 'Tone 50 Hz' },
   { id: 'low', label: 'Low tone 60 Hz' },
+  { id: 'tone120', label: 'Tone 120 Hz' },
+  { id: 'tone400', label: 'Tone 400 Hz' },
   { id: 'mid', label: 'Mid tone 1 kHz' },
+  { id: 'tone4k', label: 'Tone 4 kHz' },
   { id: 'high', label: 'High tone 8 kHz' },
   { id: 'bassPulse', label: 'Bass pulse 120 BPM' },
   { id: 'hats', label: 'Hi-hat transients' },
@@ -43,6 +49,10 @@ const RAMP_SECONDS = 60;
 const CYCLE_SECONDS = 32;
 const AMBIENT_END = 10;
 const BUILD_END = 18;
+/** Hiss level: a noisy input's floor, ≈ −60 dBFS. */
+const HISS_GAIN = 0.002;
+/** Phrases: seconds of music, then as many of hiss alone. */
+export const PHRASE_SECONDS = 4;
 
 /** Generates one test signal sample by sample. Allocation-free. */
 export class SignalGenerator {
@@ -97,10 +107,24 @@ export class SignalGenerator {
         const beatInBar = Math.floor(t / beatLength) % 4;
         return beatInBar % 2 === 1 ? this.snare(t % beatLength) * 0.5 : 0;
       }
+      case 'hiss':
+        return this.pink() * HISS_GAIN;
+      case 'phrases': {
+        const on = Math.floor(t / PHRASE_SECONDS) % 2 === 0;
+        return this.pink() * HISS_GAIN + (on ? this.beat(t, 124) : 0);
+      }
+      case 'tone50':
+        return Math.sin(TWO_PI * 50 * t) * 0.5;
       case 'low':
         return Math.sin(TWO_PI * 60 * t) * 0.5;
+      case 'tone120':
+        return Math.sin(TWO_PI * 120 * t) * 0.45;
+      case 'tone400':
+        return Math.sin(TWO_PI * 400 * t) * 0.35;
       case 'mid':
         return Math.sin(TWO_PI * 1000 * t) * 0.3;
+      case 'tone4k':
+        return Math.sin(TWO_PI * 4000 * t) * 0.25;
       case 'high':
         return Math.sin(TWO_PI * 8000 * t) * 0.2;
       case 'bassPulse': {

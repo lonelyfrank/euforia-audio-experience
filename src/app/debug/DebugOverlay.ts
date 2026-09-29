@@ -1,6 +1,6 @@
 import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
-import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
+import type { AudioFrame, MusicalState, VisualResponseFrame } from '../../types/audio';
 import type { App } from '../App';
 
 /*
@@ -60,14 +60,19 @@ const LEFT: Section[] = [
 
 const RIGHT: Section[] = [
   [
-    'VisualResponse',
+    'VisualResponse · sonic roles',
     [
+      ['Presence', COLORS.level, (_, r) => r.presence],
       ['Weight', COLORS.low, (_, r) => r.weight],
       ['Flow', COLORS.mid, (_, r) => r.flow],
       ['Detail', COLORS.high, (_, r) => r.detail],
       ['Shimmer', COLORS.high, (_, r) => r.shimmer],
       ['Impact', COLORS.hit, (_, r) => r.impact],
+      ['Trace', COLORS.hit, (_, r) => r.trace],
       ['Density', COLORS.level, (_, r) => r.density],
+      ['Motion', COLORS.mid, (_, r) => r.motion],
+      ['Openness', COLORS.level, (_, r) => r.openness],
+      ['Tension', COLORS.hit, (_, r) => r.tension],
       ['Audible L', COLORS.low, (_, r) => r.lowAudible],
       ['Audible M', COLORS.mid, (_, r) => r.midAudible],
       ['Audible H', COLORS.high, (_, r) => r.highAudible],
@@ -95,8 +100,20 @@ const RIGHT: Section[] = [
 const rowsOf = (sections: Section[]) => sections.reduce((n, [, rows]) => n + rows.length + 1, 0);
 const COLUMNS_HEIGHT = 8 + Math.max(rowsOf(LEFT), rowsOf(RIGHT)) * ROW;
 const SPECTRUM_HEIGHT = 60;
-const SPECTRUM_TOP = COLUMNS_HEIGHT + 3 * ROW + 16;
-const HEIGHT = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22;
+const SPECTRUM_TOP = COLUMNS_HEIGHT + 4 * ROW + 16;
+/** History strip: the last HISTORY overlay frames (~8 s at 60 fps) of energy, presence and section intensity. */
+const HISTORY = 480;
+const HISTORY_HEIGHT = 40;
+const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
+const HEIGHT = HISTORY_TOP + HISTORY_HEIGHT + 6;
+const STATE_COLORS: Record<MusicalState, string> = {
+  silent: COLORS.dim,
+  calm: COLORS.high,
+  rising: COLORS.tempo,
+  active: COLORS.mid,
+  peak: COLORS.hit,
+  falling: COLORS.low,
+};
 const LOW_END = hzToPosition(250);
 const MID_END = hzToPosition(2000);
 
@@ -123,6 +140,11 @@ class DebugOverlay {
   private rafId = 0;
   private lastTime = performance.now();
   private frameMs = 16;
+  /** Ring buffers of the history strip. */
+  private readonly energy = new Float32Array(HISTORY);
+  private readonly presence = new Float32Array(HISTORY);
+  private readonly intensity = new Float32Array(HISTORY);
+  private head = 0;
 
   constructor(private readonly app: App) {
     this.root = document.createElement('div');
@@ -180,6 +202,11 @@ class DebugOverlay {
       y,
     );
     y += ROW;
+    ctx.fillStyle = STATE_COLORS[response.state];
+    ctx.fillText(`State: ${response.state.toUpperCase()}`, 0, y);
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(`noise floor ${this.app.audio.response.noiseFloor.toFixed(1)} dB`, COLUMN + GAP, y);
+    y += ROW;
 
     // Spectral balance (left) and per-song variation (right).
     ctx.fillStyle = COLORS.dim;
@@ -223,7 +250,41 @@ class DebugOverlay {
       ctx.fillRect(p * WIDTH, top, 1, SPECTRUM_HEIGHT);
       ctx.fillText(label, p * WIDTH + 3, top + SPECTRUM_HEIGHT + 10);
     }
+
+    // History (~8 s): energy, presence and section intensity, newest on the right; the state as a band.
+    this.energy[this.head] = audio.energy;
+    this.presence[this.head] = response.presence;
+    this.intensity[this.head] = music.intensity;
+    this.head = (this.head + 1) % HISTORY;
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText('History ~8 s:', 0, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillStyle = COLORS.level;
+    ctx.fillText('energy', 90, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillStyle = COLORS.mid;
+    ctx.fillText('presence', 140, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillStyle = COLORS.tempo;
+    ctx.fillText('intensity', 206, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillStyle = '#1a1e36';
+    ctx.fillRect(0, HISTORY_TOP, WIDTH, HISTORY_HEIGHT);
+    this.trace(this.energy, COLORS.level);
+    this.trace(this.presence, COLORS.mid);
+    this.trace(this.intensity, COLORS.tempo);
   };
+
+  private trace(values: Float32Array, color: string): void {
+    const { ctx } = this;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < HISTORY; i++) {
+      const v = values[(this.head + i) % HISTORY];
+      const x = (i / (HISTORY - 1)) * WIDTH;
+      const y = HISTORY_TOP + HISTORY_HEIGHT - 1 - Math.max(0, Math.min(v, 1)) * (HISTORY_HEIGHT - 2);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
 
   private column(sections: Section[], x: number, audio: AudioFrame, response: VisualResponseFrame): void {
     const { ctx } = this;

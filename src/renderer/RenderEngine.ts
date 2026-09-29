@@ -249,7 +249,10 @@ export class RenderEngine {
     u.tB.value = current.texture;
     u.uMix.value = this.mix;
     u.uTime.value = this.time;
-    u.uLevel.value = frame.volume;
+    u.uWeight.value = response.weight;
+    u.uDetail.value = response.detail;
+    u.uDensity.value = response.density;
+    u.uImpact.value = response.impact;
     u.uAudible.value = response.audible;
     this.composer.render(dt);
 

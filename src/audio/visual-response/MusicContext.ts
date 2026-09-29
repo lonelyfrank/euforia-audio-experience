@@ -136,21 +136,22 @@ export class MusicContext {
   private readonly features = new Float32Array(FEATURES);
   private readonly targets = new Float32Array(VARIATIONS).fill(0.5);
 
-  update(audio: AudioFrame, roles: VisualResponseFrame, dt: number): MusicContextFrame {
+  /** `silent`: no sound present (digital silence or only the noise floor). */
+  update(audio: AudioFrame, roles: VisualResponseFrame, dt: number, silent = audio.silent): MusicContextFrame {
     const out = this.frame;
-    this.trackSong(audio.silent, dt);
-    if (!audio.silent) {
+    this.trackSong(silent, dt);
+    if (!silent) {
       const bright = centroid(audio.spectrum);
       this.updateSections(audio.loudness, bright, sampleSpectrumRange(audio.spectrum, 0, SUB_END), roles.impact, dt);
       this.updatePercussion(audio, roles, dt);
       out.brightness = this.brightness.update(bright, dt);
       out.tonality = this.tonality.update(1 - audio.flatness, dt);
     }
-    this.updateTempo(audio, dt);
-    if (!audio.silent) this.learn(roles, dt);
+    this.updateTempo(audio, silent, dt);
+    if (!silent) this.learn(roles, dt);
     out.bassVoice = this.updateVoice(audio.bassVoice, presenceOf(roles.lowShare), out.bassLine, out.bassStyle, dt, true);
     out.leadVoice = this.updateVoice(audio.leadVoice, presenceOf(roles.midShare), out.leadLine, out.leadStyle, dt, false);
-    if (!audio.silent) {
+    if (!silent) {
       const style = 1 - Math.exp(-dt / STYLE_TAU);
       out.styleTonality += (out.tonality - out.styleTonality) * style;
       const percussion = Math.max(out.lowPercussion, out.midPercussion, out.highPercussion);
@@ -218,10 +219,10 @@ export class MusicContext {
    * advances at that tempo and, when locked, is pulled towards the detected
    * beat phase (gently, so it never runs backwards).
    */
-  private updateTempo(audio: AudioFrame, dt: number): void {
+  private updateTempo(audio: AudioFrame, silent: boolean, dt: number): void {
     const out = this.frame;
     if (audio.bpm > 0) this.detectedTempo = audio.bpm;
-    out.tempoLock = this.lock.update(audio.silent ? 0 : smoothstep(LOCK_FROM, LOCK_TO, audio.tempoConfidence), dt);
+    out.tempoLock = this.lock.update(silent ? 0 : smoothstep(LOCK_FROM, LOCK_TO, audio.tempoConfidence), dt);
     const activity = Math.min(1, 0.6 * out.intensity + 0.4 * Math.max(out.lowPercussion, out.midPercussion, out.highPercussion));
     const free = FREE_TEMPO_MIN + (FREE_TEMPO_MAX - FREE_TEMPO_MIN) * activity;
     const target = free + (this.detectedTempo - free) * out.tempoLock;
