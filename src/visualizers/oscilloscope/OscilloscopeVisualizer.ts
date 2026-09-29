@@ -60,7 +60,6 @@ export class OscilloscopeVisualizer implements Visualizer {
   private halfWidth = 1;
   private bassPhase = 0;
   private leadPhase = 0;
-  private persistence = 0;
 
   constructor(private readonly preset: VisualizerPreset<OscilloscopeParams>) {}
 
@@ -91,7 +90,7 @@ export class OscilloscopeVisualizer implements Visualizer {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, impact, music } = response;
+    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const [input, bass, lead] = this.channels;
 
     // CH1: the input, resampled; it flattens to a line as the sound goes (a bare noise floor included).
@@ -100,17 +99,22 @@ export class OscilloscopeVisualizer implements Visualizer {
     this.write(input, p.offsetY, p.amplitude * (0.5 + 0.8 * frame.volume) * response.presence);
 
     // CH2 and CH3: one real cycle of each voice, repeated; they drift only with the music.
-    const digital = p.digital * (0.3 + 0.7 * music.stylePercussion);
-    this.bassPhase += dt * weight * music.pace * 0.2;
-    this.leadPhase += dt * flow * music.pace * 0.3;
+    // Tension (build-ups) makes the voices more stepped, more "digital".
+    const digital = Math.min(1, p.digital * (0.3 + 0.7 * music.stylePercussion) * (1 + 0.5 * tension));
+    // MESO: busy music scrolls the voices; a held note stands still on the screen.
+    const scroll = 0.6 + 0.7 * motion;
+    this.bassPhase += dt * weight * music.pace * 0.2 * scroll;
+    this.leadPhase += dt * flow * music.pace * 0.3 * scroll;
     const bassCycles = 2 + 1.5 * Math.max(Math.log2(music.bassPitch / 40), 0);
     const leadCycles = 4 + 2 * Math.max(Math.log2(music.leadPitch / 180), 0);
     fillVoice(bass.values, music.bassLine, bassCycles, this.bassPhase, digital);
     fillVoice(lead.values, music.leadLine, leadCycles, this.leadPhase, digital);
     // Each channel flattens and fades with its region (slowly on a fade, at once on a cut).
     const { lowAudible, midAudible, audible } = response;
-    this.write(bass, p.offsetY - p.voiceSpacing, p.voiceAmplitude * weight * lowAudible);
-    this.write(lead, p.offsetY + p.voiceSpacing, p.voiceAmplitude * flow * (0.4 + 0.6 * music.leadVoice) * midAudible);
+    // MACRO: a full sound spreads the channels apart; a lone voice keeps them close.
+    const spacing = p.voiceSpacing * (0.85 + 0.3 * openness);
+    this.write(bass, p.offsetY - spacing, p.voiceAmplitude * weight * lowAudible);
+    this.write(lead, p.offsetY + spacing, p.voiceAmplitude * flow * (0.4 + 0.6 * music.leadVoice) * midAudible);
 
     // Bass → trace width, highs → brightness, drop → flash.
     const flash = 0.3 * music.drop;
@@ -120,9 +124,8 @@ export class OscilloscopeVisualizer implements Visualizer {
     lead.material.opacity = Math.min(1, 0.45 + 0.4 * flow + flash) * midAudible;
     this.gridMaterial.opacity = p.graticule * (0.8 + 0.4 * density);
 
-    // Hits lengthen the phosphor's persistence for a moment.
-    this.persistence += (impact - this.persistence) * (1 - Math.exp(-dt / (impact > this.persistence ? 0.02 : 0.4)));
-    this.afterimage.uniforms.damp.value = Math.min(0.95, p.persistence + 0.12 * this.persistence);
+    // Hits lengthen the phosphor's persistence for a moment (the impacts' afterimage).
+    this.afterimage.uniforms.damp.value = Math.min(0.95, p.persistence + 0.12 * trace);
   }
 
   resize(width: number, height: number): void {

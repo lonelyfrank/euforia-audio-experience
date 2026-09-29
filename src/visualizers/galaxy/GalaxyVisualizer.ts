@@ -189,10 +189,12 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, music } = response;
+    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
-    this.spin += dt * p.spin * flow * music.pace * 1.5;
-    this.armPhase -= dt * flow * music.pace * 0.3;
+    // MESO: busy music turns the galaxy; a held chord leaves it almost still.
+    const turning = 0.6 + 0.7 * motion;
+    this.spin += dt * p.spin * flow * music.pace * 1.5 * turning;
+    this.armPhase -= dt * flow * music.pace * 0.3 * turning;
     this.drift += dt * flow * music.pace;
     if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) this.twinkleSeed = (this.twinkleSeed + 17.13) % 1000;
     this.lastHighFlux = frame.highFlux;
@@ -206,8 +208,12 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
     u.uSpin.value = this.spin;
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
-    u.uWeight.value = weight * (1 + 0.5 * music.drop);
-    u.uArmWave.value = p.armWave * flow * (0.4 + 0.6 * music.leadVoice);
+    // The core's mass also keeps a short afterglow of the last kicks.
+    u.uWeight.value = weight * (1 + 0.5 * music.drop) + 0.25 * trace;
+    // MACRO: a full sound spreads the galaxy out; a lone voice draws it in.
+    u.uRadius.value = p.radius * (0.9 + 0.2 * openness);
+    // Tension (build-ups) winds the arms tighter.
+    u.uArmWave.value = p.armWave * flow * (0.4 + 0.6 * music.leadVoice) * (1 + 0.5 * tension);
     u.uArmCycles.value = (1.5 + 2 * vary[3]) * (1 + 0.4 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uArmPhase.value = this.armPhase;
     u.uCoreShape.value = p.coreShape * weight;

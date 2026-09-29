@@ -304,7 +304,7 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, music } = response;
+    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
 
     // One ring per beat of the song while music plays; still in silence.
@@ -312,7 +312,8 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     const stepBeats = this.lastBeats < 0 ? 0 : Math.max(beats - this.lastBeats, 0);
     this.lastBeats = beats;
     const activity = smoothstep(0.02, 0.3, density);
-    const advance = (stepBeats / p.ringDensity) * activity * (1 + 0.3 * music.build);
+    // MESO: busy music travels faster down the tunnel than a held chord; tension (build-ups) pushes on.
+    const advance = (stepBeats / p.ringDensity) * activity * (0.7 + 0.6 * motion) * (1 + 0.3 * tension);
     this.travel += advance;
     this.sparkTravel += advance * 1.6 + dt * detail * music.highPercussion * 20;
     // The wall's shape and the ring lines drift with the mids, never on their own.
@@ -329,6 +330,8 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
 
     const u = this.tunnelMaterial.uniforms;
     u.uTravel.value = this.travel;
+    // MACRO: a full, wide sound widens the tunnel; a lone voice narrows it.
+    u.uRadius.value = p.radius * (0.92 + 0.16 * openness);
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
     // Bass: the section's depth (weight) and lobes (pitch: higher notes, more lobes; per song a base count).
@@ -341,12 +344,13 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     u.uLeadWobble.value = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice) * response.midAudible;
     u.uLeadCycles.value = (2 + 3 * vary[3]) * (1 + 0.3 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
-    u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow;
+    u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow * (1 + tension);
     u.uBend.value = p.bend * (0.3 + 0.7 * flow);
     // Highs: fine grid; brightness from energy, hits and drops.
     u.uDetail.value = detail * response.highAudible;
     u.uDensity.value = density;
-    u.uFlash.value = 0.5 * music.drop;
+    // The last hits leave a faint afterglow on the walls.
+    u.uFlash.value = 0.5 * music.drop + 0.1 * trace;
     const s = this.sparkMaterial.uniforms;
     s.uSparkTravel.value = this.sparkTravel;
     s.uSparks.value = detail * (0.3 + 0.7 * music.highPercussion) * response.highAudible;

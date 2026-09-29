@@ -298,8 +298,10 @@ export class LiquidVisualizer implements Visualizer {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, shimmer, density, music } = response;
-    const { variation: vary, build, drop } = music;
+    const { weight, flow, detail, shimmer, density, music, motion, openness, trace } = response;
+    const { variation: vary, drop } = music;
+    // Tension covers build-ups (and noisy, pushing loud parts): the surface tightens and speeds up.
+    const build = response.tension;
     const amplitude = p.amplitude;
     this.clock += dt;
     const glints = this.detailQuality > 0.6;
@@ -307,7 +309,8 @@ export class LiquidVisualizer implements Visualizer {
     // Song character (fixed per song, see MusicContext.variation): wave lengths, stacking,
     // curvature, imprint, accent, ripple grain and whether the layers flow together or shear.
     const swellScale = 0.75 + 0.55 * vary[0];
-    const stackHeight = 0.4 + 0.2 * vary[2];
+    // MACRO: a full, wide sound opens the stack of layers; a lone voice keeps it low and close.
+    const stackHeight = (0.4 + 0.2 * vary[2]) * (0.8 + 0.35 * openness);
     const curveRatio = 1.8 + 1.2 * vary[3];
     const imprint = 0.5 + 0.6 * vary[4];
     const accent = 0.25 + 0.35 * vary[5];
@@ -318,7 +321,8 @@ export class LiquidVisualizer implements Visualizer {
     // (silence leaves flat, still traces). Pace: the song's tempo, a little faster while building.
     const pace = music.pace * (1 + 0.25 * build);
     const drift = dt * p.speed * pace * 1.2 * density;
-    const push = dt * p.speed * pace * 1.2 * flow;
+    // MESO: busy music (many transients) makes the currents travel; a held chord barely moves them.
+    const push = dt * p.speed * pace * 1.2 * flow * (0.6 + 0.7 * motion);
     // Section and texture: shock rings need a kick pattern, glints need hats, the waveform needs tonal content.
     const shockGate = 0.4 + 0.6 * smoothstep(0.1, 0.4, music.lowPercussion);
     const glintGate = 0.4 + 0.6 * music.highPercussion;
@@ -381,7 +385,7 @@ export class LiquidVisualizer implements Visualizer {
 
       // The bass deepens the lower bodies; the highs pull the upper edges towards the highlight hue.
       const hue = this.hues[k];
-      this.body[k].copy(hue).multiplyScalar(0.5 * presence * heard * (p.fill * (0.7 + 0.6 * density) + 0.02 * weight * lowness));
+      this.body[k].copy(hue).multiplyScalar(0.5 * presence * heard * (p.fill * (0.7 + 0.6 * density + 0.8 * trace * lowness) + 0.02 * weight * lowness));
       this.scratch.copy(hue).lerp(this.highlight, Math.min(accent * 1.3 * detail * highness + 0.3 * build * highness, 1));
       // A faint trace stays visible in silence, like an idle oscilloscope.
       this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, heard * (0.06 + presence * (0.2 + 0.18 * density + 0.3 * zone) + flash));

@@ -218,19 +218,21 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
     const u = this.material.uniforms;
-    const { weight, flow, detail, density, music } = response;
+    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
 
     // The flight advances with the beats while music plays; still in silence.
     const stepBeats = this.lastBeats < 0 ? 0 : Math.max(music.beats - this.lastBeats, 0);
     this.lastBeats = music.beats;
-    const advance = stepBeats * p.beatDistance * smoothstep(0.02, 0.3, density) * (1 + 0.3 * music.build);
+    const advance = stepBeats * p.beatDistance * smoothstep(0.02, 0.3, density) * (1 + 0.3 * tension);
     this.travel += advance;
     this.sparkTravel += advance * 2 + dt * detail * music.highPercussion * 12;
-    this.swirlPhase += dt * flow * music.pace * 0.02 * p.swirl * (vary[7] < 0.5 ? -1 : 1);
+    // MESO: busy music stirs the matter; a held chord lets it hang.
+    this.swirlPhase += dt * flow * music.pace * 0.02 * p.swirl * (0.6 + 0.8 * motion) * (vary[7] < 0.5 ? -1 : 1);
     this.drift += dt * flow * music.pace;
-    // Emission eases towards the current energy so the field swells and recedes (a faint rest in silence).
-    this.density += (0.25 + density * 0.55 - this.density) * Math.min(dt * 2, 1);
+    // Emission eases towards the energy and, over seconds, how full the sound is (MACRO): a lone
+    // voice is a sparse field, a full mix a dense one; a faint rest in silence.
+    this.density += (0.25 + density * 0.35 + openness * 0.3 - this.density) * Math.min(dt * 2, 1);
 
     this.traces.record(0, traceValue(frame, response, 1, sampleSpectrumRange(frame.spectrum, 0, LOW_END)));
     this.traces.update(music.tempo, dt);
@@ -242,7 +244,8 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
     u.uSwirlPhase.value = this.swirlPhase;
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
-    u.uWeight.value = weight;
+    // Mass, plus a short afterglow of the last kicks.
+    u.uWeight.value = weight + 0.25 * trace;
     u.uShape.value = p.shape * (0.3 * weight + 0.7 * flow);
     u.uLobes.value = (2 + 4 * vary[0]) * (1 + 0.4 * Math.max(Math.log2(music.bassPitch / 40), 0));
     u.uRing.value = p.ringTrace * (1 + music.drop);

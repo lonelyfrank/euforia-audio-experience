@@ -240,7 +240,7 @@ export class SpectrumVisualizer implements Visualizer {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, music } = response;
+    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
     const u = this.material.uniforms;
 
@@ -248,21 +248,23 @@ export class SpectrumVisualizer implements Visualizer {
     const rows = this.rows;
     rows.set(frame.spectrum, 0);
     const activity = smoothstep(0.02, 0.3, density);
-    this.progress += ((dt * music.tempo) / 60 / ECHO_BEATS) * activity;
+    // MACRO: a full sound lays its echoes closer together, a lone voice sparser.
+    this.progress += ((dt * music.tempo) / 60 / ECHO_BEATS) * activity * (0.75 + 0.5 * openness);
     if (this.progress >= 1) {
       this.progress -= Math.floor(this.progress);
       rows.copyWithin(SPECTRUM_BINS, 0, SPECTRUM_BINS * MAX_ECHOES);
       for (let row = 1; row < ROWS; row++) this.history.write(rows, false, row, row * SPECTRUM_BINS, SPECTRUM_BINS);
     }
-    if (frame.silent) {
+    // Without sound (silence, or only the noise floor) the echoes fade away.
+    if (response.presence < 0.5) {
       const fade = Math.exp(-dt / SILENT_FADE);
       for (let i = SPECTRUM_BINS; i < rows.length; i++) rows[i] *= fade;
       for (let row = 1; row < ROWS; row++) this.history.write(rows, false, row, row * SPECTRUM_BINS, SPECTRUM_BINS);
     }
     this.history.write(rows, false, 0, 0, SPECTRUM_BINS);
 
-    // Rotation and the voices' drift follow the mids.
-    this.rotation += dt * flow * music.pace * 0.02 * (vary[7] < 0.5 ? -1 : 1);
+    // Rotation and the voices' drift follow the mids; busy music (MESO motion) turns faster.
+    this.rotation += dt * flow * music.pace * 0.02 * (0.6 + 0.7 * motion) * (vary[7] < 0.5 ? -1 : 1);
     this.corePhase += dt * weight * music.pace * 0.1;
     this.leadPhase -= dt * flow * music.pace * 0.2;
     if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) this.sparkSeed = (this.sparkSeed + 7.31) % 100;
@@ -278,10 +280,10 @@ export class SpectrumVisualizer implements Visualizer {
     u.uLeadShape.value = p.voiceDepth * 0.6 * flow * (0.4 + 0.6 * music.leadVoice);
     u.uLeadLobes.value = (4 + 4 * vary[3]) * (1 + 0.4 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
-    u.uWeight.value = weight * (1 + 0.5 * music.drop);
+    u.uWeight.value = weight * (1 + 0.5 * music.drop) + 0.25 * trace;
     u.uDensity.value = density;
     u.uFlash.value = 0.6 * music.drop;
-    u.uSparks.value = detail * music.highPercussion;
+    u.uSparks.value = detail * music.highPercussion * (1 + 0.5 * tension);
     u.uSparkSeed.value = this.sparkSeed;
     (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
   }
