@@ -183,3 +183,23 @@ fn moves_off_the_off_beat() {
     assert!(late.len() >= 10);
     assert!(mean_abs(&late) < 0.015, "mean distance to the kicks {:.3} s", mean_abs(&late));
 }
+
+#[test]
+fn the_resonator_bank_can_drive_the_tracker() {
+    use spectrum_analysis::AnalyzerOptions;
+    let mut analyzer = Analyzer::with_options(SR, 1, AnalyzerOptions { resonators: true });
+    let f = groove(steady(128.0));
+    let samples: Vec<f32> = (0..(16.0 * SR) as usize).map(|i| f(i as f32 / SR)).collect();
+    let mut last = FeatureFrame::default();
+    let mut beats = Vec::new();
+    analyzer.push(&samples, |event| match event {
+        Event::Frame(frame) => last = *frame,
+        Event::Beat(b) => beats.push(b),
+        Event::Onset(_) => {}
+    });
+    assert!((last.resonator_bpm - 128.0).abs() < 1.5, "{}", last.resonator_bpm);
+    assert!(last.resonator_confidence > 0.5, "{}", last.resonator_confidence);
+    assert!(mean_abs(&errors(&beats, 60.0 / 128.0, 8.0)) < 0.010);
+    // Off by default.
+    assert_eq!(run(4.0, groove(steady(128.0))).frames.last().unwrap().resonator_bpm, 0.0);
+}

@@ -4,7 +4,7 @@
 /** Record tags of the analysis event stream. */
 export const TAG = { frame: 1, onset: 2, beat: 3, clock: 4 } as const;
 
-export const RECORD = { frame: 81, onset: 6, beat: 9, clock: 3 } as const;
+export const RECORD = { frame: 83, onset: 6, beat: 9, clock: 3 } as const;
 
 /** Field name → [offset in the record, length]. */
 export const FRAME_FIELDS = {
@@ -42,20 +42,22 @@ export const FRAME_FIELDS = {
   onsetDensity: [46, 1],
   tempoBpm: [47, 1],
   tempoConfidence: [48, 1],
-  beatBpm: [49, 1],
-  beatPhase: [50, 1],
-  barPhase: [51, 1],
-  beatConfidence: [52, 1],
-  downbeatConfidence: [53, 1],
-  nextBeatTime: [54, 1],
-  chroma: [55, 12],
-  chromaConfidence: [67, 1],
-  key: [68, 1],
-  keyConfidence: [69, 1],
-  width: [70, 1],
-  correlation: [71, 1],
-  bandPan: [72, 8],
-  stereoConfidence: [80, 1],
+  resonatorBpm: [49, 1],
+  resonatorConfidence: [50, 1],
+  beatBpm: [51, 1],
+  beatPhase: [52, 1],
+  barPhase: [53, 1],
+  beatConfidence: [54, 1],
+  downbeatConfidence: [55, 1],
+  nextBeatTime: [56, 1],
+  chroma: [57, 12],
+  chromaConfidence: [69, 1],
+  key: [70, 1],
+  keyConfidence: [71, 1],
+  width: [72, 1],
+  correlation: [73, 1],
+  bandPan: [74, 8],
+  stereoConfidence: [82, 1],
 } as const;
 
 export const ONSET_FIELDS = {

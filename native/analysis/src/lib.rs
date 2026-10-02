@@ -30,10 +30,11 @@ mod harmony;
 mod hpss;
 mod loudness;
 mod presence;
+mod resonators;
 mod rhythm;
 pub mod wire;
 
-pub use analyzer::{Analyzer, FFT_SIZE, HOP};
+pub use analyzer::{Analyzer, AnalyzerOptions, FFT_SIZE, HOP};
 pub use beat::{BeatEvent, BEATS_PER_BAR};
 pub use frame::{FeatureFrame, Field, BANDS, BAND_EDGES};
 pub use loudness::SILENT_LUFS;

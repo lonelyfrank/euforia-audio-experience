@@ -8,6 +8,7 @@ use crate::presence::Presence;
 use crate::beat::BeatTracker;
 use crate::harmony::{Harmony, CHROMA_EVERY, CHROMA_SIZE};
 use crate::hpss::{Hpss, HpssReading};
+use crate::resonators::ResonatorBank;
 use crate::rhythm::Rhythm;
 use crate::Event;
 use crate::SILENCE_DB;
@@ -45,7 +46,17 @@ const STEREO_TAU: f32 = 0.15;
 /// Minimum power (linear, per bin) used in logs.
 const TINY: f32 = 1e-12;
 
+/// Optional parts of the analysis.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AnalyzerOptions {
+    /// Experimental: a resonator bank gives the beat tracker its tempo and confidence
+    /// instead of the autocorrelation estimate. Off until a corpus comparison justifies it.
+    pub resonators: bool,
+}
+
 pub struct Analyzer {
+    options: AnalyzerOptions,
+    resonators: Option<ResonatorBank>,
     sample_rate: f32,
     channels: usize,
     /// Rings of the last RING samples of the left and right (or only) channel.
@@ -95,6 +106,10 @@ pub struct Analyzer {
 impl Analyzer {
     /// `channels`: interleaved channels pushed (1 = mono; with more, the first two are left/right).
     pub fn new(sample_rate: f32, channels: usize) -> Self {
+        Self::with_options(sample_rate, channels, AnalyzerOptions::default())
+    }
+
+    pub fn with_options(sample_rate: f32, channels: usize, options: AnalyzerOptions) -> Self {
         let channels = channels.max(1);
         let bins = FFT_SIZE / 2 + 1;
         let window: Vec<f32> = (0..FFT_SIZE).map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (FFT_SIZE - 1) as f32).cos()).collect();
@@ -103,6 +118,8 @@ impl Analyzer {
         let bin = |hz: f32| ((hz / bin_hz).round() as usize).clamp(1, bins - 1);
         let range = |from: f32, to: f32| (bin(from), bin(to).max(bin(from) + 1));
         Self {
+            options,
+            resonators: options.resonators.then(|| ResonatorBank::new(HOP as f32 / sample_rate)),
             sample_rate,
             channels,
             left: vec![0.0; RING],
@@ -188,13 +205,25 @@ impl Analyzer {
                 let f = &self.frame;
                 let (reading, onset) = self.rhythm.hop([f.flux_low, f.flux_mid, f.flux_high], f.silent || !f.sounding, f.sample, self.sample_rate, HOP);
                 let (time, sample_rate) = (f.time, self.sample_rate);
-                let confidence = reading.tempo_confidence * f.presence;
-                self.beats.tempo(reading.tempo_bpm, confidence, time);
+                let quiet = f.silent || !f.sounding;
+                let presence = f.presence;
+                // The tracker's tempo: the autocorrelation estimate, or the resonator bank when enabled.
+                let (tempo_bpm, tempo_confidence) = match &mut self.resonators {
+                    Some(bank) => {
+                        let r = bank.hop(reading.onset_strength, reading.onset_low, quiet);
+                        self.frame.resonator_bpm = r.bpm;
+                        self.frame.resonator_confidence = r.confidence * presence;
+                        (r.bpm, r.confidence)
+                    }
+                    None => (reading.tempo_bpm, reading.tempo_confidence),
+                };
+                self.beats.tempo(tempo_bpm, tempo_confidence * presence, time);
+                let f = &self.frame;
                 if let Some(onset) = onset {
                     // Accents are judged on the absolute low-end level (a flux rise is relative,
                     // so a loud kick's tail would make the next hit look weaker, not the loud one stronger).
                     let low = (10f32.powf(f.band_db[0] / 10.0) + 10f32.powf(f.band_db[1] / 10.0)).sqrt();
-                    self.beats.onset(&onset, low, reading.tempo_bpm);
+                    self.beats.onset(&onset, low, tempo_bpm);
                     on_event(Event::Onset(onset));
                 }
                 if let Some(beat) = self.beats.hop(time, sample_rate) {
@@ -220,7 +249,7 @@ impl Analyzer {
     /// Forgets the signal (a new source); the learned noise floor is kept.
     pub fn reset(&mut self) {
         let floor = self.presence.floor;
-        *self = Self::new(self.sample_rate, self.channels);
+        *self = Self::with_options(self.sample_rate, self.channels, self.options);
         self.presence.floor = floor;
     }
 

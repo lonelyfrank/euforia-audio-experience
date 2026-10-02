@@ -72,6 +72,9 @@ pub struct FeatureFrame {
     /// Strongest periodicity of the onsets (BPM), 0 while unknown; octave errors are possible here.
     pub tempo_bpm: f32,
     pub tempo_confidence: f32,
+    /// Experimental resonator bank (only with `AnalyzerOptions::resonators`; 0 otherwise).
+    pub resonator_bpm: f32,
+    pub resonator_confidence: f32,
     /// Tracked beat grid (PLL): tempo, position in the beat and in the bar (0 = on the beat / downbeat).
     pub beat_bpm: f32,
     pub beat_phase: f32,
@@ -206,6 +209,8 @@ layout!(FeatureFrame {
     onset_density: f32,
     tempo_bpm: f32,
     tempo_confidence: f32,
+    resonator_bpm: f32,
+    resonator_confidence: f32,
     beat_bpm: f32,
     beat_phase: f32,
     bar_phase: f32,

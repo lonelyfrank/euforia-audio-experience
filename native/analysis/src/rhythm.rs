@@ -74,6 +74,8 @@ pub struct RhythmReading {
     pub tempo_bpm: f32,
     /// 0..1: how clearly periodic the onsets are at that tempo.
     pub tempo_confidence: f32,
+    /// The low region's share of the ODF this hop (0..1).
+    pub onset_low: f32,
 }
 
 pub struct Rhythm {
@@ -167,6 +169,7 @@ impl Rhythm {
         }
 
         self.reading.onset_strength = odf.min(1.0);
+        self.reading.onset_low = self.regions[0];
         self.reading.onset_density = self.density / DENSITY_WINDOW;
         (self.reading, onset)
     }

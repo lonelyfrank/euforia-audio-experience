@@ -221,7 +221,8 @@ impl BeatTracker {
                 self.support *= 1.0 - SUPPORT_LOSS;
                 self.missed += 1;
             }
-            if self.missed > MAX_MISSED {
+            // Unsupported for a while: let go, unless the tempo source still hears the period (it may ring through a gap).
+            if self.missed > MAX_MISSED && self.tempo_confidence < MIN_TEMPO_CONFIDENCE {
                 *self = Self { tempo_confidence: self.tempo_confidence, ..Self::default() };
                 return None;
             }
