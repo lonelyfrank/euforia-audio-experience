@@ -249,7 +249,8 @@ export interface MusicContextFrame {
 
 export type MusicalState = 'silent' | 'calm' | 'rising' | 'active' | 'peak' | 'falling';
 
-export type AudioSourceId = 'system' | 'microphone' | 'file' | 'fake';
+/** Live sources only; `fake` is the synthetic test signal (development and the test bench). */
+export type AudioSourceId = 'system' | 'microphone' | 'fake';
 
 export type CaptureStatus = 'idle' | 'starting' | 'running' | 'error';
 

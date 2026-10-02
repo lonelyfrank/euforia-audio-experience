@@ -17,7 +17,7 @@ La UI implementa il **design system Halo** (token, componenti, le 8 fasi del moc
 ## Funzionalità
 
 - Cattura dell'audio di sistema su **Windows** (WASAPI loopback) e **Linux** (monitor PipeWire/PulseAudio); microfono su tutte le piattaforme
-- Un file audio trascinato sulla finestra viene riprodotto e visualizzato; in modalità browser c'è anche un segnale di test sintetico
+- Solo audio dal vivo: niente file né tracce precaricate; in sviluppo c'è un segnale di test sintetico
 - Analisi centralizzata: FFT, 5 bande, energia spettrale, waveform, onset, beat detection, stima BPM
 - 8 mood e 5 modalità Experience componibili con scena e palette; direzione Auto opzionale con isteresi
 - 6 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**
@@ -64,10 +64,10 @@ Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruot
 ## Architettura
 
 ```
- Audio Source            (speaker in loopback, microfono, file, generatore)
+ Audio Source            (speaker in loopback, microfono, generatore di test)
       │
       ▼
- AudioCaptureProvider    NativeAudioCapture · BrowserMicrophoneCapture · FileAudioProvider · FakeAudioProvider
+ AudioCaptureProvider    NativeAudioCapture · BrowserMicrophoneCapture · FakeAudioProvider
       │  campioni PCM mono (pull, una volta per frame)
       ▼
  AudioAnalyzer           FFT 2048 · bande · AGC · smoothing · BeatDetector
@@ -136,11 +136,11 @@ npm install
 npm run desktop:dev      # app desktop (Tauri) con hot reload
 npm run desktop:build    # installer / bundle di produzione
 
-npm run dev              # solo frontend nel browser (segnale di test, file, microfono)
+npm run dev              # solo frontend nel browser (segnale di test, microfono)
 npm run check            # typecheck + lint + test + build del frontend
 ```
 
-In modalità browser (`npm run dev`) "System Audio" non è disponibile: la sorgente di default è il segnale di test sintetico. Il microfono passa da `getUserMedia` e un file si può trascinare sulla finestra. È utile per sviluppare le scene senza compilare la parte Rust.
+In modalità browser (`npm run dev`) "System Audio" non è disponibile: la sorgente di default è il segnale di test sintetico. Il microfono passa da `getUserMedia`. È utile per sviluppare le scene senza compilare la parte Rust.
 
 ### Diagnostica della cattura nativa
 
@@ -335,7 +335,7 @@ interface Visualizer {
 
 ## Limitazioni attuali
 
-- **Metadati del brano**: non vengono ancora letti (su Windows servirebbero i Global System Media Transport Controls, su Linux MPRIS). Il now playing mostra la sorgente: "System Audio" e il nome del dispositivo, "Live input" per il microfono, nome e tempi per un file trascinato.
+- **Metadati del brano**: non vengono ancora letti (su Windows servirebbero i Global System Media Transport Controls, su Linux MPRIS). Il now playing mostra la sorgente: "System Audio" e il nome del dispositivo, "Live input" per il microfono.
 - **Linux**: "System Audio" registra il monitor dell'uscita predefinita *al momento dell'avvio della cattura*. Se poi si cambia uscita (per esempio dalle cuffie Bluetooth agli altoparlanti), bisogna riselezionare Audio → System Audio. Serve un server PipeWire o PulseAudio: con ALSA puro l'audio di sistema non è disponibile.
 - **Windows**: la cattura WASAPI compila ed è verificata staticamente (`cargo check`/`clippy` per `x86_64-pc-windows-msvc`), ma non è ancora stata provata su una macchina Windows reale.
 - **Dispositivo audio**: la UI Halo non prevede la scelta del dispositivo, quindi si usa sempre quello predefinito di sistema. Quando il predefinito cambia, cpal lo segue; se la cattura cade, l'app ritenta 5 volte.

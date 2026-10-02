@@ -1,6 +1,6 @@
 import type { AudioFrame, AudioSourceId, CaptureStatus, MusicState } from '../types/audio';
 import { AudioAnalyzer, FFT_SIZE, VOICE_WINDOW, type AnalyzerSettings } from './analysis/AudioAnalyzer';
-import type { AudioCaptureProvider, Playback } from './capture/AudioCaptureProvider';
+import type { AudioCaptureProvider } from './capture/AudioCaptureProvider';
 import { createCaptureProvider, type SourceOptions } from './capture/createCaptureProvider';
 import { MusicInterpreter } from './interpretation/MusicInterpreter';
 
@@ -41,10 +41,6 @@ export class AudioEngine {
     return this.response.frame;
   }
 
-  /** Timeline of the active source, or null for live input. */
-  get playback(): Playback | null {
-    return this.provider?.playback?.() ?? null;
-  }
 
   configure(settings: Partial<AnalyzerSettings>): void {
     Object.assign(this.analyzer.settings, settings);

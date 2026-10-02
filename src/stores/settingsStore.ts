@@ -53,7 +53,8 @@ function load(): Settings {
     const raw = localStorage.getItem(STORAGE_KEY);
     const settings = { ...DEFAULT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<Settings>) : {}) };
     // A file cannot be restored across sessions; system audio may be unavailable here.
-    if (settings.source === 'file' || (settings.source === 'system' && !supportsSystemAudio)) {
+    // 'file' was a source in older versions: only live sources remain.
+    if ((settings.source as string) === 'file' || (settings.source === 'system' && !supportsSystemAudio)) {
       settings.source = DEFAULT_SETTINGS.source;
     }
     if (!MOODS.some((m) => m.id === settings.mood)) settings.mood = DEFAULT_DIRECTION.mood;

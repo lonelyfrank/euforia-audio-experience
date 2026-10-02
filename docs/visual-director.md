@@ -2,7 +2,7 @@
 
 ## Audit e scelte
 
-La cattura resta in `audio/capture` (provider browser/file/sintetico e Channel PCM Tauri), `native/audio-capture` (cpal, selezione monitor/loopback) e `src-tauri/src/audio.rs`. `AudioEngine` legge una sola finestra PCM per frame: ultimi 2048 campioni per FFT, 4096 per voci/YIN. `AudioAnalyzer` e `BeatDetector` restano gli unici proprietari dell'analisi.
+La cattura resta in `audio/capture` (provider microfono browser/sintetico e Channel PCM Tauri; i file sono stati rimossi: solo audio dal vivo), `native/audio-capture` (cpal, selezione monitor/loopback) e `src-tauri/src/audio.rs`. `AudioEngine` legge una sola finestra PCM per frame: ultimi 2048 campioni per FFT, 4096 per voci/YIN. `AudioAnalyzer` e `BeatDetector` restano gli unici proprietari dell'analisi.
 
 Prima del refactor, `VisualResponse` e `MusicContext` fornivano già presenza, audibilità, ruoli, sezioni, clock e memoria delle voci. Ora quell'implementazione si chiama `MusicInterpreter`; `VisualResponse` resta un alias compatibile. Non esistono due interpreti. Il vecchio contratto a quattro argomenti delle scene rimane valido; il quinto argomento opzionale introduce la modulazione. I preset JSON continuano a contenere geometria/camera/bloom, le palette conservano i colori.
 

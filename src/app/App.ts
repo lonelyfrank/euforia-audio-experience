@@ -93,8 +93,6 @@ export class App {
     // The core and the waveform pulse with the beat over a floor of loudness.
     const level = Math.min(1, frame.volume * 0.35 + frame.beatPulse * 0.65);
     this.dial.setLevel(level);
-    const playback = this.audio.playback;
-    if (playback) this.nowPlaying.setPosition(playback.position);
     this.nowPlaying.draw(level, performance.now());
     return this.sceneInput;
   }
@@ -222,13 +220,6 @@ export class App {
     document.addEventListener('keydown', touch, true);
     installShortcuts((action) => this.onShortcut(action));
 
-    // Dropping an audio file plays and visualizes it.
-    this.stage.addEventListener('dragover', (event) => event.preventDefault());
-    this.stage.addEventListener('drop', (event) => {
-      event.preventDefault();
-      const file = Array.from(event.dataTransfer?.files ?? []).find((f) => f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|m4a|aac|opus)$/i.test(f.name));
-      if (file) void this.selectSource('file', file);
-    });
     // Keep the icon right when fullscreen is left through the OS.
     window.addEventListener('resize', () => void this.syncFullscreen());
   }
@@ -281,12 +272,12 @@ export class App {
 
   // ---- audio -----------------------------------------------------------------
 
-  private async selectSource(source: AudioSourceId, file?: File): Promise<void> {
+  private async selectSource(source: AudioSourceId): Promise<void> {
     window.clearTimeout(this.retryTimer);
     this.retriesLeft = 0;
-    if (source !== 'file') settingsStore.set({ source });
-    this.nowPlaying.set(this.trackFor(source, file?.name ?? '', 0));
-    await this.audio.setSource(source, { file });
+    settingsStore.set({ source });
+    this.nowPlaying.set(this.trackFor(source, ''));
+    await this.audio.setSource(source);
   }
 
   /** Plays a synthetic test signal (debug tool); the persisted source is left unchanged. */
@@ -298,7 +289,7 @@ export class App {
 
   private onAudioState(state: AudioEngineState): void {
     if (!state.source) return;
-    const track = this.trackFor(state.source, state.deviceName, this.audio.playback?.duration ?? 0);
+    const track = this.trackFor(state.source, state.deviceName);
     if (state.status === 'starting') track.source = 'Connecting…';
     if (state.status === 'error') track.source = state.error ?? 'Audio unavailable';
     this.nowPlaying.set(track);
@@ -315,14 +306,12 @@ export class App {
   }
 
   /** Now-playing content per source; no track metadata is read yet. */
-  private trackFor(source: AudioSourceId, name: string, duration: number): Track {
+  private trackFor(source: AudioSourceId, name: string): Track {
     switch (source) {
       case 'system':
         return { title: 'System Audio', artist: 'Listening', source: name || 'System audio', live: true, duration: 0 };
       case 'microphone':
         return { title: 'Live input', artist: 'Microphone', source: name || 'Microphone', live: true, duration: 0 };
-      case 'file':
-        return { title: name.replace(/\.[^.]+$/, ''), artist: 'Local file', source: name, live: false, duration };
       case 'fake':
         return { title: 'Test Signal', artist: 'Synthetic', source: name || TEST_SIGNALS[0].label, live: true, duration: 0 };
     }

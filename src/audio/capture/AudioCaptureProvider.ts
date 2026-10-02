@@ -1,7 +1,9 @@
 import type { AudioSourceId } from '../../types/audio';
 
 /**
- * A source of mono PCM samples. Providers know nothing about analysis or
+ * A live source of mono PCM samples (system loopback, microphone, or the
+ * synthetic test signal used in development). There are no file or
+ * pre-recorded sources: everything is analysed as it is heard. Providers know nothing about analysis or
  * rendering: they only keep the most recent samples available for reading.
  *
  * The analyzer pulls data once per frame via `readSamples`, so providers never
@@ -20,18 +22,9 @@ export interface AudioCaptureProvider {
   /**
    * Copies the most recent `out.length` mono samples into `out`
    * (oldest first), ending `delay` samples in the past. Must not allocate.
-   * Providers that play the audio themselves (files) ignore the delay.
    */
   readSamples(out: Float32Array, delay: number): void;
 
   /** Registers a callback for asynchronous failures (device lost, ...). */
   onError(listener: (message: string) => void): void;
-
-  /** Position/duration in seconds for sources with a timeline (files); live sources omit it. */
-  playback?(): Playback;
-}
-
-export interface Playback {
-  position: number;
-  duration: number;
 }
