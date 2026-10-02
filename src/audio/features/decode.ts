@@ -1,4 +1,4 @@
-import { BEAT_FIELDS, CLOCK_FIELDS, FRAME_FIELDS, ONSET_FIELDS, RECORD, TAG } from './layout';
+import { BEAT_FIELDS, CLOCK_FIELDS, FRAME_FIELDS, ONSET_FIELDS, RECORD, SECTION_FIELDS, TAG } from './layout';
 
 /*
  * Decoding of the analysis event stream (see native/analysis/src/wire.rs):
@@ -13,6 +13,11 @@ type Shape<F> = { -readonly [K in keyof F]: F[K] extends readonly [number, 1] ? 
 export type AnalysisFrame = Shape<typeof FRAME_FIELDS>;
 export type OnsetEvent = Shape<typeof ONSET_FIELDS>;
 export type BeatEvent = Shape<typeof BEAT_FIELDS>;
+/** A section change (kind: 0 intro, 1 build, 2 drop, 3 break, 4 outro), stamped at its downbeat. */
+export type SectionEvent = Shape<typeof SECTION_FIELDS>;
+export const SECTION_NAMES = ['intro', 'build', 'drop', 'break', 'outro'] as const;
+/** Genre families of `AnalysisFrame.genre` (prior weights). */
+export const GENRE_NAMES = ['four-on-the-floor', 'drum-and-bass', 'hip-hop', 'band', 'ambient', 'acoustic'] as const;
 /** Sent by native hosts with each batch: capture clock (`sample`) and the age (s) of its newest sample. */
 export type ClockRecord = Shape<typeof CLOCK_FIELDS>;
 
@@ -60,6 +65,7 @@ export class AnalysisDecoder {
   readonly frame = newFrame();
   readonly onsets = new EventList(64, () => blank(ONSET_FIELDS));
   readonly beats = new EventList(32, () => blank(BEAT_FIELDS));
+  readonly sections = new EventList(8, () => blank(SECTION_FIELDS));
   /** The latest clock record of the batch (`clocked` tells whether one arrived). */
   readonly clock = blank(CLOCK_FIELDS);
   clocked = false;
@@ -70,6 +76,7 @@ export class AnalysisDecoder {
   begin(): void {
     this.onsets.count = 0;
     this.beats.count = 0;
+    this.sections.count = 0;
     this.clocked = false;
   }
 
@@ -90,6 +97,10 @@ export class AnalysisDecoder {
         const slot = this.beats.next();
         if (slot) read(BEAT_FIELDS, slot, data, at);
         at += RECORD.beat;
+      } else if (tag === TAG.section) {
+        const slot = this.sections.next();
+        if (slot) read(SECTION_FIELDS, slot, data, at);
+        at += RECORD.section;
       } else if (tag === TAG.clock) {
         read(CLOCK_FIELDS, this.clock, data, at);
         this.clocked = true;

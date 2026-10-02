@@ -17,6 +17,7 @@ fn run(seconds: f32, f: impl Fn(f32) -> f32) -> Run {
             Event::Beat(beat) => out.beats.push(beat),
             Event::Frame(frame) => out.frames.push(*frame),
             Event::Onset(_) => {}
+            Event::Section(_) => {}
         });
     }
     out
@@ -196,6 +197,7 @@ fn the_resonator_bank_can_drive_the_tracker() {
         Event::Frame(frame) => last = *frame,
         Event::Beat(b) => beats.push(b),
         Event::Onset(_) => {}
+        Event::Section(_) => {}
     });
     assert!((last.resonator_bpm - 128.0).abs() < 1.5, "{}", last.resonator_bpm);
     assert!(last.resonator_confidence > 0.5, "{}", last.resonator_confidence);

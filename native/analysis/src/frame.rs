@@ -84,6 +84,30 @@ pub struct FeatureFrame {
     /// Predicted time (s, capture clock) of the next beat; 0 while not tracking.
     pub next_beat_time: f64,
 
+    // Structure (decided at beat granularity; see `structure`).
+    /// Current section: 0 intro, 1 build, 2 drop, 3 break, 4 outro.
+    pub section: u8,
+    pub section_id: u32,
+    /// Whole bars since the section started.
+    pub section_bars: u32,
+    /// Id of an earlier section the current one repeats (same kind, similar second bar), or -1.
+    pub section_return: i32,
+    pub bar_index: u64,
+    /// Bar within the phrase and phrase length (bars, from the genre prior).
+    pub phrase_bar: u32,
+    pub phrase_bars: u32,
+    /// Predicted capture time (s) of the next phrase boundary; 0 while unknown.
+    pub next_phrase_time: f64,
+    /// 0..1: how new the last first-beat-of-a-bar sounded against the bars before.
+    pub novelty: f32,
+    /// Similarity (0..1) of the last bar to the bars 4, 8 and 16 bars earlier.
+    pub similarity: [f32; 3],
+    /// 0..1: in a build, how close the end of the phrase (the likely drop) is.
+    pub drop_expected: f32,
+    pub structure_confidence: f32,
+    /// Prior weights of the genre families (see `GENRES`), learned while listening.
+    pub genre: [f32; 6],
+
     // Harmony.
     /// Pitch classes C, C#, … B (0..1, the strongest at 1).
     pub chroma: [f32; 12],
@@ -127,6 +151,27 @@ impl Field for u64 {
     fn put(&self, out: &mut [f64]) {
         // Exact up to 2^53 samples (≈ 6000 years at 48 kHz).
         out[0] = *self as f64;
+    }
+}
+
+impl Field for u8 {
+    const LEN: usize = 1;
+    fn put(&self, out: &mut [f64]) {
+        out[0] = f64::from(*self);
+    }
+}
+
+impl Field for u32 {
+    const LEN: usize = 1;
+    fn put(&self, out: &mut [f64]) {
+        out[0] = f64::from(*self);
+    }
+}
+
+impl Field for i32 {
+    const LEN: usize = 1;
+    fn put(&self, out: &mut [f64]) {
+        out[0] = f64::from(*self);
     }
 }
 
@@ -217,6 +262,19 @@ layout!(FeatureFrame {
     beat_confidence: f32,
     downbeat_confidence: f32,
     next_beat_time: f64,
+    section: u8,
+    section_id: u32,
+    section_bars: u32,
+    section_return: i32,
+    bar_index: u64,
+    phrase_bar: u32,
+    phrase_bars: u32,
+    next_phrase_time: f64,
+    novelty: f32,
+    similarity: [f32; 3],
+    drop_expected: f32,
+    structure_confidence: f32,
+    genre: [f32; 6],
     chroma: [f32; 12],
     chroma_confidence: f32,
     key: i8,

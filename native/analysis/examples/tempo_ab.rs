@@ -72,6 +72,7 @@ fn run(case: &Case, resonators: bool) -> Result {
             Event::Beat(b) => beats.push((b.time, b.bpm)),
             Event::Frame(f) => last_bpm = f.beat_bpm,
             Event::Onset(_) => {}
+            Event::Section(_) => {}
         });
     }
     // Distance (s) of a beat to the nearest true beat, and the true period there.

@@ -2,9 +2,9 @@
 // `UPDATE_LAYOUT=1 cargo test -p spectrum-analysis --test wire`.
 
 /** Record tags of the analysis event stream. */
-export const TAG = { frame: 1, onset: 2, beat: 3, clock: 4 } as const;
+export const TAG = { frame: 1, onset: 2, beat: 3, clock: 4, section: 5 } as const;
 
-export const RECORD = { frame: 83, onset: 6, beat: 9, clock: 3 } as const;
+export const RECORD = { frame: 103, onset: 6, beat: 9, clock: 3, section: 9 } as const;
 
 /** Field name → [offset in the record, length]. */
 export const FRAME_FIELDS = {
@@ -50,14 +50,27 @@ export const FRAME_FIELDS = {
   beatConfidence: [54, 1],
   downbeatConfidence: [55, 1],
   nextBeatTime: [56, 1],
-  chroma: [57, 12],
-  chromaConfidence: [69, 1],
-  key: [70, 1],
-  keyConfidence: [71, 1],
-  width: [72, 1],
-  correlation: [73, 1],
-  bandPan: [74, 8],
-  stereoConfidence: [82, 1],
+  section: [57, 1],
+  sectionId: [58, 1],
+  sectionBars: [59, 1],
+  sectionReturn: [60, 1],
+  barIndex: [61, 1],
+  phraseBar: [62, 1],
+  phraseBars: [63, 1],
+  nextPhraseTime: [64, 1],
+  novelty: [65, 1],
+  similarity: [66, 3],
+  dropExpected: [69, 1],
+  structureConfidence: [70, 1],
+  genre: [71, 6],
+  chroma: [77, 12],
+  chromaConfidence: [89, 1],
+  key: [90, 1],
+  keyConfidence: [91, 1],
+  width: [92, 1],
+  correlation: [93, 1],
+  bandPan: [94, 8],
+  stereoConfidence: [102, 1],
 } as const;
 
 export const ONSET_FIELDS = {
@@ -82,4 +95,15 @@ export const BEAT_FIELDS = {
 export const CLOCK_FIELDS = {
   sample: [1, 1],
   age: [2, 1],
+} as const;
+
+export const SECTION_FIELDS = {
+  sample: [1, 1],
+  time: [2, 1],
+  kind: [3, 1],
+  previous: [4, 1],
+  id: [5, 1],
+  bar: [6, 1],
+  confidence: [7, 1],
+  novelty: [8, 1],
 } as const;

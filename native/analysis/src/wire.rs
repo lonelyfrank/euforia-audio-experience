@@ -4,7 +4,7 @@
 //! fixed small layouts. `typescript_layout` renders the matching decoder
 //! constants for the frontend, kept in sync by a test.
 
-use crate::{BeatEvent, Event, FeatureFrame, OnsetEvent};
+use crate::{BeatEvent, Event, FeatureFrame, OnsetEvent, SectionEvent};
 
 pub const TAG_FRAME: f64 = 1.0;
 pub const TAG_ONSET: f64 = 2.0;
@@ -12,6 +12,7 @@ pub const TAG_BEAT: f64 = 3.0;
 /// Clock record (sent by hosts, not produced by the analyzer): the capture
 /// clock at the end of a batch and how old its newest sample was when sent.
 pub const TAG_CLOCK: f64 = 4.0;
+pub const TAG_SECTION: f64 = 5.0;
 
 pub const ONSET_LAYOUT: &[(&str, usize)] = &[("sample", 1), ("time", 1), ("strength", 1), ("region", 1), ("low", 1)];
 pub const BEAT_LAYOUT: &[(&str, usize)] = &[
@@ -26,12 +27,15 @@ pub const BEAT_LAYOUT: &[(&str, usize)] = &[
 ];
 
 pub const CLOCK_LAYOUT: &[(&str, usize)] = &[("sample", 1), ("age", 1)];
+pub const SECTION_LAYOUT: &[(&str, usize)] =
+    &[("sample", 1), ("time", 1), ("kind", 1), ("previous", 1), ("id", 1), ("bar", 1), ("confidence", 1), ("novelty", 1)];
 
 /// Values in a record (tag included) for each event kind.
 pub const FRAME_RECORD: usize = 1 + FeatureFrame::SIZE;
 pub const ONSET_RECORD: usize = 1 + ONSET_LAYOUT.len();
 pub const BEAT_RECORD: usize = 1 + BEAT_LAYOUT.len();
 pub const CLOCK_RECORD: usize = 1 + CLOCK_LAYOUT.len();
+pub const SECTION_RECORD: usize = 1 + SECTION_LAYOUT.len();
 /// The largest record.
 pub const MAX_RECORD: usize = FRAME_RECORD;
 
@@ -61,6 +65,20 @@ pub fn encode(event: &Event, out: &mut [f64]) -> usize {
             ]);
             BEAT_RECORD
         }
+        Event::Section(SectionEvent { sample, time, kind, previous, id, bar, confidence, novelty }) => {
+            out[..SECTION_RECORD].copy_from_slice(&[
+                TAG_SECTION,
+                *sample as f64,
+                *time,
+                f64::from(*kind as u8),
+                f64::from(*previous as u8),
+                f64::from(*id),
+                *bar as f64,
+                f64::from(*confidence),
+                f64::from(*novelty),
+            ]);
+            SECTION_RECORD
+        }
     }
 }
 
@@ -86,9 +104,9 @@ pub fn typescript_layout() -> String {
          // `UPDATE_LAYOUT=1 cargo test -p spectrum-analysis --test wire`.\n\
          \n\
          /** Record tags of the analysis event stream. */\n\
-         export const TAG = {{ frame: {TAG_FRAME}, onset: {TAG_ONSET}, beat: {TAG_BEAT}, clock: {TAG_CLOCK} }} as const;\n\
+         export const TAG = {{ frame: {TAG_FRAME}, onset: {TAG_ONSET}, beat: {TAG_BEAT}, clock: {TAG_CLOCK}, section: {TAG_SECTION} }} as const;\n\
          \n\
-         export const RECORD = {{ frame: {FRAME_RECORD}, onset: {ONSET_RECORD}, beat: {BEAT_RECORD}, clock: {CLOCK_RECORD} }} as const;\n\
+         export const RECORD = {{ frame: {FRAME_RECORD}, onset: {ONSET_RECORD}, beat: {BEAT_RECORD}, clock: {CLOCK_RECORD}, section: {SECTION_RECORD} }} as const;\n\
          \n\
          /** Field name → [offset in the record, length]. */\n\
          export const FRAME_FIELDS = {{\n{}}} as const;\n\
@@ -97,11 +115,14 @@ pub fn typescript_layout() -> String {
          \n\
          export const BEAT_FIELDS = {{\n{}}} as const;\n\
          \n\
-         export const CLOCK_FIELDS = {{\n{}}} as const;\n",
+         export const CLOCK_FIELDS = {{\n{}}} as const;\n\
+         \n\
+         export const SECTION_FIELDS = {{\n{}}} as const;\n",
         fields(FeatureFrame::LAYOUT),
         fields(ONSET_LAYOUT),
         fields(BEAT_LAYOUT),
         fields(CLOCK_LAYOUT),
+        fields(SECTION_LAYOUT),
     )
 }
 

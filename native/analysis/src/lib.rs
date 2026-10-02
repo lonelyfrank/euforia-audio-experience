@@ -32,6 +32,7 @@ mod loudness;
 mod presence;
 mod resonators;
 mod rhythm;
+mod structure;
 pub mod wire;
 
 pub use analyzer::{Analyzer, AnalyzerOptions, FFT_SIZE, HOP};
@@ -39,6 +40,7 @@ pub use beat::{BeatEvent, BEATS_PER_BAR};
 pub use frame::{FeatureFrame, Field, BANDS, BAND_EDGES};
 pub use loudness::SILENT_LUFS;
 pub use rhythm::{OnsetEvent, MAX_BPM, MIN_BPM};
+pub use structure::{SectionEvent, SectionKind, GENRES};
 
 /// What the analyzer reports, in time order.
 #[derive(Clone, Copy, Debug)]
@@ -49,6 +51,8 @@ pub enum Event<'a> {
     Onset(OnsetEvent),
     /// A beat of the tracked grid, stamped at its predicted time (reported in the hop that reaches it).
     Beat(BeatEvent),
+    /// A section change, stamped at the downbeat it starts on (reported a beat later).
+    Section(SectionEvent),
 }
 
 /// Level reported for silence (dB).

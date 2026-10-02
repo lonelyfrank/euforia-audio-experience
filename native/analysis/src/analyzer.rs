@@ -10,6 +10,7 @@ use crate::harmony::{Harmony, CHROMA_EVERY, CHROMA_SIZE};
 use crate::hpss::{Hpss, HpssReading};
 use crate::resonators::ResonatorBank;
 use crate::rhythm::Rhythm;
+use crate::structure::Structure;
 use crate::Event;
 use crate::SILENCE_DB;
 
@@ -96,6 +97,7 @@ pub struct Analyzer {
     pan: [Follower; BANDS],
     rhythm: Rhythm,
     beats: BeatTracker,
+    structure: Structure,
     harmony: Harmony,
     hpss: Hpss,
     split: HpssReading,
@@ -155,6 +157,7 @@ impl Analyzer {
             pan: [Follower::symmetric(STEREO_TAU, 0.0); BANDS],
             rhythm: Rhythm::new(HOP as f32 / sample_rate),
             beats: BeatTracker::default(),
+            structure: Structure::default(),
             harmony: Harmony::new(sample_rate),
             hpss: Hpss::new(sample_rate, FFT_SIZE),
             split: HpssReading::default(),
@@ -228,7 +231,14 @@ impl Analyzer {
                 }
                 if let Some(beat) = self.beats.hop(time, sample_rate) {
                     on_event(Event::Beat(beat));
+                    if let Some(section) = self.structure.beat(&beat, &self.frame, sample_rate, false) {
+                        on_event(Event::Section(section));
+                    }
                 }
+                if let Some(section) = self.structure.hop(&self.frame, sample_rate) {
+                    on_event(Event::Section(section));
+                }
+                let s = self.structure.reading();
                 let grid = self.beats.reading();
                 let f = &mut self.frame;
                 f.beat_bpm = grid.bpm;
@@ -237,6 +247,19 @@ impl Analyzer {
                 f.beat_confidence = grid.confidence;
                 f.downbeat_confidence = grid.downbeat_confidence;
                 f.next_beat_time = grid.next_beat;
+                f.section = s.section;
+                f.section_id = s.section_id;
+                f.section_bars = s.section_bars;
+                f.section_return = s.section_return;
+                f.bar_index = s.bar_index;
+                f.phrase_bar = s.phrase_bar;
+                f.phrase_bars = s.phrase_bars;
+                f.next_phrase_time = s.next_phrase_time;
+                f.novelty = s.novelty;
+                f.similarity = s.similarity;
+                f.drop_expected = s.drop_expected;
+                f.structure_confidence = s.confidence;
+                f.genre = s.genre;
                 f.onset_strength = reading.onset_strength;
                 f.onset_density = reading.onset_density;
                 f.tempo_bpm = reading.tempo_bpm;

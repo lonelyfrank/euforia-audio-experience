@@ -37,3 +37,47 @@ the PLL absorbs most of it). **Decision: off by default.** It is turned on
 only if the corpus comparison (GiantSteps / Harmonix replayed through the
 loopback, same harness) shows a measurable gain. Not run yet: the corpus
 audio is not available here (Harmonix does not distribute audio).
+
+## Phase 3 — Live structure
+
+`native/analysis/src/structure.rs`, reported as `Event::Section` (stamped at
+the downbeat a section starts on) and as frame fields (section, bars, phrase
+position and predicted next phrase boundary, novelty, similarity to 4/8/16
+bars before, `section_return`, `drop_expected`, genre priors).
+
+- Features are averaged per beat: level (mean power, from the 43 ms bands —
+  the 400 ms momentary loudness smeared each beat into the previous one),
+  spectral shape relative to the level, centroid, flatness, percussive
+  shares, onset density, chroma, mean onset function.
+- A change is decided one beat after a downbeat, comparing that first beat
+  with the first beats of the 4 bars before (same metric position: an accent
+  on the one is not novelty). Large jumps are boundaries whatever the
+  novelty statistics say; subtle ones need novelty > 2σ.
+- Rules: drop = energy up with the low end back *and present* (sub band
+  within 16 dB of the level; snare bodies at ~190 Hz must not read as bass);
+  build = low end gone while attacks keep coming (instantaneous onset
+  function, not the 2 s density), without an energy collapse; break = energy
+  down with fewer attacks, or an energy collapse; outro = a slow fade over 8
+  bars after at least 32. Sections last ≥ 4 bars (a build ≥ 2).
+- A drop or cut on a beat that is not the one moves the bar onto it (the
+  downbeat accent is often lost in a break).
+- Returns: a section's second bar against the second bars of earlier
+  sections of the same kind (the first still carries the previous section
+  in its smoothed features); similarity scaled by the song's own novelty.
+- Without a trusted grid, free 0.5 s beats keep the structure moving at low
+  confidence and only ≥ 6 dB changes count. No decision before 5 whole bars
+  of sound.
+- Genre priors (four-on-the-floor, drum and bass, hip-hop, band, ambient,
+  acoustic): fuzzy evidence from tempo, density, tonality and percussion,
+  learned over ~16 bars; they set the phrase length (8/16 in electronic
+  music, 4 in ambient/acoustic) and how eagerly builds are read.
+
+Measured on synthetic tracks (tests/structure.rs): a 60-bar dance track
+(intro, build, drop, break, drop, fading outro) is segmented exactly (each
+boundary on its downbeat; the outro is recognised 6 bars into the fade), the
+second drop is reported as a return of the first, phrase boundaries are
+predicted on the downbeat. Short 32 s cycles after a beatless ambient part:
+drops and breaks within 1 bar, builds 2 bars late (the grid only locks once
+the build's snare roll has started) — a known limit. Cost: ~1% of a core
+more (5.3% total on the throttled i7 at 900 MHz). Not verified: real music
+and the corpus (boundary error criterion: ±1 bar on ≥ 60%).

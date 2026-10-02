@@ -3,6 +3,7 @@ import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, MusicalState, VisualResponseFrame } from '../../types/audio';
 import type { App } from '../App';
+import { GENRE_NAMES, SECTION_NAMES } from '../../audio/features/decode';
 
 /*
  * Development-only audio/visual debug overlay. Shows the analyzer output
@@ -121,7 +122,7 @@ const HISTORY_HEIGHT = 40;
 const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
 const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
 const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
-const HEIGHT = ANALYSIS_TOP + 5 * ROW;
+const HEIGHT = ANALYSIS_TOP + 6 * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -361,6 +362,16 @@ class DebugOverlay {
         `clock ${clock.ready ? 'synced' : '–'}`,
       0,
       ANALYSIS_TOP + ROW * 3,
+    );
+    const section = SECTION_NAMES[f.section] ?? '?';
+    const genre = f.genre.indexOf(Math.max(...f.genre));
+    const nextPhrase = f.nextPhraseTime > 0 && clock.ready ? `${(clock.toHost(f.nextPhraseTime) - performance.now() / 1000).toFixed(1)} s` : '–';
+    ctx.fillStyle = COLORS.mid;
+    ctx.fillText(
+      `${section.toUpperCase()} #${f.sectionId}${f.sectionReturn >= 0 ? ` (returns #${f.sectionReturn})` : ''} · ${f.sectionBars} bars · bar ${f.barIndex} · phrase ${f.phraseBar + 1}/${f.phraseBars} next in ${nextPhrase} · ` +
+        `novelty ${f.novelty.toFixed(2)} · sim 4/8/16 ${[...f.similarity].map((x) => x.toFixed(2)).join('/')} · drop ${f.dropExpected.toFixed(2)} · ${GENRE_NAMES[genre]} (${f.structureConfidence.toFixed(2)})`,
+      0,
+      ANALYSIS_TOP + ROW * 5,
     );
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(

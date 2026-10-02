@@ -32,6 +32,7 @@ fn main() {
             Event::Frame(_) => frames += 1,
             Event::Beat(_) => beats += 1,
             Event::Onset(_) => {}
+            Event::Section(_) => {}
         });
     }
     let elapsed = start.elapsed().as_secs_f64();
