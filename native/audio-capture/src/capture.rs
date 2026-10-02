@@ -2,10 +2,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, StreamTrait};
-use cpal::{Data, ErrorKind, FromSample, SampleFormat, StreamConfig, StreamInstant};
+use cpal::{Data, ErrorKind, FromSample, SampleFormat, StreamConfig};
 
 use crate::{platform, CaptureError, CaptureInfo, CaptureSource};
 
@@ -55,15 +55,24 @@ pub struct Batch<'a> {
     pub first_frame: u64,
     /// Frames lost just before this batch (the consumer stalled); 0 normally.
     pub gap: u64,
-    /// Capture time of the first frame, relative to the first callback (backend clock), when reported.
-    pub capture_time: Option<Duration>,
+    /// When the first frame was captured, on this process's monotonic clock: the
+    /// callback time minus how long the backend says the data waited in its buffer.
+    pub captured_at: Instant,
+}
+
+impl Batch<'_> {
+    /// When the last frame was captured.
+    pub fn captured_end(&self) -> Instant {
+        let frames = (self.samples.len() / self.channels) as f64;
+        self.captured_at + Duration::from_secs_f64(frames / f64::from(self.sample_rate))
+    }
 }
 
 /// One callback's worth of samples, travelling from the audio thread to the worker.
 struct Chunk {
     data: Vec<f32>,
     first_frame: u64,
-    capture_time: Option<Duration>,
+    captured_at: Instant,
 }
 
 /// Starts capturing `source` on a dedicated thread.
@@ -115,7 +124,7 @@ where
                     Ok(chunk) => {
                         // Coalesce whatever else is queued and contiguous into one delivery.
                         let first = chunk.first_frame;
-                        let capture_time = chunk.capture_time;
+                        let captured_at = chunk.captured_at;
                         let gap = first.saturating_sub(next_frame);
                         batch.clear();
                         batch.extend_from_slice(&chunk.data);
@@ -131,7 +140,7 @@ where
                             end += (more.data.len() / channels) as u64;
                             let _ = spare_tx.try_send(more.data);
                         }
-                        on_samples(Batch { samples: &batch, channels, sample_rate: info.sample_rate, first_frame: first, gap, capture_time });
+                        on_samples(Batch { samples: &batch, channels, sample_rate: info.sample_rate, first_frame: first, gap, captured_at });
                         next_frame = end;
                         if let Some(chunk) = pending {
                             let gap = chunk.first_frame.saturating_sub(next_frame);
@@ -142,7 +151,7 @@ where
                                 sample_rate: info.sample_rate,
                                 first_frame: chunk.first_frame,
                                 gap,
-                                capture_time: chunk.capture_time,
+                                captured_at: chunk.captured_at,
                             });
                             let _ = spare_tx.try_send(chunk.data);
                         }
@@ -182,7 +191,6 @@ where
         CaptureInfo { sample_rate: config.sample_rate, channels: config.channels, device_name: device.to_string() };
 
     let mut frames = 0u64;
-    let mut origin: Option<StreamInstant> = None;
     let data_callback = move |data: &Data, callback: &cpal::InputCallbackInfo| {
         // A recycled buffer; only if none is back yet (start-up, a stalled consumer) is one allocated.
         let mut buffer = spare_rx.try_recv().unwrap_or_default();
@@ -199,13 +207,16 @@ where
         if !converted {
             return;
         }
-        let capture = callback.timestamp().capture;
-        let capture_time = Some(capture.duration_since(*origin.get_or_insert(capture)));
+        // How long the first frame waited in the backend's buffer before this callback.
+        let timestamp = callback.timestamp();
+        let waited = timestamp.callback.duration_since(timestamp.capture);
+        let now = Instant::now();
+        let captured_at = now.checked_sub(waited).unwrap_or(now);
         let first_frame = frames;
         frames += (buffer.len() / channels) as u64;
         // Never block the audio thread: if the queue is full the chunk is dropped
         // (the frame counter has moved on, so the consumer sees the gap).
-        let _ = chunk_tx.try_send(Chunk { data: buffer, first_frame, capture_time });
+        let _ = chunk_tx.try_send(Chunk { data: buffer, first_frame, captured_at });
     };
     let error_callback = move |error: cpal::Error| {
         // Rerouting to a new default device is handled by cpal transparently.

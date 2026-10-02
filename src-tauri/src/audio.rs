@@ -106,7 +106,7 @@ struct Analysis {
 }
 
 impl Analysis {
-    /// Analyses a batch; returns the encoded records to send, if any.
+    /// Analyses a batch; returns the encoded records to send (ending with a clock record).
     fn process(&mut self, batch: &Batch) -> Option<Vec<u8>> {
         let channels = batch.channels;
         let rate = batch.sample_rate as f32;
@@ -148,9 +148,10 @@ impl Analysis {
         if has_frame {
             records.extend_from_slice(frame);
         }
-        if records.is_empty() {
-            return None;
-        }
+        // Capture clock at the end of the batch and the age of its newest sample now, for the frontend's clock sync.
+        let age = std::time::Instant::now().saturating_duration_since(batch.captured_end()).as_secs_f64();
+        let n = wire::encode_clock(analyzer.samples(), age, record);
+        records.extend_from_slice(&record[..n]);
         Some(records.iter().flat_map(|v| v.to_le_bytes()).collect())
     }
 }

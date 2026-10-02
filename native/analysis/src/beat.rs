@@ -35,6 +35,11 @@ pub const BEATS_PER_BAR: usize = 4;
 const ACCENT_BARS: f32 = 6.0;
 /// The downbeat moves only when another position is clearly stronger.
 const DOWNBEAT_MARGIN: f32 = 1.25;
+/// Off-beat check: memory (matched onsets) of the low-end accents on and between the beats, and
+/// how much stronger the off-beats must be (after enough of them) before the grid moves half a beat.
+const HALF_MEMORY: f32 = 8.0;
+const HALF_MARGIN: f32 = 1.3;
+const HALF_MIN_ONSETS: u32 = 4;
 
 /// A beat of the tracked grid.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -81,6 +86,10 @@ pub struct BeatTracker {
     pending_since: Option<f64>,
     accents: [f32; BEATS_PER_BAR],
     downbeat: usize,
+    /// Low-end accent of onsets on the beats and halfway between them, and how many off-beat ones were seen.
+    on_beat: f32,
+    off_beat: f32,
+    off_beats: u32,
     reading: BeatReading,
 }
 
@@ -98,6 +107,9 @@ impl Default for BeatTracker {
             pending_since: None,
             accents: [0.0; BEATS_PER_BAR],
             downbeat: 0,
+            on_beat: 0.0,
+            off_beat: 0.0,
+            off_beats: 0,
             reading: BeatReading::default(),
         }
     }
@@ -144,6 +156,9 @@ impl BeatTracker {
         self.index = 0;
         self.accents = [0.0; BEATS_PER_BAR];
         self.downbeat = 0;
+        self.on_beat = low_level;
+        self.off_beat = 0.0;
+        self.off_beats = 0;
         self.accent(0, low_level);
     }
 
@@ -164,9 +179,23 @@ impl BeatTracker {
             (self.next, self.index)
         };
         let error = onset.time - target;
+        let decay = (-1.0 / HALF_MEMORY).exp();
         if error.abs() > MATCH_WINDOW * self.period {
+            // Halfway between two beats: if the low end hits harder there, the grid sits on the off-beats.
+            let half = error.abs() - 0.5 * self.period;
+            if half.abs() <= MATCH_WINDOW * self.period {
+                self.off_beat = self.off_beat * decay + low_level * (1.0 - decay);
+                self.off_beats += 1;
+                if self.off_beats >= HALF_MIN_ONSETS && self.off_beat > self.on_beat * HALF_MARGIN {
+                    self.next += if error > 0.0 { 0.5 * self.period } else { -0.5 * self.period };
+                    std::mem::swap(&mut self.on_beat, &mut self.off_beat);
+                    self.off_beats = 0;
+                    self.accents = [0.0; BEATS_PER_BAR];
+                }
+            }
             return;
         }
+        self.on_beat = self.on_beat * decay + low_level * (1.0 - decay);
         let weight = f64::from(onset.strength.clamp(0.2, 1.0));
         self.next += PHASE_GAIN * weight * error;
         self.period = (self.period + PERIOD_GAIN * weight * error).clamp(60.0 / f64::from(MAX_BPM), 60.0 / f64::from(MIN_BPM));

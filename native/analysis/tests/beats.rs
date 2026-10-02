@@ -162,3 +162,24 @@ fn same_input_same_beats() {
     let b = run(10.0, groove(steady(124.0)));
     assert_eq!(a.beats, b.beats);
 }
+
+#[test]
+fn moves_off_the_off_beat() {
+    // Off-beat hats and a bass that re-attacks on the off-beats, weaker than the kick; the signal
+    // starts on an off-beat, so the first onsets the grid sees are off-beats.
+    let groove = |t: f32| {
+        let t = t + 0.25;
+        let pos = t % 0.5;
+        let off = (t + 0.25) % 0.5;
+        let bass = (TAU * 55.0 * t).sin() * (-off * 8.0).exp() * 0.25;
+        kick(pos, 0.8) + hat(off, t) + bass
+    };
+    let r = run(20.0, groove);
+    // Kicks at t = 0.25 + n/2 in the signal's time.
+    let late: Vec<f64> = r.beats.iter().filter(|b| b.time > 12.0).map(|b| {
+        let x = b.time - 0.25;
+        x - (x / 0.5).round() * 0.5
+    }).collect();
+    assert!(late.len() >= 10);
+    assert!(mean_abs(&late) < 0.015, "mean distance to the kicks {:.3} s", mean_abs(&late));
+}

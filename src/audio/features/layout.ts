@@ -2,9 +2,9 @@
 // `UPDATE_LAYOUT=1 cargo test -p spectrum-analysis --test wire`.
 
 /** Record tags of the analysis event stream. */
-export const TAG = { frame: 1, onset: 2, beat: 3 } as const;
+export const TAG = { frame: 1, onset: 2, beat: 3, clock: 4 } as const;
 
-export const RECORD = { frame: 81, onset: 6, beat: 9 } as const;
+export const RECORD = { frame: 81, onset: 6, beat: 9, clock: 3 } as const;
 
 /** Field name → [offset in the record, length]. */
 export const FRAME_FIELDS = {
@@ -75,4 +75,9 @@ export const BEAT_FIELDS = {
   bpm: [6, 1],
   confidence: [7, 1],
   downbeatConfidence: [8, 1],
+} as const;
+
+export const CLOCK_FIELDS = {
+  sample: [1, 1],
+  age: [2, 1],
 } as const;

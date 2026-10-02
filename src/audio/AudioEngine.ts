@@ -5,6 +5,8 @@ import { createCaptureProvider, type SourceOptions } from './capture/createCaptu
 import { AnalysisDecoder } from './features/decode';
 import { WasmAnalysis } from './features/WasmAnalysis';
 import { MusicInterpreter } from './interpretation/MusicInterpreter';
+import { ClockSync } from '../timing/ClockSync';
+import { Timing } from '../timing/Timing';
 
 /** Mono samples drained per step into the WebAssembly analysis. */
 const DRAIN_CHUNK = 4096;
@@ -30,6 +32,10 @@ export class AudioEngine {
   readonly analyzer = new AudioAnalyzer();
   readonly response = new MusicInterpreter();
   readonly features = new AnalysisDecoder();
+  /** Capture clock → host clock, and what to show in the frame being rendered (beat cues, attacks, grid weight). */
+  readonly clock = new ClockSync();
+  readonly timing = new Timing();
+  private frameInterval = 1 / 60;
   private wasm: WasmAnalysis | null = null;
   private readonly drained = new Float32Array(DRAIN_CHUNK);
   private provider: AudioCaptureProvider | null = null;
@@ -59,8 +65,10 @@ export class AudioEngine {
     Object.assign(this.analyzer.settings, settings);
   }
 
+  /** Output latency after the capture point (s): the scenes' analysis is delayed by it and cues are timed to it. */
   setDelay(seconds: number): void {
     this.delay = Math.max(seconds, 0);
+    this.timing.latency.output = this.delay;
   }
 
   subscribe(listener: (state: AudioEngineState) => void): () => void {
@@ -95,6 +103,8 @@ export class AudioEngine {
     this.analyzer.reset();
     this.response.reset();
     this.features.reset();
+    this.clock.reset();
+    this.timing.reset();
     await this.startFeatures(provider, token);
     this.setState({ source, status: 'running', deviceName: provider.deviceName, error: null });
   }
@@ -104,14 +114,23 @@ export class AudioEngine {
     this.features.begin();
     if (this.provider) this.provider.readSamples(this.samples, Math.round(this.delay * this.provider.sampleRate));
     else this.samples.fill(0);
-    this.provider?.readFeatures?.(this.features);
+    this.provider?.readFeatures?.(this.features, this.clock);
     if (this.provider?.drain && this.wasm) {
       let n: number;
+      let pushed = false;
       do {
         n = this.provider.drain(this.drained);
-        if (n > 0) this.wasm.push(this.drained, n);
+        if (n > 0) {
+          this.wasm.push(this.drained, n);
+          pushed = true;
+        }
       } while (n === this.drained.length);
+      // The newest sample was captured at most now (browser sources hand samples over as they come).
+      if (pushed) this.clock.observe(performance.now() / 1000, this.features.frame.time);
     }
+    this.frameInterval += (Math.min(dt, 0.1) - this.frameInterval) * 0.05;
+    const { onsets } = this.features;
+    this.timing.update(performance.now() / 1000, this.frameInterval, this.features.frame, onsets.items, onsets.count, this.clock, dt);
     const frame = this.analyzer.analyze(this.fftSamples, this.provider?.sampleRate ?? 48000, dt, this.samples);
     this.response.update(frame, dt);
     return frame;

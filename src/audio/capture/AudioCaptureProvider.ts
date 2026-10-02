@@ -1,5 +1,6 @@
 import type { AudioSourceId } from '../../types/audio';
 import type { AnalysisDecoder } from '../features/decode';
+import type { ClockSync } from '../../timing/ClockSync';
 
 /**
  * A live source of mono PCM samples (system loopback, microphone, or the
@@ -36,9 +37,10 @@ export interface AudioCaptureProvider {
 
   /**
    * Native sources only: decodes the analysis records received from the
-   * capture thread since the previous call into `decoder`.
+   * capture thread since the previous call into `decoder`, and gives `clock`
+   * one observation per batch (its arrival time and capture clock).
    */
-  readFeatures?(decoder: AnalysisDecoder): void;
+  readFeatures?(decoder: AnalysisDecoder, clock: ClockSync): void;
 
   /** Registers a callback for asynchronous failures (device lost, ...). */
   onError(listener: (message: string) => void): void;

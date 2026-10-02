@@ -1,4 +1,4 @@
-import { BEAT_FIELDS, FRAME_FIELDS, ONSET_FIELDS, RECORD, TAG } from './layout';
+import { BEAT_FIELDS, CLOCK_FIELDS, FRAME_FIELDS, ONSET_FIELDS, RECORD, TAG } from './layout';
 
 /*
  * Decoding of the analysis event stream (see native/analysis/src/wire.rs):
@@ -13,6 +13,8 @@ type Shape<F> = { -readonly [K in keyof F]: F[K] extends readonly [number, 1] ? 
 export type AnalysisFrame = Shape<typeof FRAME_FIELDS>;
 export type OnsetEvent = Shape<typeof ONSET_FIELDS>;
 export type BeatEvent = Shape<typeof BEAT_FIELDS>;
+/** Sent by native hosts with each batch: capture clock (`sample`) and the age (s) of its newest sample. */
+export type ClockRecord = Shape<typeof CLOCK_FIELDS>;
 
 function blank<F extends Record<string, readonly [number, number]>>(fields: F): Shape<F> {
   const out: Record<string, number | Float64Array> = {};
@@ -58,6 +60,9 @@ export class AnalysisDecoder {
   readonly frame = newFrame();
   readonly onsets = new EventList(64, () => blank(ONSET_FIELDS));
   readonly beats = new EventList(32, () => blank(BEAT_FIELDS));
+  /** The latest clock record of the batch (`clocked` tells whether one arrived). */
+  readonly clock = blank(CLOCK_FIELDS);
+  clocked = false;
   /** Frames decoded in total (to tell whether anything arrived). */
   frames = 0;
 
@@ -65,6 +70,7 @@ export class AnalysisDecoder {
   begin(): void {
     this.onsets.count = 0;
     this.beats.count = 0;
+    this.clocked = false;
   }
 
   /** Decodes `length` values of `data` (whole records). */
@@ -84,6 +90,10 @@ export class AnalysisDecoder {
         const slot = this.beats.next();
         if (slot) read(BEAT_FIELDS, slot, data, at);
         at += RECORD.beat;
+      } else if (tag === TAG.clock) {
+        read(CLOCK_FIELDS, this.clock, data, at);
+        this.clocked = true;
+        at += RECORD.clock;
       } else {
         // Unknown record: the stream is out of sync; drop the rest of the batch.
         return;

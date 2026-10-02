@@ -9,6 +9,9 @@ use crate::{BeatEvent, Event, FeatureFrame, OnsetEvent};
 pub const TAG_FRAME: f64 = 1.0;
 pub const TAG_ONSET: f64 = 2.0;
 pub const TAG_BEAT: f64 = 3.0;
+/// Clock record (sent by hosts, not produced by the analyzer): the capture
+/// clock at the end of a batch and how old its newest sample was when sent.
+pub const TAG_CLOCK: f64 = 4.0;
 
 pub const ONSET_LAYOUT: &[(&str, usize)] = &[("sample", 1), ("time", 1), ("strength", 1), ("region", 1), ("low", 1)];
 pub const BEAT_LAYOUT: &[(&str, usize)] = &[
@@ -22,10 +25,13 @@ pub const BEAT_LAYOUT: &[(&str, usize)] = &[
     ("downbeat_confidence", 1),
 ];
 
+pub const CLOCK_LAYOUT: &[(&str, usize)] = &[("sample", 1), ("age", 1)];
+
 /// Values in a record (tag included) for each event kind.
 pub const FRAME_RECORD: usize = 1 + FeatureFrame::SIZE;
 pub const ONSET_RECORD: usize = 1 + ONSET_LAYOUT.len();
 pub const BEAT_RECORD: usize = 1 + BEAT_LAYOUT.len();
+pub const CLOCK_RECORD: usize = 1 + CLOCK_LAYOUT.len();
 /// The largest record.
 pub const MAX_RECORD: usize = FRAME_RECORD;
 
@@ -58,6 +64,12 @@ pub fn encode(event: &Event, out: &mut [f64]) -> usize {
     }
 }
 
+/// Writes a clock record: `sample` = capture clock (frames analysed), `age` = seconds since its last frame was captured.
+pub fn encode_clock(sample: u64, age: f64, out: &mut [f64]) -> usize {
+    out[..CLOCK_RECORD].copy_from_slice(&[TAG_CLOCK, sample as f64, age]);
+    CLOCK_RECORD
+}
+
 /// TypeScript constants describing the records (generated; see the `wire` test).
 pub fn typescript_layout() -> String {
     let fields = |layout: &[(&str, usize)]| -> String {
@@ -74,19 +86,22 @@ pub fn typescript_layout() -> String {
          // `UPDATE_LAYOUT=1 cargo test -p spectrum-analysis --test wire`.\n\
          \n\
          /** Record tags of the analysis event stream. */\n\
-         export const TAG = {{ frame: {TAG_FRAME}, onset: {TAG_ONSET}, beat: {TAG_BEAT} }} as const;\n\
+         export const TAG = {{ frame: {TAG_FRAME}, onset: {TAG_ONSET}, beat: {TAG_BEAT}, clock: {TAG_CLOCK} }} as const;\n\
          \n\
-         export const RECORD = {{ frame: {FRAME_RECORD}, onset: {ONSET_RECORD}, beat: {BEAT_RECORD} }} as const;\n\
+         export const RECORD = {{ frame: {FRAME_RECORD}, onset: {ONSET_RECORD}, beat: {BEAT_RECORD}, clock: {CLOCK_RECORD} }} as const;\n\
          \n\
          /** Field name → [offset in the record, length]. */\n\
          export const FRAME_FIELDS = {{\n{}}} as const;\n\
          \n\
          export const ONSET_FIELDS = {{\n{}}} as const;\n\
          \n\
-         export const BEAT_FIELDS = {{\n{}}} as const;\n",
+         export const BEAT_FIELDS = {{\n{}}} as const;\n\
+         \n\
+         export const CLOCK_FIELDS = {{\n{}}} as const;\n",
         fields(FeatureFrame::LAYOUT),
         fields(ONSET_LAYOUT),
         fields(BEAT_LAYOUT),
+        fields(CLOCK_LAYOUT),
     )
 }
 

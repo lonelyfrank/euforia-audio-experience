@@ -153,6 +153,11 @@ impl Analyzer {
         self.channels
     }
 
+    /// Samples (frames) analysed so far: the capture clock.
+    pub fn samples(&self) -> u64 {
+        self.sample
+    }
+
     /// The latest frame (also passed to `on_frame` when it is produced).
     pub fn frame(&self) -> &FeatureFrame {
         &self.frame
