@@ -3137,6 +3137,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "spectrum-analysis"
+version = "0.1.0"
+
+[[package]]
+name = "spectrum-analysis-wasm"
+version = "0.1.0"
+dependencies = [
+ "spectrum-analysis",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

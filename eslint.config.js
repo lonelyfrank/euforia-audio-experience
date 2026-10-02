@@ -14,6 +14,10 @@ export default tseslint.config(
     },
   },
   {
+    files: ['**/*.worklet.js'],
+    languageOptions: { globals: { ...globals.audioWorklet } },
+  },
+  {
     files: ['*.config.{js,ts}'],
     languageOptions: { globals: { ...globals.node } },
   },

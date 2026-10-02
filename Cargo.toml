@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["src-tauri", "native/audio-capture", "native/analysis"]
+members = ["src-tauri", "native/audio-capture", "native/analysis", "native/analysis-wasm"]
 
 [workspace.package]
 edition = "2021"
@@ -10,3 +10,6 @@ license = "MIT"
 # The analysis runs on the audio capture thread: keep it optimized in dev builds too.
 [profile.dev.package.spectrum-analysis]
 opt-level = 3
+
+[profile.release.package.spectrum-analysis-wasm]
+opt-level = "s"

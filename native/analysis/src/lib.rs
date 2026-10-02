@@ -31,6 +31,7 @@ mod hpss;
 mod loudness;
 mod presence;
 mod rhythm;
+pub mod wire;
 
 pub use analyzer::{Analyzer, FFT_SIZE, HOP};
 pub use beat::{BeatEvent, BEATS_PER_BAR};

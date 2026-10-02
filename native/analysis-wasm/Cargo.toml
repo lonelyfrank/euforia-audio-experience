@@ -1,0 +1,12 @@
+[package]
+name = "spectrum-analysis-wasm"
+description = "WebAssembly build of spectrum-analysis for the browser (plain C ABI, no bindgen)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+spectrum-analysis = { path = "../analysis" }

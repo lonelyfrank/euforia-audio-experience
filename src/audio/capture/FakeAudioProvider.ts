@@ -48,4 +48,9 @@ export class FakeAudioProvider extends BaseCaptureProvider {
     }
     this.ring.readLatest(out, delay);
   }
+
+  /** Samples are generated in readSamples (once per frame), then drained. */
+  drain(out: Float32Array): number {
+    return this.ring.drain(out);
+  }
 }

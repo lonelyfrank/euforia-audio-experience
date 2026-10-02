@@ -12,7 +12,7 @@ export class BrowserMicrophoneCapture extends WebAudioProvider {
     super('microphone');
   }
 
-  protected async connectSource(context: AudioContext, analyser: AnalyserNode): Promise<void> {
+  protected async connectSource(context: AudioContext, sink: AudioNode): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('Microphone access is not available in this environment.');
     }
@@ -23,8 +23,8 @@ export class BrowserMicrophoneCapture extends WebAudioProvider {
     this.stream = stream;
     this.deviceName = stream.getAudioTracks()[0]?.label || 'Microphone';
     this.source = context.createMediaStreamSource(stream);
-    // Not connected to the destination: we only listen.
-    this.source.connect(analyser);
+    // Only tapped, never played back.
+    this.source.connect(sink);
   }
 
   protected disconnectSource(): void {
