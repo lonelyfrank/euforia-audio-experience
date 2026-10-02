@@ -13,6 +13,7 @@ import { Dial, type DialMenu } from '../ui/Dial';
 import { h } from '../ui/dom';
 import { swatch } from '../ui/icons';
 import { NowPlaying, type Track } from '../ui/NowPlaying';
+import { CalibrationView } from './calibration/CalibrationView';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { findPalette, hslCss, paletteColors, PALETTES, type PaletteId } from '../visualizers/palettes';
 import { findVisualizer, visualizers } from '../visualizers/registry';
@@ -46,6 +47,7 @@ export class App {
   private readonly nowPlaying = new NowPlaying();
   private readonly dial: Dial;
   private readonly panel: SettingsPanel;
+  private readonly calibration: CalibrationView;
   private readonly paletteScratch: [Color, Color, Color] = [new Color(), new Color(), new Color()];
   private lastInput = performance.now();
   private idle = false;
@@ -57,7 +59,8 @@ export class App {
   constructor(root: HTMLElement) {
     const canvasHost = h('div', { class: 'halo-canvas' });
     this.dial = new Dial({ menu: (key) => this.menu(key), onSelect: (menu, id) => this.onSelect(menu, id), onCore: () => this.onCore() });
-    this.panel = new SettingsPanel(() => this.closePanel());
+    this.panel = new SettingsPanel(() => this.closePanel(), () => this.openCalibration());
+    this.calibration = new CalibrationView(this.audio, () => this.closeCalibration());
     this.stage = h(
       'main',
       { class: 'halo-stage' },
@@ -66,6 +69,7 @@ export class App {
       this.nowPlaying.element,
       this.dial.element,
       this.panel.element,
+      this.calibration.element,
     );
     root.append(this.stage);
 
@@ -94,6 +98,7 @@ export class App {
     const level = Math.min(1, frame.volume * 0.35 + frame.beatPulse * 0.65);
     this.dial.setLevel(level);
     this.nowPlaying.draw(level, performance.now());
+    this.calibration.frame(dt);
     return this.sceneInput;
   }
 
@@ -201,6 +206,21 @@ export class App {
   private closeAll(): void {
     this.dial.close();
     if (this.panel.isOpen) this.closePanel();
+    if (this.calibration.isOpen) this.closeCalibration();
+  }
+
+  /** Sync calibration: replaces the panel above the core until done. */
+  private openCalibration(): void {
+    this.closePanel();
+    this.dial.setPanelOpen(true);
+    void this.calibration.open();
+  }
+
+  private closeCalibration(): void {
+    const hadFocus = this.calibration.element.contains(document.activeElement);
+    this.calibration.close();
+    this.dial.setPanelOpen(false);
+    if (hadFocus) this.dial.core.focus();
   }
 
   // ---- input & auto-hide -----------------------------------------------------
@@ -214,7 +234,7 @@ export class App {
     this.stage.addEventListener('pointerdown', (event) => {
       touch();
       const target = event.target as Node;
-      if (!this.dial.element.contains(target) && !this.panel.element.contains(target)) this.closeAll();
+      if (!this.dial.element.contains(target) && !this.panel.element.contains(target) && !this.calibration.element.contains(target)) this.closeAll();
     });
     // Capture phase: any key wakes the UI before anything else handles it.
     document.addEventListener('keydown', touch, true);
@@ -227,7 +247,7 @@ export class App {
   private checkIdle(): void {
     const quiet = performance.now() - this.lastInput;
     if (this.dial.menu && quiet > COLLAPSE_DELAY) this.dial.close();
-    else if (!this.dial.menu && !this.panel.isOpen && !this.idle && quiet > settingsStore.get().hideDelay) this.setIdle(true);
+    else if (!this.dial.menu && !this.panel.isOpen && !this.calibration.isOpen && !this.idle && quiet > settingsStore.get().hideDelay) this.setIdle(true);
   }
 
   private setIdle(idle: boolean): void {
@@ -240,12 +260,12 @@ export class App {
 
   private onShortcut(action: ShortcutAction): void {
     if (action === 'escape') {
-      if (this.dial.menu || this.panel.isOpen) this.closeAll();
+      if (this.dial.menu || this.panel.isOpen || this.calibration.isOpen) this.closeAll();
       else void setFullscreen(false).then(() => this.syncFullscreen());
       return;
     }
     // Other shortcuts only act on the bare scene, not while a menu is open.
-    if (this.dial.menu || this.panel.isOpen) return;
+    if (this.dial.menu || this.panel.isOpen || this.calibration.isOpen) return;
     if (action === 'toggleFullscreen') void this.toggleFullscreen();
     if (action === 'nextVisualizer') this.cycleScene(1);
     if (action === 'previousVisualizer') this.cycleScene(-1);

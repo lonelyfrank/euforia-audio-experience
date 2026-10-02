@@ -601,3 +601,22 @@ body,
     transition-duration: 1ms !important;
   }
 }
+
+/* ---------- sync calibration ---------- */
+
+.halo-calib__line {
+  margin: 0 0 var(--space-3);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ink-muted);
+}
+
+.halo-calib__lamp {
+  width: 56px;
+  height: 56px;
+  margin: var(--space-2) auto var(--space-4);
+  border-radius: 50%;
+  background: var(--accent-live);
+  box-shadow: 0 0 32px var(--accent-live);
+  opacity: 0.12;
+}

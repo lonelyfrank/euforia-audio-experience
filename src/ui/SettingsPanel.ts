@@ -15,7 +15,7 @@ export class SettingsPanel {
   readonly element: HTMLElement;
   private readonly refreshers: Array<(s: Settings) => void> = [];
 
-  constructor(onClose: () => void) {
+  constructor(onClose: () => void, onCalibrate: () => void) {
     const close = h('button', { type: 'button', class: 'halo-panel__x', attrs: { 'aria-label': 'Close settings' }, onclick: () => onClose() }, svg(icon('close')));
     this.element = h(
       'div',
@@ -44,6 +44,7 @@ export class SettingsPanel {
       this.row('Hide cursor when idle', this.toggle('hideCursor', 'Hide cursor when idle')),
       this.row('Water reflection', this.toggle('reflection', 'Water reflection')),
       this.delayRow(),
+      this.row('Sync', h('div', { class: 'halo-seg' }, h('button', { type: 'button', textContent: 'Calibrate…', onclick: () => onCalibrate() }))),
       h('div', { class: 'halo-panel__foot' }, h('span', {}, 'Esc to close'), h('span', {}, VERSION)),
     );
     this.element.addEventListener('keydown', (e) => this.trapFocus(e));
@@ -74,9 +75,9 @@ export class SettingsPanel {
     this.refreshers.push((s) => (value.textContent = `${s.audioDelay} ms`));
     return h(
       'div',
-      { class: 'halo-row', attrs: { title: 'Delay the visuals to match the sound (Bluetooth headphones: ~150–250 ms)' } },
+      { class: 'halo-row', attrs: { title: 'Delay the visuals to match the sound (Bluetooth headphones: ~150–250 ms; negative for a slow display)' } },
       h('span', { class: 'halo-row__label' }, 'Audio delay ', value),
-      this.range('audioDelay', 0, 400, 10, 'Audio delay'),
+      this.range('audioDelay', -100, 400, 5, 'Audio delay'),
     );
   }
 

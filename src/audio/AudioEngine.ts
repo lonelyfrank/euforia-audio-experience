@@ -65,10 +65,14 @@ export class AudioEngine {
     Object.assign(this.analyzer.settings, settings);
   }
 
-  /** Output latency after the capture point (s): the scenes' analysis is delayed by it and cues are timed to it. */
+  /**
+   * Output latency after the capture point (s): cues are timed to it, and the
+   * scenes' analysis is delayed by it. Negative values (a display slower than
+   * estimated) pull the cues earlier; the analysis cannot run early.
+   */
   setDelay(seconds: number): void {
     this.delay = Math.max(seconds, 0);
-    this.timing.latency.output = this.delay;
+    this.timing.latency.output = seconds;
   }
 
   subscribe(listener: (state: AudioEngineState) => void): () => void {
