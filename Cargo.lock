@@ -103,6 +103,7 @@ name = "audio-capture"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "spectrum-analysis",
  "thiserror 2.0.21",
 ]
 
@@ -1989,6 +1990,7 @@ version = "0.1.0"
 dependencies = [
  "audio-capture",
  "serde",
+ "spectrum-analysis",
  "tauri",
  "tauri-build",
 ]

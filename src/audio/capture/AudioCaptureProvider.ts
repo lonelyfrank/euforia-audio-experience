@@ -1,4 +1,5 @@
 import type { AudioSourceId } from '../../types/audio';
+import type { AnalysisDecoder } from '../features/decode';
 
 /**
  * A live source of mono PCM samples (system loopback, microphone, or the
@@ -32,6 +33,12 @@ export interface AudioCaptureProvider {
    * their analysis runs in Rust on the capture thread.
    */
   drain?(out: Float32Array): number;
+
+  /**
+   * Native sources only: decodes the analysis records received from the
+   * capture thread since the previous call into `decoder`.
+   */
+  readFeatures?(decoder: AnalysisDecoder): void;
 
   /** Registers a callback for asynchronous failures (device lost, ...). */
   onError(listener: (message: string) => void): void;

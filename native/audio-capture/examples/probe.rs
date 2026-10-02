@@ -29,10 +29,13 @@ fn main() {
     let result = audio_capture::start(
         source,
         None,
-        move |samples| {
+        move |batch: audio_capture::Batch| {
             let mut guard = sink.lock().unwrap();
-            guard.0 += samples.len();
-            guard.1 = guard.1.max(samples.iter().fold(0f32, |m, s| m.max(s.abs())));
+            guard.0 += batch.samples.len() / batch.channels;
+            guard.1 = guard.1.max(batch.samples.iter().fold(0f32, |m, s| m.max(s.abs())));
+            if batch.gap > 0 {
+                eprintln!("lost {} frames before frame {}", batch.gap, batch.first_frame);
+            }
         },
         |error| eprintln!("stream error: {error}"),
     );
@@ -49,7 +52,7 @@ fn main() {
         std::thread::sleep(Duration::from_secs(1));
         let (count, peak) = std::mem::take(&mut *level.lock().unwrap());
         let bar = "#".repeat((peak * 40.0).round() as usize);
-        println!("{count:>6} samples/s  peak {peak:.3} {bar}");
+        println!("{count:>6} frames/s  peak {peak:.3} {bar}");
     }
     capture.stop();
 }

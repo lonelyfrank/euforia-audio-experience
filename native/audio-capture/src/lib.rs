@@ -1,7 +1,8 @@
 //! Native audio capture for the visualizer.
 //!
 //! Exposes a small, platform-agnostic API: start capturing a [`CaptureSource`]
-//! and receive mono `f32` chunks through a callback. Platform specifics live
+//! and receive interleaved `f32` batches, stamped on the capture clock,
+//! through a callback. Platform specifics live
 //! in the `platform` module:
 //!
 //! - **Windows**: system audio is captured with WASAPI loopback on the output
@@ -15,7 +16,7 @@
 mod capture;
 mod platform;
 
-pub use capture::{start, Capture};
+pub use capture::{start, Batch, Capture};
 pub use platform::list_devices;
 
 /// What to capture.

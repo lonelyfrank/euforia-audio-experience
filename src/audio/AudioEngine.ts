@@ -23,8 +23,8 @@ export interface AudioEngineState {
  *
  * `features` is the Rust analysis (spectrum-analysis): the latest frame on
  * the capture clock and the onsets/beats since the previous rendered frame.
- * Browser sources run it as WebAssembly here; native capture will run it on
- * the capture thread. The TypeScript AudioAnalyzer still feeds the scenes.
+ * Browser sources run it as WebAssembly here; native capture runs it on the
+ * capture thread. The TypeScript AudioAnalyzer still feeds the scenes.
  */
 export class AudioEngine {
   readonly analyzer = new AudioAnalyzer();
@@ -104,6 +104,7 @@ export class AudioEngine {
     this.features.begin();
     if (this.provider) this.provider.readSamples(this.samples, Math.round(this.delay * this.provider.sampleRate));
     else this.samples.fill(0);
+    this.provider?.readFeatures?.(this.features);
     if (this.provider?.drain && this.wasm) {
       let n: number;
       do {

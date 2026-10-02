@@ -13,3 +13,6 @@ thiserror = "2"
 # exposes the ".monitor" sources used to capture system audio.
 [target.'cfg(target_os = "linux")'.dependencies]
 cpal = { version = "0.18", features = ["pulseaudio"] }
+
+[dev-dependencies]
+spectrum-analysis = { path = "../analysis" }

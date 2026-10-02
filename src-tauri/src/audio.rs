@@ -1,6 +1,8 @@
 use std::sync::Mutex;
 
-use audio_capture::{Capture, CaptureSource};
+use audio_capture::{Batch, Capture, CaptureSource};
+use spectrum_analysis::wire::{self, FRAME_RECORD, MAX_RECORD};
+use spectrum_analysis::{Analyzer, Event};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
@@ -37,20 +39,36 @@ pub struct CaptureInfoDto {
     device_name: String,
 }
 
-/// Starts capturing the default device of `source`; samples are streamed on `on_samples` as raw little-endian
-/// f32 bytes (mono). Any previous capture is stopped first.
+/// Longest stretch of lost frames filled with silence for the analysis (s); beyond it the analysis restarts.
+const MAX_GAP_FILL: f32 = 1.0;
+
+/// Starts capturing the default device of `source`. Any previous capture is stopped first.
+///
+/// - `on_samples`: mono PCM for the scenes, raw little-endian f32 bytes.
+/// - `on_features`: the analysis event stream (spectrum-analysis, run here on the
+///   capture thread), raw little-endian f64 records: every onset and beat of the
+///   batch, then its latest frame (see `spectrum_analysis::wire`).
 #[tauri::command]
 pub async fn start_audio_capture(
     app: AppHandle,
     state: State<'_, AudioState>,
     source: Source,
     on_samples: Channel,
+    on_features: Channel,
 ) -> Result<CaptureInfoDto, String> {
     stop(&state);
 
-    let on_samples = move |samples: &[f32]| {
-        let bytes: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
+    let mut analysis = Analysis::default();
+    let mut mono = Vec::new();
+    let on_samples = move |batch: Batch| {
         // The webview may be gone during shutdown; nothing useful to do then.
+        if let Some(bytes) = analysis.process(&batch) {
+            let _ = on_features.send(InvokeResponseBody::Raw(bytes));
+        }
+        mono.clear();
+        let scale = 1.0 / batch.channels as f32;
+        mono.extend(batch.samples.chunks_exact(batch.channels).map(|frame| frame.iter().sum::<f32>() * scale));
+        let bytes: Vec<u8> = mono.iter().flat_map(|s| s.to_le_bytes()).collect();
         let _ = on_samples.send(InvokeResponseBody::Raw(bytes));
     };
     let on_error = move |message: String| {
@@ -74,5 +92,65 @@ fn stop(state: &AudioState) {
     let capture = state.capture.lock().ok().and_then(|mut guard| guard.take());
     if let Some(capture) = capture {
         capture.stop();
+    }
+}
+
+/// The analysis of one capture, run on its worker thread.
+#[derive(Default)]
+struct Analysis {
+    analyzer: Option<Analyzer>,
+    records: Vec<f64>,
+    record: Vec<f64>,
+    frame: Vec<f64>,
+    silence: Vec<f32>,
+}
+
+impl Analysis {
+    /// Analyses a batch; returns the encoded records to send, if any.
+    fn process(&mut self, batch: &Batch) -> Option<Vec<u8>> {
+        let channels = batch.channels;
+        let rate = batch.sample_rate as f32;
+        let analyzer = match &mut self.analyzer {
+            Some(a) if a.channels() == channels && a.sample_rate() == rate => a,
+            slot => slot.insert(Analyzer::new(rate, channels)),
+        };
+        if self.record.is_empty() {
+            self.record = vec![0.0; MAX_RECORD];
+            self.frame = vec![0.0; FRAME_RECORD];
+        }
+        let Self { records, record, frame, silence, .. } = self;
+        records.clear();
+        let mut has_frame = false;
+        let mut collect = |event: Event| {
+            if let Event::Frame(_) = event {
+                wire::encode(&event, frame);
+                has_frame = true;
+            } else {
+                let n = wire::encode(&event, record);
+                records.extend_from_slice(&record[..n]);
+            }
+        };
+        // Lost frames: silence keeps the capture clock aligned with time; a long loss restarts the analysis.
+        if batch.gap > 0 {
+            if (batch.gap as f32) < MAX_GAP_FILL * rate {
+                silence.resize(4096 * channels, 0.0);
+                let mut left = batch.gap as usize * channels;
+                while left > 0 {
+                    let n = left.min(silence.len());
+                    analyzer.push(&silence[..n], &mut collect);
+                    left -= n;
+                }
+            } else {
+                analyzer.reset();
+            }
+        }
+        analyzer.push(batch.samples, &mut collect);
+        if has_frame {
+            records.extend_from_slice(frame);
+        }
+        if records.is_empty() {
+            return None;
+        }
+        Some(records.iter().flat_map(|v| v.to_le_bytes()).collect())
     }
 }
