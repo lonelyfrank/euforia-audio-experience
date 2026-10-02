@@ -56,6 +56,15 @@ pub struct FeatureFrame {
     pub flux_high: f32,
     pub timbre_confidence: f32,
 
+    // Rhythm.
+    /// Onset detection function, 0..1 (weighted per-region flux, each region relative to its recent strongest).
+    pub onset_strength: f32,
+    /// Onsets per second over the last couple of seconds.
+    pub onset_density: f32,
+    /// Strongest periodicity of the onsets (BPM), 0 while unknown; octave errors are possible here.
+    pub tempo_bpm: f32,
+    pub tempo_confidence: f32,
+
     // Stereo.
     /// 0 mono … 1 all side (out of phase).
     pub width: f32,
@@ -156,6 +165,10 @@ layout!(FeatureFrame {
     flux_mid: f32,
     flux_high: f32,
     timbre_confidence: f32,
+    onset_strength: f32,
+    onset_density: f32,
+    tempo_bpm: f32,
+    tempo_confidence: f32,
     width: f32,
     correlation: f32,
     band_pan: [f32; BANDS],

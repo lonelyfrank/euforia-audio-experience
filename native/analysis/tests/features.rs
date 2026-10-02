@@ -1,4 +1,4 @@
-use spectrum_analysis::{Analyzer, FeatureFrame, BANDS, HOP};
+use spectrum_analysis::{Analyzer, Event, FeatureFrame, BANDS, HOP};
 
 const SR: f32 = 48_000.0;
 const TAU: f32 = std::f32::consts::TAU;
@@ -16,7 +16,11 @@ fn run(seconds: f32, mut f: impl FnMut(f32) -> (f32, f32)) -> Vec<FeatureFrame> 
     let mut frames = Vec::new();
     // Push in uneven chunks, as a capture callback would.
     for chunk in samples.chunks(2 * 441) {
-        analyzer.push(chunk, |frame| frames.push(*frame));
+        analyzer.push(chunk, |event| {
+            if let Event::Frame(frame) = event {
+                frames.push(*frame);
+            }
+        });
     }
     frames
 }
@@ -124,7 +128,11 @@ fn mono_input_has_no_stereo_confidence() {
     let mut analyzer = Analyzer::new(SR, 1);
     let samples: Vec<f32> = (0..SR as usize).map(|i| 0.5 * (TAU * 500.0 * i as f32 / SR).sin()).collect();
     let mut last = FeatureFrame::default();
-    analyzer.push(&samples, |f| last = *f);
+    analyzer.push(&samples, |event| {
+        if let Event::Frame(f) = event {
+            last = *f;
+        }
+    });
     assert_eq!(last.stereo_confidence, 0.0);
     assert!(last.presence > 0.9);
 }

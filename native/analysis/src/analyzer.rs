@@ -5,6 +5,8 @@ use crate::follow::{power_db, Follower, Relative};
 use crate::frame::{FeatureFrame, BANDS, BAND_EDGES};
 use crate::loudness::Loudness;
 use crate::presence::Presence;
+use crate::rhythm::Rhythm;
+use crate::Event;
 use crate::SILENCE_DB;
 
 /// Samples between two analyses (≈ 5.3 ms at 48 kHz): the time resolution of every event.
@@ -72,6 +74,7 @@ pub struct Analyzer {
     width: Follower,
     correlation: Follower,
     pan: [Follower; BANDS],
+    rhythm: Rhythm,
 
     frame: FeatureFrame,
 }
@@ -119,6 +122,7 @@ impl Analyzer {
             width: Follower::symmetric(STEREO_TAU, 0.0),
             correlation: Follower::symmetric(STEREO_TAU, 1.0),
             pan: [Follower::symmetric(STEREO_TAU, 0.0); BANDS],
+            rhythm: Rhythm::new(HOP as f32 / sample_rate),
             frame: FeatureFrame::default(),
         }
     }
@@ -137,8 +141,10 @@ impl Analyzer {
     }
 
     /// Feeds interleaved samples (any count; a trailing partial frame is ignored)
-    /// and calls `on_frame` once per completed hop, in order. Allocation-free.
-    pub fn push(&mut self, interleaved: &[f32], mut on_frame: impl FnMut(&FeatureFrame)) {
+    /// and reports events in time order: for each completed hop, the onset
+    /// found at the previous hop (if any), then the hop's `FeatureFrame`.
+    /// Allocation-free.
+    pub fn push(&mut self, interleaved: &[f32], mut on_event: impl FnMut(Event)) {
         let channels = self.channels;
         for frame in interleaved.chunks_exact(channels) {
             let l = frame[0];
@@ -155,7 +161,17 @@ impl Analyzer {
             if self.since_hop == HOP {
                 self.since_hop = 0;
                 self.analyze();
-                on_frame(&self.frame);
+                let f = &self.frame;
+                let (reading, onset) = self.rhythm.hop([f.flux_low, f.flux_mid, f.flux_high], f.silent || !f.sounding, f.sample, self.sample_rate, HOP);
+                if let Some(onset) = onset {
+                    on_event(Event::Onset(onset));
+                }
+                let f = &mut self.frame;
+                f.onset_strength = reading.onset_strength;
+                f.onset_density = reading.onset_density;
+                f.tempo_bpm = reading.tempo_bpm;
+                f.tempo_confidence = reading.tempo_confidence * f.presence;
+                on_event(Event::Frame(&self.frame));
             }
         }
     }
