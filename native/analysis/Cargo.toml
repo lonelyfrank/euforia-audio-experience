@@ -1,0 +1,10 @@
+[package]
+name = "spectrum-analysis"
+description = "Live music analysis for Spectrum: features, rhythm and structure as timestamped events, no rendering or I/O"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# No dependencies on purpose: the same code runs on the native capture thread
+# and in the browser as WebAssembly, and can be embedded by other hosts.
+[dependencies]

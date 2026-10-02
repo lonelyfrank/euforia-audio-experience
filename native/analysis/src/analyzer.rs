@@ -1,0 +1,315 @@
+//! The live analyzer: interleaved samples in, one `FeatureFrame` per hop out.
+
+use crate::fft::Fft;
+use crate::follow::{power_db, Follower, Relative};
+use crate::frame::{FeatureFrame, BANDS, BAND_EDGES};
+use crate::loudness::Loudness;
+use crate::presence::Presence;
+use crate::SILENCE_DB;
+
+/// Samples between two analyses (≈ 5.3 ms at 48 kHz): the time resolution of every event.
+pub const HOP: usize = 256;
+/// Analysis window (≈ 43 ms at 48 kHz).
+pub const FFT_SIZE: usize = 2048;
+
+/// Peak below which the window is digitally silent.
+const SILENCE_PEAK: f32 = 1e-4;
+/// A sample at or above this magnitude counts as clipped.
+const CLIP_LEVEL: f32 = 0.999;
+/// Clipped samples per hop that read as fully clipping; how long clipping is held (s).
+const CLIP_FULL: f32 = 3.0;
+const CLIP_HOLD: f32 = 1.0;
+/// Memory (s) the band levels are related to.
+const BAND_HISTORY: f32 = 4.0;
+/// Memory (s) of the song's loudness range.
+const LOUDNESS_HISTORY: f32 = 20.0;
+/// Per-bin running level (s) transients are measured against.
+const FLUX_BIN_TAU: f32 = 0.06;
+/// Flux region edges (Hz): low | mid | high.
+const FLUX_EDGES: [f32; 4] = [30.0, 250.0, 2000.0, 16000.0];
+/// Spectral flatness range (Hz) and the flatness of white noise (Hann, Rayleigh bins), read as "fully noisy".
+const FLATNESS_RANGE: (f32, f32) = (250.0, 8000.0);
+const NOISE_FLATNESS: f32 = 0.56;
+/// Centroid / rolloff range (Hz).
+const SHAPE_RANGE: (f32, f32) = (20.0, 16000.0);
+const STEREO_TAU: f32 = 0.15;
+/// Minimum power (linear, per bin) used in logs.
+const TINY: f32 = 1e-12;
+
+pub struct Analyzer {
+    sample_rate: f32,
+    channels: usize,
+    /// Rings of the last FFT_SIZE samples of the left and right (or only) channel.
+    left: Vec<f32>,
+    right: Vec<f32>,
+    write: usize,
+    since_hop: usize,
+    sample: u64,
+    hop_clipped: u32,
+
+    fft: Fft,
+    window: Vec<f32>,
+    power_scale: f32,
+    a: Vec<f32>,
+    b: Vec<f32>,
+    spec_l: Vec<(f32, f32)>,
+    spec_r: Vec<(f32, f32)>,
+    /// Power per bin, mean of the channels.
+    power: Vec<f32>,
+    bin_level: Vec<f32>,
+    bin_level_ready: bool,
+    bin_hz: f32,
+    band_bins: [(usize, usize); BANDS],
+    flux_bins: [(usize, usize); 3],
+    flatness_bins: (usize, usize),
+    shape_bins: (usize, usize),
+
+    band_rel: [Relative; BANDS],
+    loudness: Loudness,
+    loudness_rel: Relative,
+    presence: Presence,
+    clipping: Follower,
+    width: Follower,
+    correlation: Follower,
+    pan: [Follower; BANDS],
+
+    frame: FeatureFrame,
+}
+
+impl Analyzer {
+    /// `channels`: interleaved channels pushed (1 = mono; with more, the first two are left/right).
+    pub fn new(sample_rate: f32, channels: usize) -> Self {
+        let channels = channels.max(1);
+        let bins = FFT_SIZE / 2 + 1;
+        let window: Vec<f32> = (0..FFT_SIZE).map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (FFT_SIZE - 1) as f32).cos()).collect();
+        let window_energy: f32 = window.iter().map(|w| w * w).sum();
+        let bin_hz = sample_rate / FFT_SIZE as f32;
+        let bin = |hz: f32| ((hz / bin_hz).round() as usize).clamp(1, bins - 1);
+        let range = |from: f32, to: f32| (bin(from), bin(to).max(bin(from) + 1));
+        Self {
+            sample_rate,
+            channels,
+            left: vec![0.0; FFT_SIZE],
+            right: vec![0.0; FFT_SIZE],
+            write: 0,
+            since_hop: 0,
+            sample: 0,
+            hop_clipped: 0,
+            fft: Fft::new(FFT_SIZE),
+            window,
+            // One-sided bin powers → mean square of the signal (Parseval with the window's energy).
+            power_scale: 2.0 / (FFT_SIZE as f32 * window_energy),
+            a: vec![0.0; FFT_SIZE],
+            b: vec![0.0; FFT_SIZE],
+            spec_l: vec![(0.0, 0.0); bins],
+            spec_r: vec![(0.0, 0.0); bins],
+            power: vec![0.0; bins],
+            bin_level: vec![SILENCE_DB; bins],
+            bin_level_ready: false,
+            bin_hz,
+            band_bins: std::array::from_fn(|i| range(BAND_EDGES[i], BAND_EDGES[i + 1].min(sample_rate / 2.0))),
+            flux_bins: std::array::from_fn(|i| range(FLUX_EDGES[i], FLUX_EDGES[i + 1].min(sample_rate / 2.0))),
+            flatness_bins: range(FLATNESS_RANGE.0, FLATNESS_RANGE.1),
+            shape_bins: range(SHAPE_RANGE.0, SHAPE_RANGE.1.min(sample_rate / 2.0)),
+            band_rel: [Relative::new(BAND_HISTORY); BANDS],
+            loudness: Loudness::new(sample_rate, channels, HOP),
+            loudness_rel: Relative::new(LOUDNESS_HISTORY),
+            presence: Presence::default(),
+            clipping: Follower::new(0.0, CLIP_HOLD, 0.0),
+            width: Follower::symmetric(STEREO_TAU, 0.0),
+            correlation: Follower::symmetric(STEREO_TAU, 1.0),
+            pan: [Follower::symmetric(STEREO_TAU, 0.0); BANDS],
+            frame: FeatureFrame::default(),
+        }
+    }
+
+    pub fn sample_rate(&self) -> f32 {
+        self.sample_rate
+    }
+
+    pub fn channels(&self) -> usize {
+        self.channels
+    }
+
+    /// The latest frame (also passed to `on_frame` when it is produced).
+    pub fn frame(&self) -> &FeatureFrame {
+        &self.frame
+    }
+
+    /// Feeds interleaved samples (any count; a trailing partial frame is ignored)
+    /// and calls `on_frame` once per completed hop, in order. Allocation-free.
+    pub fn push(&mut self, interleaved: &[f32], mut on_frame: impl FnMut(&FeatureFrame)) {
+        let channels = self.channels;
+        for frame in interleaved.chunks_exact(channels) {
+            let l = frame[0];
+            let r = if channels > 1 { frame[1] } else { l };
+            self.left[self.write] = l;
+            self.right[self.write] = r;
+            self.write = (self.write + 1) % FFT_SIZE;
+            if frame.iter().any(|x| x.abs() >= CLIP_LEVEL) {
+                self.hop_clipped += 1;
+            }
+            self.loudness.sample(frame);
+            self.sample += 1;
+            self.since_hop += 1;
+            if self.since_hop == HOP {
+                self.since_hop = 0;
+                self.analyze();
+                on_frame(&self.frame);
+            }
+        }
+    }
+
+    /// Forgets the signal (a new source); the learned noise floor is kept.
+    pub fn reset(&mut self) {
+        let floor = self.presence.floor;
+        *self = Self::new(self.sample_rate, self.channels);
+        self.presence.floor = floor;
+    }
+
+    fn analyze(&mut self) {
+        let dt = HOP as f32 / self.sample_rate;
+        let mut peak = 0.0f32;
+        for i in 0..FFT_SIZE {
+            let j = (self.write + i) % FFT_SIZE;
+            peak = peak.max(self.left[j].abs()).max(self.right[j].abs());
+            self.a[i] = self.left[j] * self.window[i];
+            self.b[i] = self.right[j] * self.window[i];
+        }
+        self.fft.stereo(&self.a, &self.b, &mut self.spec_l, &mut self.spec_r);
+        for (k, p) in self.power.iter_mut().enumerate() {
+            // Mean of the channels' powers: what is heard, even for out-of-phase content.
+            let ((lr, li), (rr, ri)) = (self.spec_l[k], self.spec_r[k]);
+            *p = 0.5 * (lr * lr + li * li + rr * rr + ri * ri) * self.power_scale;
+        }
+
+        let f = &mut self.frame;
+        f.sample = self.sample;
+        f.time = self.sample as f64 / f64::from(self.sample_rate);
+        f.silent = peak < SILENCE_PEAK;
+
+        // Quality: presence against the noise floor, clipping.
+        let total: f32 = self.power[self.shape_bins.0..self.shape_bins.1].iter().sum();
+        let mix_db = if f.silent { SILENCE_DB } else { power_db(total) };
+        f.presence = self.presence.update(mix_db, f.silent, dt);
+        f.sounding = self.presence.open;
+        f.noise_floor_db = self.presence.floor;
+        f.clipping = self.clipping.update((self.hop_clipped as f32 / CLIP_FULL).min(1.0), dt);
+        self.hop_clipped = 0;
+        let sounding = f.sounding;
+
+        // Energy.
+        for (i, &(from, to)) in self.band_bins.iter().enumerate() {
+            let db = if f.silent { SILENCE_DB } else { power_db(self.power[from..to].iter().sum()) };
+            f.band_db[i] = db;
+            f.band_rel[i] = if sounding { self.band_rel[i].update(db, dt) } else { 0.0 };
+        }
+        let ready = self.band_rel.iter().map(Relative::ready).sum::<f32>() / BANDS as f32;
+        f.energy_confidence = f.presence * ready;
+        let loud = self.loudness.hop(dt);
+        f.loudness_momentary = loud.momentary;
+        f.loudness_short = loud.short;
+        f.loudness_long = loud.long;
+        f.loudness_slope = loud.slope;
+        f.loudness_curvature = loud.curvature;
+        f.loudness_rel = if sounding { self.loudness_rel.update(loud.momentary, dt) } else { 0.0 };
+
+        // Timbre.
+        let (from, to) = self.shape_bins;
+        let (mut sum, mut weighted) = (0.0f32, 0.0f32);
+        for k in from..to {
+            sum += self.power[k];
+            weighted += self.power[k] * k as f32 * self.bin_hz;
+        }
+        if sum > TINY && !f.silent {
+            f.centroid_hz = weighted / sum;
+            let mut cumulative = 0.0;
+            for k in from..to {
+                cumulative += self.power[k];
+                if cumulative >= 0.85 * sum {
+                    f.rolloff_hz = k as f32 * self.bin_hz;
+                    break;
+                }
+            }
+        } else {
+            f.centroid_hz = 0.0;
+            f.rolloff_hz = 0.0;
+        }
+        let (from, to) = self.flatness_bins;
+        let (mut log_sum, mut lin_sum) = (0.0f32, 0.0f32);
+        for k in from..to {
+            let p = self.power[k].max(TINY);
+            log_sum += p.ln();
+            lin_sum += p;
+        }
+        let n = (to - from) as f32;
+        f.flatness = if f.silent { 0.0 } else { ((log_sum / n).exp() / (lin_sum / n) / NOISE_FLATNESS).clamp(0.0, 1.0) };
+        self.measure_flux(dt);
+        let f = &mut self.frame;
+        f.timbre_confidence = f.presence;
+
+        // Stereo.
+        if self.channels > 1 && !f.silent {
+            let (mut el, mut er, mut cross) = (0.0f32, 0.0f32, 0.0f32);
+            for (i, &(from, to)) in self.band_bins.iter().enumerate() {
+                let (mut bl, mut br) = (0.0f32, 0.0f32);
+                for k in from..to {
+                    let ((lr, li), (rr, ri)) = (self.spec_l[k], self.spec_r[k]);
+                    bl += lr * lr + li * li;
+                    br += rr * rr + ri * ri;
+                    cross += lr * rr + li * ri;
+                }
+                el += bl;
+                er += br;
+                let pan = if bl + br > TINY { (br - bl) / (br + bl) } else { 0.0 };
+                f.band_pan[i] = self.pan[i].update(pan, dt);
+            }
+            let correlation = if el * er > TINY * TINY { (cross / (el * er).sqrt()).clamp(-1.0, 1.0) } else { 1.0 };
+            let (mid, side) = ((el + er + 2.0 * cross) / 4.0, (el + er - 2.0 * cross) / 4.0);
+            let width = if mid + side > TINY { (side / (mid + side)).clamp(0.0, 1.0) } else { 0.0 };
+            f.correlation = self.correlation.update(correlation, dt);
+            f.width = self.width.update(width, dt);
+            f.stereo_confidence = f.presence;
+        } else {
+            f.stereo_confidence = 0.0;
+            if self.channels == 1 {
+                f.correlation = 1.0;
+                f.width = 0.0;
+                f.band_pan = [0.0; BANDS];
+            }
+        }
+    }
+
+    /// Spectral flux: how far each bin rises above its own ~60 ms running level (dB), averaged per region.
+    fn measure_flux(&mut self, dt: f32) {
+        let f = &mut self.frame;
+        let k_follow = 1.0 - (-dt / FLUX_BIN_TAU).exp();
+        let mut regions = [0.0f32; 3];
+        let (lo, hi) = (self.flux_bins[0].0, self.flux_bins[2].1);
+        for k in lo..hi {
+            let db = power_db(self.power[k].max(TINY));
+            if !self.bin_level_ready {
+                self.bin_level[k] = db;
+                continue;
+            }
+            let rise = (db - self.bin_level[k]).max(0.0);
+            self.bin_level[k] += (db - self.bin_level[k]) * k_follow;
+            let region = if k < self.flux_bins[1].0 { 0 } else if k < self.flux_bins[2].0 { 1 } else { 2 };
+            if db > SILENCE_DB + 1.0 {
+                regions[region] += rise;
+            }
+        }
+        self.bin_level_ready = true;
+        let count = |(from, to): (usize, usize)| (to - from).max(1) as f32;
+        f.flux_low = regions[0] / count(self.flux_bins[0]);
+        f.flux_mid = regions[1] / count(self.flux_bins[1]);
+        f.flux_high = regions[2] / count(self.flux_bins[2]);
+        f.flux = (regions[0] + regions[1] + regions[2]) / (hi - lo).max(1) as f32;
+        if f.silent {
+            f.flux = 0.0;
+            f.flux_low = 0.0;
+            f.flux_mid = 0.0;
+            f.flux_high = 0.0;
+        }
+    }
+}
