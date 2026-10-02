@@ -370,7 +370,7 @@ class DebugOverlay {
     ctx.fillStyle = COLORS.mid;
     ctx.fillText(
       `${section.toUpperCase()} #${f.sectionId}${f.sectionReturn >= 0 ? ` (returns #${f.sectionReturn})` : ''} · ${f.sectionBars} bars · bar ${f.barIndex} · phrase ${f.phraseBar + 1}/${f.phraseBars} next in ${nextPhrase} · ` +
-        `novelty ${f.novelty.toFixed(2)} · sim 4/8/16 ${[...f.similarity].map((x) => x.toFixed(2)).join('/')} · drop ${f.dropExpected.toFixed(2)} · ${GENRE_NAMES[genre]} (${f.structureConfidence.toFixed(2)})`,
+        `novelty ${f.novelty.toFixed(2)} · sim 4/8/16 ${[...f.similarity].map((x) => x.toFixed(2)).join('/')} · drop ${f.dropExpected.toFixed(2)} · ${GENRE_NAMES[genre]} ${f.genre[genre].toFixed(2)} · conf ${f.structureConfidence.toFixed(2)}`,
       0,
       ANALYSIS_TOP + ROW * 5,
     );

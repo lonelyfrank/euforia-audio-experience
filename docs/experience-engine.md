@@ -69,7 +69,9 @@ bars before, `section_return`, `drop_expected`, genre priors).
   of sound.
 - Genre priors (four-on-the-floor, drum and bass, hip-hop, band, ambient,
   acoustic): fuzzy evidence from tempo, density, tonality and percussion,
-  learned over ~16 bars; they set the phrase length (8/16 in electronic
+  learned over ~16 bars (from tempo, grid confidence, onset density and
+  tonality — not the harmonic/percussive share, which is a share of power and
+  stays low in any mix with sustained pads or bass); they set the phrase length (8/16 in electronic
   music, 4 in ambient/acoustic) and how eagerly builds are read.
 
 Measured on synthetic tracks (tests/structure.rs): a 60-bar dance track

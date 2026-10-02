@@ -178,3 +178,15 @@ fn short_cycles_after_beatless_ambient() {
         assert!((-BAR / 2.0..limit).contains(&late), "{:?} at {:.2} s, expected {t}", s.kind, s.time);
     }
 }
+
+#[test]
+fn learns_the_genre_while_listening() {
+    let (_, frames) = run(30.0 * BAR);
+    let f = at(&frames, 29.0 * BAR);
+    // A 128 BPM four-on-the-floor track: that prior leads clearly, and grows with listening.
+    let top = (0..6).max_by(|&a, &b| f.genre[a].total_cmp(&f.genre[b])).unwrap();
+    assert_eq!(spectrum_analysis::GENRES[top], "four-on-the-floor", "{:?}", f.genre);
+    assert!(f.genre[0] > 0.5, "{:?}", f.genre);
+    assert!(at(&frames, 8.0 * BAR).genre[0] < f.genre[0]);
+    assert_eq!(f.phrase_bars, 16, "drops of electronic music run in 16-bar phrases");
+}

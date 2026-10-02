@@ -506,17 +506,18 @@ impl Structure {
         let bar = self.bar_vector(0);
         let bpm = if self.period > 0.0 { (60.0 / self.period) as f32 } else { 0.0 };
         let grid = self.grid_confidence;
-        let percussive = bar[12];
+        // Rhythm evidence comes from the grid and the onset density: the harmonic/percussive share is a
+        // share of power, low in any mix with sustained pads or bass, so it says little about the genre.
         let density = bar[13] * 8.0;
         let tonal = 1.0 - bar[11];
         let tri = |x: f32, a: f32, b: f32, c: f32, d: f32| if x <= a || x >= d { 0.0 } else if x < b { (x - a) / (b - a) } else if x <= c { 1.0 } else { (d - x) / (d - c) };
         let evidence = [
             grid * tri(bpm, 110.0, 118.0, 135.0, 145.0) * tri(density, 1.5, 3.0, 8.0, 12.0),
             grid * (tri(bpm, 155.0, 165.0, 180.0, 190.0) + tri(bpm, 78.0, 82.0, 90.0, 95.0) * tri(density, 5.0, 7.0, 15.0, 20.0)).min(1.0),
-            grid * tri(bpm, 65.0, 75.0, 100.0, 108.0) * tri(percussive, 0.1, 0.2, 1.0, 1.1),
+            grid * tri(bpm, 65.0, 75.0, 100.0, 108.0) * tri(density, 1.0, 2.0, 6.0, 9.0),
             grid * tri(bpm, 90.0, 100.0, 160.0, 175.0) * tri(tonal, 0.2, 0.4, 0.9, 1.0),
             (1.0 - grid) * tri(density, -1.0, 0.0, 1.0, 2.5),
-            (1.0 - grid * 0.5) * tri(tonal, 0.5, 0.7, 1.0, 1.1) * tri(percussive, -0.1, 0.0, 0.15, 0.3),
+            (1.0 - grid * 0.8) * tri(tonal, 0.5, 0.7, 1.0, 1.1) * tri(density, -1.0, 0.0, 3.0, 5.0),
         ];
         let k = 1.0 - (-1.0 / GENRE_BARS).exp();
         for (g, e) in self.genre.iter_mut().zip(evidence) {
