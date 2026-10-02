@@ -1,3 +1,4 @@
+import type { ModulationState } from '../../director/types';
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, Vector3, type WebGLRenderer } from 'three';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
@@ -13,7 +14,7 @@ export interface ParticleFieldParams {
   count: number;
   depth: number;
   spread: number;
-  /** Distance flown per beat of the song (units). */
+  /** Reference travel distance at 120 BPM (units); scaled by musical motion. */
   beatDistance: number;
   size: number;
   swirl: number;
@@ -44,6 +45,8 @@ const vertexShader = /* glsl */ `
   uniform float uSpread;
   uniform float uSize;
   uniform float uWeight;
+  uniform float uTension;
+  uniform float uRelease;
   uniform float uShape;
   uniform float uLobes;
   uniform float uRing;
@@ -79,7 +82,8 @@ const vertexShader = /* glsl */ `
     // Most gather on SHELLS concentric shells, so the voices' shapes read as clean polar traces;
     // the rest stay loose dust.
     float onShell = step(fract(aSeed.x * 97.13 + aSeed.z * 13.7), 0.6);
-    float band = mix(pow(aSeed.y, 0.7), (floor(aSeed.y * ${SHELLS}.0) + 0.5) / ${SHELLS}.0, onShell);
+    float cluster = mix(onShell, 1.0, uTension * 0.85);
+    float band = mix(pow(aSeed.y, 0.7), (floor(aSeed.y * ${SHELLS}.0) + 0.5) / ${SHELLS}.0, cluster);
     float level = texture2D(tSpectrum, vec2(band, 0.5)).r;
 
     // Polar layout around the flight axis, swirling with the mids (twist grows with depth).
@@ -88,9 +92,12 @@ const vertexShader = /* glsl */ `
     float radius = (0.08 + band) * uSpread;
     // The cross-section takes the voices' shape: bass line in the core, lead further out.
     radius *= 1.0 + uShape * section(band < 0.45 ? 0.0 : 1.0, turn);
-    // Weight expands the cloud; kicks roll away as rings; each band breathes with its level.
+    // Weight compresses the core; kicks roll away as rings; each band breathes with its level.
     float age = -z / (uDepth * ${TRACE_REACH});
-    radius *= 1.0 + uWeight * 0.25 + uRing * traceAt(0.0, 1.0, age) * step(age, 1.0) + level * 0.12;
+    radius *= 1.0 - uWeight * 0.12 * (1.0 - band) + uRing * traceAt(0.0, 1.0, age) * step(age, 1.0) + level * 0.12;
+    // Compressed shells release by different distances: explosion, then a gradual reorganisation.
+    float burst = sin((1.0 - uRelease) * 3.14159265) * uRelease;
+    radius += uSpread * burst * (0.3 + band * 0.6);
     vec3 position = vec3(cos(angle) * radius, sin(angle) * radius, z);
 
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
@@ -116,7 +123,6 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uColorB;
   uniform vec3 uSparkColor;
   uniform float uEnergy;
-  uniform float uFlash;
 
   varying float vMix;
   varying float vSpark;
@@ -129,7 +135,7 @@ const fragmentShader = /* glsl */ `
     if (d > 0.5) discard;
     float glow = smoothstep(0.5, 0.0, d);
     vec3 color = mix(mix(uColorA, uColorB, vMix), uSparkColor, step(0.001, vSpark));
-    gl_FragColor = vec4(color * glow * vFade * (0.4 + uEnergy * 0.6 + uFlash) * vGlow, 1.0);
+    gl_FragColor = vec4(color * glow * vFade * (0.4 + uEnergy * 0.6) * vGlow, 1.0);
   }
 `;
 
@@ -139,7 +145,7 @@ const fragmentShader = /* glsl */ `
  * travel distance each frame. Nothing moves without sound.
  * Particles stand for parts of the spectrum (core = bass, rim = highs) and
  * light up with them; the cross-section takes the shape of the bass line and
- * the lead; the flight advances with the beats; kicks roll away as rings;
+ * the lead; motion drives the flight; kicks roll away as rings;
  * mids swirl; hi-hats bring sparks; energy sets how much of the field glows.
  */
 export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams> {
@@ -152,7 +158,6 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
   private sparkTravel = 0;
   private swirlPhase = 0;
   private drift = 0;
-  private lastBeats = -1;
   private density = 0.25;
 
   init({ quality, renderer }: VisualizerContext): void {
@@ -184,12 +189,13 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
         uSpread: { value: p.spread },
         uSize: { value: p.size },
         uWeight: { value: 0 },
+        uTension: { value: 0 },
+        uRelease: { value: 0 },
         uShape: { value: 0 },
         uLobes: { value: 3 },
         uRing: { value: 0 },
         uSparks: { value: 0 },
         uEnergy: { value: 0 },
-        uFlash: { value: 0 },
         uDensity: { value: 0.25 },
         uSwirl: { value: p.swirl },
         uFlow: { value: 0 },
@@ -215,27 +221,25 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
     (u.uSparkColor.value as Color).copy(highlight).lerp(WHITE, 0.5);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
     const u = this.material.uniforms;
     const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
 
-    // The flight advances with the beats while music plays; still in silence.
-    const stepBeats = this.lastBeats < 0 ? 0 : Math.max(music.beats - this.lastBeats, 0);
-    this.lastBeats = music.beats;
-    const advance = stepBeats * p.beatDistance * smoothstep(0.02, 0.3, density) * (1 + 0.3 * tension);
+    // Flow speed follows musical motion, with bass inertia; BPM is only a trace clock.
+    const moving = (0.03 + 1.5 * motion) * response.audible;
+    const advance = dt * 2 * p.beatDistance * moving / (1 + 0.35 * weight);
     this.travel += advance;
     this.sparkTravel += advance * 2 + dt * detail * music.highPercussion * 12;
     // MESO: busy music stirs the matter; a held chord lets it hang.
-    this.swirlPhase += dt * flow * music.pace * 0.02 * p.swirl * (0.6 + 0.8 * motion) * (vary[7] < 0.5 ? -1 : 1);
-    this.drift += dt * flow * music.pace;
-    // Emission eases towards the energy and, over seconds, how full the sound is (MACRO): a lone
-    // voice is a sparse field, a full mix a dense one; a faint rest in silence.
-    this.density += (0.25 + density * 0.35 + openness * 0.3 - this.density) * Math.min(dt * 2, 1);
+    this.swirlPhase += dt * (modulation?.rotation ?? flow) * 0.03 * p.swirl * moving * (vary[7] < 0.5 ? -1 : 1);
+    this.drift += dt * flow * moving;
+    // Energy controls emission; openness only controls spatial dispersion.
+    this.density += ((modulation ? 0.05 + 0.8 * modulation.particleEmission : 0.25 + density * 0.6) - this.density) * Math.min(dt * 2, 1);
 
     this.traces.record(0, traceValue(frame, response, 1, sampleSpectrumRange(frame.spectrum, 0, LOW_END)));
-    this.traces.update(music.tempo, dt);
+    this.traces.update(music.tempo / (modulation ? 0.4 + 2 * modulation.persistence : 1), dt);
     this.voices.update(frame, music, dt, p.digital);
     this.spectrum.write(frame.spectrum);
 
@@ -244,20 +248,23 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
     u.uSwirlPhase.value = this.swirlPhase;
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
-    // Mass, plus a short afterglow of the last kicks.
-    u.uWeight.value = weight + 0.25 * trace;
-    u.uShape.value = p.shape * (0.3 * weight + 0.7 * flow);
+    // Openness disperses matter; tension clusters it onto the existing spectrum shells.
+    u.uSpread.value = p.spread * (0.65 + 0.65 * openness) * (1 - 0.3 * tension);
+    u.uTension.value = tension;
+    u.uRelease.value = music.drop;
+    u.uWeight.value = modulation?.scale ?? weight;
+    u.uShape.value = p.shape * (modulation ? 1.7 * modulation.distortion : 0.3 * weight + 0.7 * flow);
     u.uLobes.value = (2 + 4 * vary[0]) * (1 + 0.4 * Math.max(Math.log2(music.bassPitch / 40), 0));
-    u.uRing.value = p.ringTrace * (1 + music.drop);
+    u.uRing.value = p.ringTrace * (0.7 + 0.6 * trace);
     u.uSparks.value = detail * (0.2 + 0.8 * music.highPercussion);
-    u.uFlow.value = flow;
+    u.uFlow.value = modulation?.turbulence ?? flow;
     u.uEnergy.value = density;
-    u.uFlash.value = 0.6 * music.drop;
     u.uDensity.value = this.density;
     (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
 
+    if (modulation) this.camera.position.z = this.preset.camera.distance * (1.15 - 0.3 * modulation.depth);
     // The camera sways with the mids only.
-    const sway = this.preset.camera.drift;
+    const sway = this.preset.camera.drift * (modulation ? 2 * modulation.cameraMotion : 1);
     this.camera.rotation.z = Math.sin(this.drift * 0.05) * 0.3 * sway;
     this.camera.position.x = Math.sin(this.drift * 0.13) * 1.5 * sway;
     this.camera.position.y = Math.cos(this.drift * 0.11) * 1.5 * sway;
@@ -275,9 +282,4 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
     this.spectrum.dispose();
     super.dispose();
   }
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
-  return t * t * (3 - 2 * t);
 }

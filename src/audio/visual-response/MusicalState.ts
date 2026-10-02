@@ -1,5 +1,4 @@
 import type { MusicalState, MusicContextFrame } from '../../types/audio';
-import { Envelope } from './Envelope';
 
 /** A new reading must hold this long (s) before the state changes… */
 const CONFIRM = 0.8;
@@ -7,9 +6,6 @@ const CONFIRM = 0.8;
 const MIN_DWELL = 2.5;
 /** Silence is confirmed faster: the scene should fall asleep with the sound. */
 const SILENCE_CONFIRM = 0.3;
-/** Intensity trend: medium vs slow followers (s). */
-const TREND_FAST = 1.5;
-const TREND_SLOW = 4;
 
 /**
  * Coarse state of the music over seconds (silent, calm, rising, active, peak,
@@ -19,12 +15,12 @@ const TREND_SLOW = 4;
  */
 export class MusicalStateTracker {
   state: MusicalState = 'silent';
+  previousState: MusicalState = 'silent';
+  confidence = 1;
   /** Seconds spent in the current state. */
   time = 0;
   private candidate: MusicalState = 'silent';
   private candidateFor = 0;
-  private readonly fast = new Envelope(TREND_FAST, TREND_FAST);
-  private readonly slow = new Envelope(TREND_SLOW, TREND_SLOW);
 
   constructor() {
     this.reset();
@@ -32,8 +28,10 @@ export class MusicalStateTracker {
 
   update(presence: number, music: MusicContextFrame, dt: number): MusicalState {
     this.time += dt;
-    const trend = presence > 0.5 ? this.fast.update(music.intensity, dt) - this.slow.update(music.intensity, dt) : 0;
+    const trend = presence > 0.5 ? music.energyTrend : 0;
     const reading = this.read(presence, music, trend);
+    const support = reading === this.state ? 1 : 0;
+    this.confidence += (support - this.confidence) * (1 - Math.exp(-dt / 0.8));
     if (reading === this.state) {
       this.candidateFor = 0;
       return this.state;
@@ -45,7 +43,9 @@ export class MusicalStateTracker {
     this.candidateFor += dt;
     const silence = reading === 'silent' || this.state === 'silent';
     if (this.candidateFor >= (silence ? SILENCE_CONFIRM : CONFIRM) && (silence || this.time >= MIN_DWELL)) {
+      this.previousState = this.state;
       this.state = reading;
+      this.confidence = 0.65;
       this.time = 0;
       this.candidateFor = 0;
     }
@@ -53,10 +53,9 @@ export class MusicalStateTracker {
   }
 
   reset(): void {
-    this.state = this.candidate = 'silent';
+    this.previousState = this.state = this.candidate = 'silent';
+    this.confidence = 1;
     this.time = this.candidateFor = 0;
-    this.fast.reset(0.5);
-    this.slow.reset(0.5);
   }
 
   /** What the music looks like right now; each threshold is easier to stay in than to enter. */
@@ -66,8 +65,11 @@ export class MusicalStateTracker {
     // A loud section stays a peak even when it brightens; a quiet one is calm even right after a fall.
     if (music.drop > 0.5 || music.intensity > (s === 'peak' ? 0.65 : 0.82)) return 'peak';
     if (music.build > (s === 'rising' ? 0.2 : 0.35)) return 'rising';
-    if (music.intensity < (s === 'calm' ? 0.42 : 0.3)) return 'calm';
-    if (trend < (s === 'falling' ? -0.03 : -0.08)) return 'falling';
+    if (trend < (s === 'falling' ? -0.06 : -0.16) && music.recentPeak > 0.65) return 'falling';
+    // Relative intensity can settle near zero in a long, level groove. Its rhythm is still active.
+    const percussion = Math.max(music.lowPercussion, music.midPercussion, music.highPercussion);
+    if (music.intensity < (s === 'calm' ? 0.42 : 0.3) && percussion < (s === 'calm' ? 0.3 : 0.25)) return 'calm';
+    if (music.tonality > 0.7 && percussion < 0.1) return 'calm';
     return 'active';
   }
 }

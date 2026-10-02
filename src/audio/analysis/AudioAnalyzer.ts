@@ -1,4 +1,5 @@
 import type { AudioFrame } from '../../types/audio';
+import { measureSpectralShape } from './SpectralFeatures';
 import { BeatDetector } from './BeatDetector';
 import { FFT } from './FFT';
 import { DynamicRange, PeakTracker, SILENCE_DB, Smoother } from './Smoother';
@@ -136,6 +137,7 @@ export class AudioAnalyzer {
     }
     this.powerScale = (2 / windowSum) ** 2;
     this.frame = {
+      centroidHz: 0, rolloffHz: 0, spreadHz: 0, rms: 0,
       time: 0,
       sampleRate: 0,
       silent: true,
@@ -211,6 +213,7 @@ export class AudioAnalyzer {
     frame.peak = Math.min(peak, 1);
     frame.silent = peak < SILENCE_PEAK;
     const volumeDb = meanSquareDb(samples, Math.round(VOLUME_WINDOW * sampleRate));
+    frame.rms = frame.silent ? 0 : Math.sqrt(10 ** (volumeDb / 10));
     const bassDb = lowpassEnergyDb(samples, BASS_CUTOFF, sampleRate, Math.round(BASS_WINDOW * sampleRate));
     const kickDb = lowpassEnergyDb(samples, KICK_CUTOFF, sampleRate, Math.round(KICK_WINDOW * sampleRate));
     frame.volume = smoother.apply(frame.volume, shape(this.volumeRange.normalize(volumeDb, dt, sensitivity)));
@@ -233,6 +236,7 @@ export class AudioAnalyzer {
     frame.highDb = frame.silent ? SILENCE_DB : Math.max(this.regionPowerDb(2), SILENCE_DB);
     frame.energy = smoother.apply(frame.energy, shape(this.energyRange.normalize(energyDb, dt, sensitivity)));
 
+    measureSpectralShape(this.magnitudes, sampleRate / FFT_SIZE, frame, frame.silent);
     this.updateSpectrum(dt, sensitivity);
     this.updateWaveform(samples, dt);
     this.updateFlux(dt, frame.silent);
@@ -406,6 +410,7 @@ function shape(value: number): number {
 
 /** Mean power (dB) of the last `length` samples. */
 function meanSquareDb(samples: Float32Array, length: number): number {
+  length = Math.min(length, samples.length);
   let sum = 0;
   for (let i = samples.length - length; i < samples.length; i++) sum += samples[i] * samples[i];
   return 10 * Math.log10(sum / length + 1e-20);

@@ -1,3 +1,4 @@
+import type { ModulationState } from '../../director/types';
 import {
   AdditiveBlending,
   BackSide,
@@ -68,6 +69,7 @@ const tunnelVertex = /* glsl */ `
   uniform float uLobes;
   uniform float uShapePhase;
   uniform float uRing;
+  uniform float uRelease;
   uniform float uDigital;
 
   varying float vDepth;
@@ -90,6 +92,9 @@ const tunnelVertex = /* glsl */ `
     );
     float ring = traceAt(${LOW}.0, 3.0, age) * step(age, 1.0);
     float r = uRadius * (1.0 + uShape * section * smoothstep(2.0, 12.0, d) + uRing * ring);
+    // The drop opens a pressure front that rolls away from the camera.
+    float shock = max(0.0, 1.0 - abs(age - (1.0 - uRelease)) * 10.0) * uRelease;
+    r *= 1.0 + shock * 0.22;
     vec2 offset = bendAt(d);
     // Same (sin, cos) orientation as CylinderGeometry so BackSide keeps the inner faces.
     vec3 p = vec3(sin(angle) * r + offset.x, cos(angle) * r + offset.y, -d);
@@ -109,7 +114,7 @@ const tunnelFragment = /* glsl */ `
   uniform float uFog;
   uniform float uDetail;
   uniform float uDensity;
-  uniform float uFlash;
+  uniform float uRelease;
   uniform float uLeadWobble;
   uniform float uLeadCycles;
   uniform float uLeadPhase;
@@ -158,7 +163,8 @@ const tunnelFragment = /* glsl */ `
     vec3 color = palette(vCoord * 0.004);
     float fog = exp(-vDepth * uFog);
     vec3 base = color * 0.015;
-    vec3 outColor = (base + color * intensity * (0.22 + uDensity * 0.35 + hits + uFlash)) * fog;
+    float shock = max(0.0, 1.0 - abs(vAge - (1.0 - uRelease)) * 10.0) * uRelease;
+    vec3 outColor = (base + color * intensity * (0.22 + uDensity * 0.35 + hits + shock * 0.8)) * fog;
     gl_FragColor = vec4(outColor, 1.0);
   }
 `;
@@ -197,11 +203,11 @@ const sparkFragment = /* glsl */ `
 /**
  * Endless geometric tunnel. The camera stays still: the grid scrolls and the
  * centerline bends relative to the viewer, which reads as forward motion.
- * Nothing moves without sound: the tunnel advances one ring per beat of the
- * song while music plays and stops in silence.
+ * Forward travel follows motion while the history rings retain the tempo.
+ * The tunnel stops advancing in silence.
  * bass line → shape of the wall section, kicks → rings rolling down the
  * tunnel, lead → shape of the ring lines, mids → bend and twist,
- * highs → fine grid and sparks (with hi-hats), drop → flash.
+ * highs → fine grid and sparks, drop → opening pressure front and acceleration.
  */
 export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   private tunnelMaterial!: ShaderMaterial;
@@ -211,7 +217,6 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   private readonly traces = new RollingTraces(3);
   private travel = 0;
   private sparkTravel = 0;
-  private lastBeats = -1;
   private roll = 0;
   private shapePhase = 0;
   private leadPhase = 0;
@@ -255,7 +260,7 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
         uFog: { value: p.fog },
         uDetail: { value: 0 },
         uDensity: { value: 0 },
-        uFlash: { value: 0 },
+        uRelease: { value: 0 },
         uLeadWobble: { value: 0 },
         uLeadCycles: { value: 3 },
         uLeadPhase: { value: 0 },
@@ -302,61 +307,59 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     for (let i = 0; i < 3; i++) (u[`uColor${i}`].value as Color).copy(colors[i]);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
     const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
 
-    // One ring per beat of the song while music plays; still in silence.
-    const beats = music.beats;
-    const stepBeats = this.lastBeats < 0 ? 0 : Math.max(beats - this.lastBeats, 0);
-    this.lastBeats = beats;
-    const activity = smoothstep(0.02, 0.3, density);
-    // MESO: busy music travels faster down the tunnel than a held chord; tension (build-ups) pushes on.
-    const advance = (stepBeats / p.ringDensity) * activity * (0.7 + 0.6 * motion) * (1 + 0.3 * tension);
+    // Motion owns forward speed. Tempo remains in the spacing of historical impacts.
+    const advance = dt * (2 / p.ringDensity) * response.audible * (0.04 + 1.6 * motion) * (1 + 0.18 * tension + 1.1 * music.drop);
     this.travel += advance;
     this.sparkTravel += advance * 1.6 + dt * detail * music.highPercussion * 20;
     // The wall's shape and the ring lines drift with the mids, never on their own.
-    this.shapePhase += dt * flow * music.pace * 0.15;
-    this.leadPhase -= dt * flow * music.pace * 0.25;
-    this.roll += dt * flow * music.pace * 0.2;
+    this.shapePhase += dt * flow * (0.04 + motion) * response.audible * 0.15;
+    this.leadPhase -= dt * flow * (0.04 + motion) * response.audible * 0.25;
+    this.roll += dt * (modulation?.rotation ?? flow) * (0.04 + motion) * response.audible * 0.2 * (1 + tension * 0.5);
 
     const { spectrum } = frame;
     this.traces.record(LOW, traceValue(frame, response, 1, sampleSpectrumRange(spectrum, 0, LOW_END)));
     this.traces.record(MID, traceValue(frame, response, 0.5, sampleSpectrumRange(spectrum, LOW_END, MID_END)));
     this.traces.record(HIGH, traceValue(frame, response, 0, sampleSpectrumRange(spectrum, MID_END, 1)));
-    this.traces.update(music.tempo, dt);
+    this.traces.update(music.tempo / (modulation ? 0.4 + 2 * modulation.persistence : 1), dt);
     this.voices.update(frame, music, dt, p.digital);
 
     const u = this.tunnelMaterial.uniforms;
     u.uTravel.value = this.travel;
     // MACRO: a full, wide sound widens the tunnel; a lone voice narrows it.
-    u.uRadius.value = p.radius * (0.92 + 0.16 * openness);
+    u.uRadius.value = p.radius * (modulation ? 0.75 + 0.5 * modulation.scale : 1) * (0.82 + 0.38 * openness) * (1 - 0.28 * tension + 0.4 * music.drop);
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
     // Bass: the section's depth (weight) and lobes (pitch: higher notes, more lobes; per song a base count).
     // Each part fades with its band: the section with the bass, the ring lines with the lead, the fine grid with the highs.
-    u.uShape.value = p.deform * weight * response.lowAudible;
+    u.uShape.value = p.deform * (modulation?.distortion ?? weight) * response.lowAudible;
     u.uLobes.value = (3 + 4 * vary[0]) * (1 + 0.5 * Math.max(Math.log2(music.bassPitch / 40), 0));
     u.uShapePhase.value = this.shapePhase;
-    u.uRing.value = p.ringTrace * (1 + 0.8 * music.drop);
+    u.uRing.value = p.ringTrace * (0.7 + 0.6 * trace);
     // Mids: lead-shaped ring lines, twist and bend.
     u.uLeadWobble.value = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice) * response.midAudible;
     u.uLeadCycles.value = (2 + 3 * vary[3]) * (1 + 0.3 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
     u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow * (1 + tension);
-    u.uBend.value = p.bend * (0.3 + 0.7 * flow);
+    u.uBend.value = p.bend * (modulation ? 0.1 + 1.4 * modulation.turbulence : 0.3 + 0.7 * flow);
     // Highs: fine grid; brightness from energy, hits and drops.
     u.uDetail.value = detail * response.highAudible;
     u.uDensity.value = density;
-    // The last hits leave a faint afterglow on the walls.
-    u.uFlash.value = 0.5 * music.drop + 0.1 * trace;
+    u.uRelease.value = music.drop;
     const s = this.sparkMaterial.uniforms;
     s.uSparkTravel.value = this.sparkTravel;
-    s.uSparks.value = detail * (0.3 + 0.7 * music.highPercussion) * response.highAudible;
+    s.uSparks.value = (modulation?.particleEmission ?? (detail * (0.3 + 0.7 * music.highPercussion))) * response.highAudible;
 
     // A slow roll with the mids; no zoom or shake on beats.
-    this.camera.rotation.z = Math.sin(this.roll) * 0.25 * this.preset.camera.drift;
+    if (modulation) {
+      const fov = this.preset.camera.fov * (0.85 + 0.3 * modulation.depth);
+      if (Math.abs(fov - this.camera.fov) > 0.02) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    }
+    this.camera.rotation.z = Math.sin(this.roll) * 0.25 * this.preset.camera.drift * (modulation ? 2 * modulation.cameraMotion : 1);
   }
 
   override resize(width: number, height: number): void {
@@ -369,9 +372,4 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     this.traces.dispose();
     super.dispose();
   }
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
-  return t * t * (3 - 2 * t);
 }

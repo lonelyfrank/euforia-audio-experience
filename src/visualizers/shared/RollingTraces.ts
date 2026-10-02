@@ -82,5 +82,5 @@ export function traceValue(frame: AudioFrame, response: VisualResponseFrame, pos
   const transient = t < 0.5 ? frame.highFlux + (frame.midFlux - frame.highFlux) * t * 2 : frame.midFlux + (low - frame.midFlux) * (t * 2 - 1);
   const gate = Math.min(Math.max((zone - 0.05) / 0.2, 0), 1);
   const value = 0.6 * zone ** 1.5 + 0.9 * transient * (0.35 + 0.65 * gate * gate * (3 - 2 * gate));
-  return frame.silent ? 0 : Math.min(value, 1);
+  return frame.silent ? 0 : Math.min(value, 1) * response.audible;
 }

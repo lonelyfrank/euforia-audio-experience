@@ -1,3 +1,5 @@
+import { MOODS, EXPERIENCES } from '../director/profiles';
+import type { MoodId, ExperienceId } from '../director/types';
 import { Color } from 'three';
 import { AudioEngine, type AudioEngineState } from '../audio/AudioEngine';
 import type { NativeSource } from '../audio/capture/NativeAudioCapture';
@@ -102,6 +104,17 @@ export class App {
   private menu(key: string): DialMenu {
     const s = settingsStore.get();
     switch (key) {
+      case 'direction':
+        return { caption: 'Direction', actions: true, items: [
+          { id: 'mood', label: 'Mood', icon: 'mood' },
+          { id: 'experience', label: 'Experience', icon: 'experience' },
+          { id: 'auto', label: s.autoDirection ? 'Auto · On' : 'Auto · Off', icon: 'qauto', selected: s.autoDirection },
+          { id: 'quality', label: 'Quality', icon: 'quality' },
+        ] };
+      case 'mood':
+        return { caption: 'Mood', items: MOODS.map((m) => ({ id: m.id, label: m.name, icon: 'mood', selected: m.id === s.mood })) };
+      case 'experience':
+        return { caption: 'Experience', items: EXPERIENCES.map((m) => ({ id: m.id, label: m.name, icon: 'experience', selected: m.id === s.experience })) };
       case 'scene':
         return {
           caption: 'Scene',
@@ -118,7 +131,7 @@ export class App {
         };
       case 'presets':
         return {
-          caption: `Presets · ${findVisualizer(s.scene)?.name ?? ''}`,
+          caption: `Palette · ${findVisualizer(s.scene)?.name ?? ''}`,
           layout: 'arc',
           items: PALETTES.map((p) => ({ id: p.id, label: p.name, iconHtml: swatch(p), selected: p.id === s.preset })),
         };
@@ -129,9 +142,9 @@ export class App {
           items: [
             { id: 'scene', label: 'Scene', icon: 'scene' },
             { id: 'audio', label: 'Audio', icon: 'audio' },
-            { id: 'presets', label: 'Presets', icon: 'presets' },
+            { id: 'presets', label: 'Palette', icon: 'presets' },
             { id: 'settings', label: 'Settings', icon: 'settings' },
-            { id: 'quality', label: 'Quality', icon: 'quality' },
+            { id: 'direction', label: 'Direction', icon: 'direction' },
             { id: 'fullscreen', label: 'Fullscreen', icon: this.fullscreen ? 'exitfull' : 'fullscreen' },
           ],
         };
@@ -142,7 +155,7 @@ export class App {
   private onCore(): void {
     const menu = this.dial.menu;
     if (this.panel.isOpen) this.closePanel();
-    else if (menu && menu !== 'root') this.dial.open('root');
+    else if (menu && menu !== 'root') this.dial.open(['mood', 'experience', 'quality'].includes(menu) ? 'direction' : 'root');
     else if (menu) this.dial.close();
     else this.dial.open('root');
   }
@@ -160,6 +173,13 @@ export class App {
       }
       return;
     }
+    if (menu === 'direction') {
+      if (id === 'auto') { settingsStore.set({ autoDirection: !settingsStore.get().autoDirection }); this.dial.open('direction'); }
+      else this.dial.open(id);
+      return;
+    }
+    if (menu === 'mood') settingsStore.set({ mood: id as MoodId, autoDirection: false });
+    if (menu === 'experience') settingsStore.set({ experience: id as ExperienceId, autoDirection: false });
     // Sub-ring picks apply at once and keep the ring open for comparison.
     if (menu === 'scene') settingsStore.set({ scene: id });
     if (menu === 'audio') void this.selectSource(id as AudioSourceId);
@@ -310,7 +330,11 @@ export class App {
 
   // ---- settings --------------------------------------------------------------
 
+  /** Development diagnostics read the stable director objects without subscribing to frames. */
+  get directionDebug() { return this.render; }
+
   private applySettings(s: Settings, previous?: Settings): void {
+    this.render.setDirection(s);
     const def = findVisualizer(s.scene) ?? visualizers[0];
     // Presets scale the user's audio preferences.
     this.audio.configure({
@@ -329,6 +353,6 @@ export class App {
     }
     if (!previous || s.reflection !== previous.reflection) this.render.setReflection(s.reflection);
     if (!previous || s.quality !== previous.quality) this.render.setQuality(s.quality);
-    if (!previous || s.scene !== previous.scene) this.render.show({ create: () => def.create(def.preset), preset: def.preset });
+    if (!previous || s.scene !== previous.scene) this.render.show({ create: () => def.create(def.preset), preset: def.preset, direction: def.direction });
   }
 }

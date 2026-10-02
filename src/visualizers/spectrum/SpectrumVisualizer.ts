@@ -1,3 +1,4 @@
+import type { ModulationState } from '../../director/types';
 import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector3 } from 'three';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
@@ -31,7 +32,7 @@ export interface SpectrumParams {
   digital: number;
 }
 
-/** Spectrum rows: the live one and the echoes left behind (every half beat). */
+/** Spectrum rows: the live one and the echoes left behind as motion propagates. */
 const MAX_ECHOES = 8;
 const ROWS = MAX_ECHOES + 1;
 const ECHO_BEATS = 0.5;
@@ -43,8 +44,8 @@ const MID_END = hzToPosition(2000);
  */
 const SPAN = 0.6 * Math.PI;
 const OPEN_SPAN = Math.PI;
-/** Echoes left in silence fade over this time constant (s): the picture settles to still circles. */
-const SILENT_FADE = 0.5;
+/** Base echo decay (s), lengthened by the trace captured with each event. */
+const ECHO_FADE = 0.8;
 
 const vertexShader = /* glsl */ `
   varying vec2 vPos;
@@ -79,7 +80,8 @@ const fragmentShader = /* glsl */ `
   uniform float uLeadPhase;
   uniform float uWeight;
   uniform float uDensity;
-  uniform float uFlash;
+  uniform float uRelease;
+  uniform vec3 uEchoAudible[MAX_ECHOES + 1];
   uniform float uSparks;
   uniform float uSparkSeed;
   uniform float uDigital;
@@ -135,18 +137,25 @@ const fragmentShader = /* glsl */ `
     float level = spectrumAt(0.0, pos);
     float contour = uRingRadius + uRingLength * level;
     if (r > uRingRadius && r < contour) color += hue * uFill * (0.3 + level) * (r - uRingRadius) / max(contour - uRingRadius, 1e-3);
-    color += hue * line(r - contour, px) * (0.35 + 0.65 * level + uFlash);
+    color += hue * line(r - contour, px) * (0.35 + 0.65 * level);
     color += hue * line(r - uRingRadius, px) * 0.15;
 
-    // Echoes: the spectrum as it was, every half beat, travelling outwards and fading.
+    // Echoes: the spectrum as it was, travelling outwards at the pace of motion.
     for (int i = 1; i <= MAX_ECHOES; i++) {
       if (i > uEchoes) break;
       float age = (float(i) - 1.0 + uProgress) / float(uEchoes);
       float echo = spectrumAt(float(i), pos);
       float radius = uRingRadius + uRingLength * echo * (1.0 - 0.4 * age) + uEchoSpread * age;
       float fade = (1.0 - age) * (1.0 - age);
-      color += hue * line(r - radius, px) * (0.1 + 0.5 * echo) * fade;
+      vec3 heard = uEchoAudible[i];
+      float lowMid = mix(heard.x, heard.y, smoothstep(${LOW_END.toFixed(4)} - 0.05, ${LOW_END.toFixed(4)} + 0.05, pos));
+      float memory = mix(lowMid, heard.z, smoothstep(${MID_END.toFixed(4)} - 0.05, ${MID_END.toFixed(4)} + 0.05, pos));
+      color += regionColor(pos) * memory * line(r - radius, px) * (0.1 + 0.5 * echo) * fade;
     }
+
+    // The same section release as the other worlds, drawn as a sonar front.
+    float releaseRadius = uRingRadius + (1.0 - uRelease) * uEchoSpread * 2.0;
+    color += regionColor(pos) * line(r - releaseRadius, px * 2.0) * uRelease * 0.8;
 
     // The lead's orbit and the bass line's core: polar traces of the voices' real shapes.
     float lead = uLeadRadius * (1.0 + uLeadShape * polarVoice(1.0, turn, uLeadLobes, uLeadPhase));
@@ -169,8 +178,8 @@ const fragmentShader = /* glsl */ `
 /**
  * Radial spectrogram, drawn analytically in one full-screen fragment shader.
  * The spectrum is a continuous ring (highs at the top, lows down at the
- * horizon on both sides, each region in its own palette hue); every half beat it leaves an echo that
- * travels outwards, so the song's tempo reads as ripples. Inside, the lead's
+ * horizon on both sides, each region in its own palette hue); motion propagates echoes
+ * outwards while tension packs them together. Inside, the lead's
  * orbit and the bass line's core are polar traces of the voices' real
  * shapes. Nothing moves without sound: silence leaves still circles.
  */
@@ -182,6 +191,8 @@ export class SpectrumVisualizer implements Visualizer {
   private readonly voices = new VoiceTextures();
   private readonly history = new SignalTexture(SPECTRUM_BINS, ROWS);
   private readonly rows = new Float32Array(SPECTRUM_BINS * ROWS);
+  private readonly echoAudible = Array.from({ length: ROWS }, () => new Vector3());
+  private readonly echoDecay = new Float32Array(ROWS).fill(ECHO_FADE);
   private progress = 0;
   private rotation = 0;
   private corePhase = 0;
@@ -220,7 +231,8 @@ export class SpectrumVisualizer implements Visualizer {
         uLeadPhase: { value: 0 },
         uWeight: { value: 0 },
         uDensity: { value: 0 },
-        uFlash: { value: 0 },
+        uRelease: { value: 0 },
+        uEchoAudible: { value: this.echoAudible },
         uSparks: { value: 0 },
         uSparkSeed: { value: 0 },
         uDigital: { value: 0 },
@@ -238,35 +250,40 @@ export class SpectrumVisualizer implements Visualizer {
     for (let i = 0; i < 3; i++) target[i].copy(colors[i]);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
     const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
     const u = this.material.uniforms;
 
-    // Echoes: a snapshot every half beat while music plays (none in silence, so it stays still).
+    // Store the audibility of each event with its spectrum. A cut cannot erase the past.
     const rows = this.rows;
     rows.set(frame.spectrum, 0);
-    const activity = smoothstep(0.02, 0.3, density);
-    // MACRO: a full sound lays its echoes closer together, a lone voice sparser.
-    this.progress += ((dt * music.tempo) / 60 / ECHO_BEATS) * activity * (0.75 + 0.5 * openness);
+    this.echoAudible[0].set(response.lowAudible, response.midAudible, response.highAudible);
+    this.echoDecay[0] = (ECHO_FADE + 1.4 * trace) * (modulation ? 0.3 + 2.5 * modulation.persistence : 1);
+    let remembered = 0;
+    for (let i = 1; i < ROWS; i++) {
+      this.echoAudible[i].multiplyScalar(Math.exp(-dt / this.echoDecay[i]));
+      remembered = Math.max(remembered, this.echoAudible[i].lengthSq());
+    }
+    // Motion owns propagation. During a cut the last echoes finish travelling and fading.
+    const activity = response.audible > 0.01 || remembered > 0.0001 ? 1 : 0;
+    this.progress += dt / ECHO_BEATS * (0.15 + 1.5 * motion) * activity;
     if (this.progress >= 1) {
       this.progress -= Math.floor(this.progress);
       rows.copyWithin(SPECTRUM_BINS, 0, SPECTRUM_BINS * MAX_ECHOES);
-      for (let row = 1; row < ROWS; row++) this.history.write(rows, false, row, row * SPECTRUM_BINS, SPECTRUM_BINS);
-    }
-    // Without sound (silence, or only the noise floor) the echoes fade away.
-    if (response.presence < 0.5) {
-      const fade = Math.exp(-dt / SILENT_FADE);
-      for (let i = SPECTRUM_BINS; i < rows.length; i++) rows[i] *= fade;
-      for (let row = 1; row < ROWS; row++) this.history.write(rows, false, row, row * SPECTRUM_BINS, SPECTRUM_BINS);
+      for (let row = MAX_ECHOES; row >= 1; row--) {
+        this.echoAudible[row].copy(this.echoAudible[row - 1]);
+        this.echoDecay[row] = this.echoDecay[row - 1];
+        this.history.write(rows, false, row, row * SPECTRUM_BINS, SPECTRUM_BINS);
+      }
     }
     this.history.write(rows, false, 0, 0, SPECTRUM_BINS);
 
     // Rotation and the voices' drift follow the mids; busy music (MESO motion) turns faster.
-    this.rotation += dt * flow * music.pace * 0.02 * (0.6 + 0.7 * motion) * (vary[7] < 0.5 ? -1 : 1);
-    this.corePhase += dt * weight * music.pace * 0.1;
-    this.leadPhase -= dt * flow * music.pace * 0.2;
+    this.rotation += dt * (modulation?.rotation ?? flow) * 0.025 * (0.04 + motion) * response.audible * (vary[7] < 0.5 ? -1 : 1);
+    this.corePhase += dt * weight * (0.04 + motion) * response.audible * 0.1;
+    this.leadPhase -= dt * flow * (0.04 + motion) * response.audible * 0.2;
     if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) this.sparkSeed = (this.sparkSeed + 7.31) % 100;
     this.lastHighFlux = frame.highFlux;
     this.voices.update(frame, music, dt, p.digital);
@@ -274,16 +291,18 @@ export class SpectrumVisualizer implements Visualizer {
     u.uProgress.value = this.progress;
     u.uRotation.value = this.rotation;
     u.uDigital.value = this.voices.digital;
-    u.uCoreShape.value = p.voiceDepth * weight;
+    u.uCoreShape.value = p.voiceDepth * (modulation?.scale ?? weight);
     u.uCoreLobes.value = (3 + 3 * vary[0]) * (1 + 0.4 * Math.max(Math.log2(music.bassPitch / 40), 0));
     u.uCorePhase.value = this.corePhase;
-    u.uLeadShape.value = p.voiceDepth * 0.6 * flow * (0.4 + 0.6 * music.leadVoice);
+    u.uLeadShape.value = p.voiceDepth * 0.6 * (modulation?.distortion ?? flow) * (0.4 + 0.6 * music.leadVoice);
     u.uLeadLobes.value = (4 + 4 * vary[3]) * (1 + 0.4 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
-    u.uWeight.value = weight * (1 + 0.5 * music.drop) + 0.25 * trace;
+    u.uWeight.value = weight;
+    u.uRingRadius.value = p.ringRadius * (0.85 + 0.35 * openness) * (1 - 0.15 * tension);
+    u.uEchoSpread.value = p.echoSpread * (0.6 + 0.65 * openness) * (1 - 0.6 * tension);
     u.uDensity.value = density;
-    u.uFlash.value = 0.6 * music.drop;
-    u.uSparks.value = detail * music.highPercussion * (1 + 0.5 * tension);
+    u.uRelease.value = music.drop;
+    u.uSparks.value = detail * music.highPercussion;
     u.uSparkSeed.value = this.sparkSeed;
     (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
   }
@@ -306,9 +325,4 @@ export class SpectrumVisualizer implements Visualizer {
     disposeObject(this.scene);
     this.scene.clear();
   }
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
-  return t * t * (3 - 2 * t);
 }

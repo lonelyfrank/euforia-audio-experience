@@ -1,6 +1,7 @@
+import type { ModulationState, SceneDirection } from '../director/types';
 import type { Camera, Color, Scene, WebGLRenderer } from 'three';
 import type { Pass } from 'three/addons/postprocessing/Pass.js';
-import type { AudioFrame, VisualResponseFrame } from './audio';
+import type { AudioFrame, MusicState, VisualResponseFrame } from './audio';
 
 export type QualitySetting = 'auto' | 'low' | 'medium' | 'high';
 
@@ -62,7 +63,7 @@ export interface SceneLayout {
 /** Per-frame audio input of the render engine: stable objects, updated in place. */
 export interface SceneInput {
   audio: AudioFrame;
-  response: VisualResponseFrame;
+  response: MusicState;
 }
 
 /** What the engine hands to a visualizer when it is mounted. */
@@ -92,7 +93,7 @@ export interface Visualizer {
   /** Called after init and whenever the preset (palette) changes. Must not allocate. */
   setPalette(colors: PaletteColors): void;
   /** `response` is derived from `frame` (musical roles: weight, flow, detail, impact…); both are read-only and reused. */
-  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame): void;
+  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame, modulation?: ModulationState): void;
   /** Optional: called when the layout changes (reflection toggled, floating without it). Must not allocate. */
   setLayout?(layout: SceneLayout): void;
   resize(width: number, height: number): void;
@@ -110,6 +111,7 @@ export interface VisualizerDefinition<TVisual = Record<string, unknown>> {
   icon: SceneIcon;
   /** Sort order in the UI. */
   order: number;
+  direction?: SceneDirection;
   preset: VisualizerPreset<TVisual>;
   create(preset: VisualizerPreset<TVisual>): Visualizer;
 }

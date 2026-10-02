@@ -12,6 +12,7 @@ export interface DialItem {
 
 export interface DialMenu {
   caption?: string;
+  actions?: boolean;
   layout?: 'ring' | 'arc';
   items: DialItem[];
 }
@@ -113,7 +114,10 @@ export class Dial {
   }
 
   select(id: string): void {
-    for (const item of this.elements) item.el.classList.toggle('is-selected', item.id === id);
+    for (const item of this.elements) {
+      item.el.classList.toggle('is-selected', item.id === id);
+      if (item.button.getAttribute('role') === 'menuitemradio') item.button.setAttribute('aria-checked', String(item.id === id));
+    }
   }
 
   /** While the settings panel is open the core shows the accent ring and a back chevron. */
@@ -150,9 +154,9 @@ export class Dial {
         type: 'button',
         class: 'halo-item__disc',
         tabIndex: -1,
-        attrs: { role: menu.caption ? 'menuitemradio' : 'menuitem', 'aria-label': item.label },
+        attrs: { role: menu.caption && !menu.actions ? 'menuitemradio' : 'menuitem', 'aria-label': item.label },
       });
-      if (menu.caption) button.setAttribute('aria-checked', String(!!item.selected));
+      if (menu.caption && !menu.actions) button.setAttribute('aria-checked', String(!!item.selected));
       button.innerHTML = item.iconHtml ?? icon(item.icon ?? 'source');
       button.addEventListener('click', () => {
         if (this.current) this.options.onSelect(this.current, item.id);

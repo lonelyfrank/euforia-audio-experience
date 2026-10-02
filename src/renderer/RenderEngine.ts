@@ -1,3 +1,7 @@
+import { approach, VisualDirector } from '../director/VisualDirector';
+import { AutoDirection } from '../director/AutoDirection';
+import { DEFAULT_DIRECTION } from '../director/profiles';
+import type { DirectionSettings, SceneDirection } from '../director/types';
 import { Color, HalfFloatType, OrthographicCamera, PerspectiveCamera, Vector2, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -20,6 +24,7 @@ const FLOAT_X = 0.04;
 const FLOAT_Y = 0.03;
 
 export interface SceneSource {
+  direction?: SceneDirection;
   create: () => Visualizer;
   preset: VisualizerPreset;
 }
@@ -35,6 +40,8 @@ interface LayerSize {
  * offscreen target so two of them can be crossfaded.
  */
 class Layer {
+  readonly director: VisualDirector;
+  private bloom: UnrealBloomPass | null = null;
   readonly visualizer: Visualizer;
   private readonly composer: EffectComposer;
   private readonly passes: Pass[] = [];
@@ -43,11 +50,12 @@ class Layer {
   constructor(
     renderer: WebGLRenderer,
     readonly source: SceneSource,
-    quality: QualityProfile,
+    readonly quality: QualityProfile,
     size: LayerSize,
     palette: PaletteColors,
     private layout: SceneLayout,
   ) {
+    this.director = new VisualDirector(source.direction);
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: quality.bloom ? 4 : 0 });
     this.composer = new EffectComposer(renderer, target);
     this.composer.renderToScreen = false;
@@ -67,7 +75,10 @@ class Layer {
 
     this.passes.push(new RenderPass(this.visualizer.scene, this.visualizer.camera), ...preBloom);
     const { strength, radius, threshold } = source.preset.bloom;
-    if (quality.bloom && strength > 0) this.passes.push(new UnrealBloomPass(new Vector2(1, 1), strength, radius, threshold));
+    if (quality.bloom && strength > 0) {
+      this.bloom = new UnrealBloomPass(new Vector2(1, 1), strength, radius, threshold);
+      this.passes.push(this.bloom);
+    }
     this.passes.push(...postBloom);
     for (const pass of this.passes) this.composer.addPass(pass);
     this.resize(size);
@@ -103,6 +114,12 @@ class Layer {
     }
   }
 
+  update(input: SceneInput, settings: DirectionSettings, dt: number, time: number): void {
+    const modulation = this.director.update(input.response, settings, dt);
+    this.visualizer.update(input.audio, dt, time, this.director.response!, modulation);
+    if (this.bloom) this.bloom.strength = this.source.preset.bloom.strength * (0.25 + 1.5 * modulation.bloom);
+  }
+
   render(dt: number): void {
     this.composer.render(dt);
   }
@@ -122,6 +139,16 @@ class Layer {
 export class RenderEngine {
   readonly renderer: WebGLRenderer;
   paused = false;
+  readonly autoDirection = new AutoDirection();
+  private readonly direction: DirectionSettings = { ...DEFAULT_DIRECTION };
+  get modulation() { return this.current?.director.frame; }
+  get effectiveDirection() { return this.autoDirection.settings; }
+  setDirection(settings: DirectionSettings): void {
+    this.direction.mood = settings.mood;
+    this.direction.moodIntensity = settings.moodIntensity;
+    this.direction.experience = settings.experience;
+    this.direction.autoDirection = settings.autoDirection;
+  }
 
   private readonly composer: EffectComposer;
   private readonly composite = new ShaderPass(CompositeShader, 'tUnused');
@@ -221,7 +248,9 @@ export class RenderEngine {
     this.lastTime = now;
     const dt = Math.min(rawDt, MAX_DELTA);
 
-    const { audio: frame, response } = this.frameSource(dt);
+    const input = this.frameSource(dt);
+    const { audio: frame, response } = input;
+    const direction = this.autoDirection.update(response, this.direction, this.paused ? 0 : dt, frame.time);
     const current = this.current;
     if (!current) return;
     if (!this.paused) {
@@ -238,8 +267,8 @@ export class RenderEngine {
     }
     if (!this.paused) {
       this.time += dt;
-      current.visualizer.update(frame, dt, this.time, response);
-      this.previous?.visualizer.update(frame, dt, this.time, response);
+      current.update(input, direction, dt, this.time);
+      this.previous?.update(input, direction, dt, this.time);
     }
     current.render(dt);
     this.previous?.render(dt);
@@ -253,7 +282,11 @@ export class RenderEngine {
     u.uDetail.value = response.detail;
     u.uDensity.value = response.density;
     u.uImpact.value = response.impact;
-    u.uAudible.value = response.audible;
+    // Allow a short event afterimage to survive the live audibility gate.
+    const directed = current.director.response ?? response;
+    u.uAudible.value = Math.max(directed.audible, directed.trace * 0.5, directed.music.drop * 0.4);
+    u.uMinimal.value = approach(u.uMinimal.value as number, direction.experience === 'minimal' ? current.director.frame.visibility : 1, dt, 1, 1);
+    u.uContrast.value = current.director.frame.contrast;
     this.composer.render(dt);
 
     if (!this.paused && this.quality.sample(rawDt)) this.applyQuality();
@@ -293,7 +326,9 @@ export class RenderEngine {
   /** Quality can change geometry density, so the scene is rebuilt (crossfaded). */
   private applyQuality(): void {
     this.resize();
-    if (this.current) this.show(this.current.source);
+    const current = this.current;
+    const profile = this.quality.profile;
+    if (current && (current.quality.density !== profile.density || current.quality.bloom !== profile.bloom)) this.show(current.source);
   }
 
   private resize(): void {

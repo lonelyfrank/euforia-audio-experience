@@ -1,0 +1,126 @@
+import type { MusicState, VisualResponseFrame } from '../types/audio';
+import { clamp01, experienceById, moodAmount, moodById, NEUTRAL } from './profiles';
+import type { Character, DirectionSettings, Feature, Mapping, ModulationKey, ModulationState, SceneDirection } from './types';
+
+const DEFAULT_ROUTES: readonly Mapping[] = [
+  { source: 'low', target: 'scale', amount: 0.65 }, { source: 'pulse', target: 'scale', amount: 0.2 },
+  { source: 'openness', target: 'expansion', amount: 0.55 }, { source: 'release', target: 'expansion', amount: 0.45 },
+  { source: 'mid', target: 'distortion', amount: 0.65 }, { source: 'tension', target: 'distortion', amount: 0.25 },
+  { source: 'flux', target: 'turbulence', amount: 0.6 }, { source: 'high', target: 'turbulence', amount: 0.25 },
+  { source: 'mid', target: 'rotation', amount: 0.45 }, { source: 'flux', target: 'rotation', amount: 0.4 },
+  { source: 'openness', target: 'cameraMotion', amount: 0.3 }, { source: 'mid', target: 'cameraMotion', amount: 0.4 },
+  { source: 'high', target: 'particleEmission', amount: 0.65 }, { source: 'transient', target: 'particleEmission', amount: 0.25 },
+  { source: 'brightness', target: 'brightness', amount: 0.3 }, { source: 'intensity', target: 'brightness', amount: 0.6 },
+  { source: 'intensity', target: 'bloom', amount: 0.45 }, { source: 'release', target: 'bloom', amount: 0.25 },
+  { source: 'transient', target: 'impact', amount: 0.8 }, { source: 'release', target: 'impact', amount: 0.2 },
+  { source: 'openness', target: 'depth', amount: 0.5 }, { source: 'warmth', target: 'depth', amount: 0.3 },
+];
+const KEYS: readonly ModulationKey[] = ['scale', 'expansion', 'distortion', 'turbulence', 'rotation', 'cameraMotion', 'particleEmission', 'brightness', 'bloom', 'impact', 'persistence', 'depth', 'contrast', 'visibility'];
+const CHARACTER_KEYS = Object.keys(NEUTRAL) as (keyof Character)[];
+const TIMES: Record<ModulationKey, readonly [number, number]> = {
+  scale: [0.04, 0.4], expansion: [0.5, 1.5], distortion: [0.07, 0.4], turbulence: [0.04, 0.35],
+  rotation: [0.4, 1.5], cameraMotion: [1.8, 3], particleEmission: [0.015, 0.25], brightness: [0.12, 0.6],
+  bloom: [0.3, 1], impact: [0.006, 0.18], persistence: [1, 2], depth: [3, 5], contrast: [1, 2], visibility: [0.03, 0.3],
+};
+const MODIFIER: Partial<Record<ModulationKey, keyof Character>> = {
+  expansion: 'expansion', distortion: 'distortion', turbulence: 'turbulence', rotation: 'motion',
+  cameraMotion: 'camera', particleEmission: 'particles', brightness: 'brightness', bloom: 'bloom', depth: 'depth',
+};
+const fresh = (): ModulationState => ({ scale: 0, expansion: 0, distortion: 0, turbulence: 0, rotation: 0, cameraMotion: 0, particleEmission: 0, brightness: 0, bloom: 0, impact: 0, persistence: 0, depth: 0, contrast: 0, visibility: 0 });
+
+export function approach(value: number, target: number, dt: number, attack: number, release: number): number {
+  const tau = target > value ? attack : release;
+  return value + (target - value) * (1 - Math.exp(-Math.max(0, dt) / Math.max(tau, 0.001)));
+}
+
+/** One per mounted scene, including during crossfade. No FFT, allocation or UI state in update. */
+export class VisualDirector {
+  readonly frame = fresh();
+  /** Compatibility adapter: directed roles for existing graphical implementations. */
+  response: VisualResponseFrame | null = null;
+  private readonly target = fresh();
+  private readonly character: Character = { ...NEUTRAL };
+  private readonly features: Record<Feature, number> = { low: 0, mid: 0, high: 0, transient: 0, pulse: 0, brightness: 0, flux: 0, intensity: 0, openness: 0, tension: 0, release: 0, warmth: 0 };
+  private readonly routes: readonly Mapping[];
+  private minimal = 0;
+  private attack = 1;
+  private release = 1;
+
+  constructor(private readonly direction: SceneDirection = { capabilities: {} }) {
+    const custom = direction.mappings ?? [];
+    this.routes = [...DEFAULT_ROUTES.filter((r) => !custom.some((c) => c.target === r.target)), ...custom];
+  }
+
+  update(music: MusicState, settings: DirectionSettings, dt: number): ModulationState {
+    const mood = moodById(settings.mood).character;
+    const experience = experienceById(settings.experience);
+    const c = this.character;
+    for (const key of CHARACTER_KEYS) {
+      c[key] = approach(c[key], moodAmount(mood[key], settings.moodIntensity) * experience.character[key], dt, 2, 2);
+    }
+    this.minimal = approach(this.minimal, experience.minimal, dt, 1, 1);
+    this.attack = approach(this.attack, experience.attack, dt, 2, 2);
+    this.release = approach(this.release, experience.release, dt, 2, 2);
+    const f = this.features;
+    f.low = clamp01(music.weight * c.low);
+    f.mid = clamp01(music.flow * c.mid);
+    f.high = clamp01(music.detail * c.high);
+    f.transient = music.transient;
+    // A free-running musical clock cannot manufacture a pulse without reliable rhythm.
+    f.pulse = (0.5 + 0.5 * Math.cos(music.beatPhase * Math.PI * 2)) * music.rhythmicConfidence * music.audible;
+    f.brightness = music.brightness;
+    f.flux = music.motion;
+    f.intensity = Math.max(music.intensity, music.shortEnergy * 0.6) * music.presence;
+    f.openness = music.openness;
+    f.tension = clamp01(music.tension * c.structure);
+    f.release = clamp01(music.music.drop * c.structure);
+    f.warmth = music.warmth;
+    const t = this.target;
+    for (const key of KEYS) t[key] = 0;
+    for (const route of this.routes) t[route.target] += f[route.source] * route.amount;
+    t.persistence = clamp01(0.35 * c.persistence + music.trace * 0.2);
+    t.contrast = clamp01(c.contrast * 0.45);
+    t.visibility = music.audible * (1 - this.minimal + this.minimal * clamp01(music.shortEnergy * 1.8));
+    const caps = this.direction.capabilities;
+    for (const key of KEYS) {
+      const modifier = MODIFIER[key];
+      if (modifier) t[key] *= c[modifier];
+      if ((key === 'cameraMotion' && !caps.cameraMotion) || (key === 'particleEmission' && !caps.particles) ||
+          (key === 'depth' && !caps.depth) || (key === 'rotation' && !caps.rotation) || (key === 'distortion' && !caps.distortion)) t[key] = 0;
+      const [a, r] = TIMES[key];
+      // The impact envelope keeps a fast edge even with fluid geometry.
+      const fluidity = key === 'impact' ? 1 : c.fluidity;
+      this.frame[key] = approach(this.frame[key], clamp01(t[key]), dt, a * this.attack * fluidity, r * this.release * c.persistence);
+    }
+    this.adapt(music);
+    return this.frame;
+  }
+
+  private adapt(music: MusicState): void {
+    // Only the initial mount allocates; nested musical context is copied to avoid mutating the interpreter.
+    if (!this.response) this.response = { ...music, music: { ...music.music } };
+    const out = this.response;
+    const context = out.music;
+    Object.assign(out, music);
+    out.music = context;
+    Object.assign(context, music.music);
+    const m = this.frame, c = this.character;
+    out.weight = clamp01(music.weight * c.low);
+    out.flow = clamp01(music.flow * c.mid);
+    out.detail = clamp01(music.detail * c.high);
+    out.motion = clamp01(music.motion * c.motion);
+    out.openness = m.expansion;
+    out.tension = clamp01(music.tension * c.structure);
+    out.impact = m.impact;
+    out.density = clamp01(music.density * (0.5 + m.brightness));
+    out.trace = clamp01(music.trace * c.persistence);
+    const gate = 1 - this.minimal + this.minimal * m.visibility;
+    const light = (0.35 + 0.65 * c.brightness) * gate;
+    out.lowAudible = clamp01(music.lowAudible * light);
+    out.midAudible = clamp01(music.midAudible * light);
+    out.highAudible = clamp01(music.highAudible * light);
+    out.audible = Math.max(out.lowAudible, out.midAudible, out.highAudible);
+    context.drop = clamp01(music.music.drop * c.structure);
+
+  }
+}

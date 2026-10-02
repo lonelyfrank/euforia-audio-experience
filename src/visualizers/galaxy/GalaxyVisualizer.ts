@@ -1,3 +1,4 @@
+import type { ModulationState } from '../../director/types';
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, Vector3, type WebGLRenderer } from 'three';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
@@ -42,6 +43,8 @@ const vertexShader = /* glsl */ `
   uniform float uRadius;
   uniform float uSize;
   uniform float uWeight;
+  uniform float uTension;
+  uniform float uRelease;
   uniform float uArmWave;
   uniform float uArmCycles;
   uniform float uArmPhase;
@@ -50,6 +53,7 @@ const vertexShader = /* glsl */ `
   uniform float uRing;
   uniform float uTwinkle;
   uniform float uSeed;
+  uniform float uEmission;
   uniform float uDigital;
   uniform float uPixelRatio;
   uniform vec3 uColors[3];
@@ -67,7 +71,7 @@ const vertexShader = /* glsl */ `
   void main() {
     float r = aStar.x;
     // Differential rotation: the core turns faster than the rim.
-    float angle = aStar.y + uSpin * (0.4 + 1.0 * (1.0 - r));
+    float angle = aStar.y + uTension * r * 2.4 + uSpin * (0.4 + 1.0 * (1.0 - r));
     // The arms follow the lead's shape along the radius.
     angle += voiceAt(1.0, r * uArmCycles + uArmPhase, uDigital) * uArmWave * r;
     // The core breathes with the bass and takes the bass line's shape (whole lobes: no seam).
@@ -75,10 +79,13 @@ const vertexShader = /* glsl */ `
     float turn = angle / 6.2831853;
     float lobes = floor(uLobes);
     float section = mix(voiceAt(0.0, turn * lobes, uDigital), voiceAt(0.0, turn * (lobes + 1.0), uDigital), fract(uLobes));
-    float radius = r * (1.0 + core * (uWeight * 0.3 + uCoreShape * section));
+    float radius = r * (1.0 + core * (-uWeight * 0.18 + uCoreShape * section));
+    // A section release travels from the core to the rim, rather than flashing the whole galaxy.
+    float shock = max(0.0, 1.0 - abs(r - (1.0 - uRelease) * 1.4) * 9.0) * uRelease;
+    radius += shock * 0.22;
     // Kicks travel out through the arms as a wave of height.
     float wave = traceAt(0.0, 1.0, r) * uRing;
-    vec3 p = vec3(cos(angle) * radius, aHeight * (1.0 - r) + wave, sin(angle) * radius) * uRadius;
+    vec3 p = vec3(cos(angle) * radius, aHeight * (1.0 - r) + wave + shock * 0.12, sin(angle) * radius) * uRadius;
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
 
@@ -91,7 +98,7 @@ const vertexShader = /* glsl */ `
     int arm = int(aStar.z);
     vec3 color = arm == 0 ? uColors[0] : arm == 1 ? uColors[1] : uColors[2];
     // Each radius vanishes with its band (core = bass, rim = highs).
-    vColor = color * (0.35 + 0.65 * (1.0 - r)) * (0.35 + 0.65 * level) * audibleAt(r);
+    vColor = smoothstep(0.0, 0.12, uEmission - hash(aStar.y * 57.3)) * color * (1.0 + shock * 2.0) * (0.35 + 0.65 * (1.0 - r)) * (0.35 + 0.65 * level) * audibleAt(r);
   }
 `;
 
@@ -162,6 +169,8 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
         uRadius: { value: p.radius },
         uSize: { value: p.size },
         uWeight: { value: 0 },
+        uTension: { value: 0 },
+        uRelease: { value: 0 },
         uArmWave: { value: 0 },
         uArmCycles: { value: 2 },
         uArmPhase: { value: 0 },
@@ -170,6 +179,7 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
         uRing: { value: 0 },
         uTwinkle: { value: 0 },
         uSeed: { value: 0 },
+        uEmission: { value: 1 },
         uLevel: { value: 0 },
         uDigital: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
@@ -187,20 +197,20 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
     for (let i = 0; i < 3; i++) target[i].copy(colors[i]);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
     const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
     // MESO: busy music turns the galaxy; a held chord leaves it almost still.
-    const turning = 0.6 + 0.7 * motion;
+    const turning = (modulation ? 0.02 + 2.4 * modulation.rotation : 0.04 + 1.4 * motion) * response.audible;
     this.spin += dt * p.spin * flow * music.pace * 1.5 * turning;
     this.armPhase -= dt * flow * music.pace * 0.3 * turning;
-    this.drift += dt * flow * music.pace;
+    this.drift += dt * flow * turning;
     if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) this.twinkleSeed = (this.twinkleSeed + 17.13) % 1000;
     this.lastHighFlux = frame.highFlux;
 
     this.traces.record(0, traceValue(frame, response, 1, sampleSpectrumRange(frame.spectrum, 0, LOW_END)));
-    this.traces.update(music.tempo, dt);
+    this.traces.update(music.tempo / (modulation ? 0.4 + 2 * modulation.persistence : 1), dt);
     this.voices.update(frame, music, dt, p.digital);
     this.spectrum.write(frame.spectrum);
 
@@ -208,23 +218,27 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
     u.uSpin.value = this.spin;
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
-    // The core's mass also keeps a short afterglow of the last kicks.
-    u.uWeight.value = weight * (1 + 0.5 * music.drop) + 0.25 * trace;
+    // Bass is mass; trace belongs to the outward travelling memory, not to mass.
+    u.uWeight.value = modulation?.scale ?? weight;
+    u.uTension.value = tension;
+    u.uRelease.value = music.drop;
     // MACRO: a full sound spreads the galaxy out; a lone voice draws it in.
-    u.uRadius.value = p.radius * (0.9 + 0.2 * openness);
-    // Tension (build-ups) winds the arms tighter.
-    u.uArmWave.value = p.armWave * flow * (0.4 + 0.6 * music.leadVoice) * (1 + 0.5 * tension);
+    u.uRadius.value = p.radius * (0.78 + 0.4 * openness) * (1 - 0.24 * tension);
+    // The lead shapes the arms independently of their macro compression.
+    u.uArmWave.value = p.armWave * (modulation ? 0.1 + 3 * modulation.distortion : flow) * (0.4 + 0.6 * music.leadVoice);
     u.uArmCycles.value = (1.5 + 2 * vary[3]) * (1 + 0.4 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uArmPhase.value = this.armPhase;
-    u.uCoreShape.value = p.coreShape * weight;
+    u.uCoreShape.value = p.coreShape * (modulation ? 0.2 * weight + modulation.distortion : weight);
     u.uLobes.value = (3 + 3 * vary[0]) * (1 + 0.4 * Math.max(Math.log2(music.bassPitch / 40), 0));
-    u.uRing.value = p.ringTrace * (1 + music.drop);
-    u.uTwinkle.value = detail * music.highPercussion;
+    u.uRing.value = p.ringTrace * (0.7 + 0.6 * trace) * (modulation ? 0.3 + 2 * modulation.impact : 1);
+    u.uTwinkle.value = modulation ? modulation.particleEmission * (0.3 + modulation.turbulence) : detail * music.highPercussion;
     u.uSeed.value = this.twinkleSeed;
-    u.uLevel.value = density + 0.4 * music.drop;
+    u.uEmission.value = modulation ? 0.25 + 0.85 * modulation.particleEmission : 1;
+    u.uLevel.value = density;
     (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
 
-    const { distance, drift } = this.preset.camera;
+    const distance = this.preset.camera.distance * (modulation ? 1.12 - 0.25 * modulation.depth : 1);
+    const drift = this.preset.camera.drift * (modulation ? 2 * modulation.cameraMotion : 1);
     const tilt = p.tilt + Math.sin(this.drift * 0.06) * 0.06 * drift;
     const yaw = Math.sin(this.drift * 0.04) * 0.3 * drift;
     this.camera.position.set(Math.sin(yaw) * Math.cos(tilt) * distance, Math.sin(tilt) * distance, Math.cos(yaw) * Math.cos(tilt) * distance);

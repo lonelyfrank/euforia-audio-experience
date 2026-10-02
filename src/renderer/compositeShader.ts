@@ -26,6 +26,8 @@ export const CompositeShader = {
     tA: { value: null },
     tB: { value: null },
     uMix: { value: 1 },
+    uMinimal: { value: 1 },
+    uContrast: { value: 0.45 },
     uReflection: { value: 1 },
     uAudible: { value: 1 },
     uTime: { value: 0 },
@@ -53,6 +55,8 @@ export const CompositeShader = {
     uniform sampler2D tA;
     uniform sampler2D tB;
     uniform float uMix;
+    uniform float uMinimal;
+    uniform float uContrast;
     uniform float uReflection;
     // How audible the music is: the scene vanishes with it (fading or cut), the sky stays.
     uniform float uAudible;
@@ -139,7 +143,7 @@ export const CompositeShader = {
       float across = 1.0 - smoothstep(0.0, 0.35, abs(uv.x - uCenter.x));
       color += uSheen * line * across * (0.22 + uDensity * 0.18) * uReflection;
 
-      gl_FragColor = vec4(color, 1.0);
+      gl_FragColor = vec4(pow(max(color, vec3(0.0)), vec3(0.85 + 0.33 * uContrast)) * uMinimal, 1.0);
     }
   `,
 };

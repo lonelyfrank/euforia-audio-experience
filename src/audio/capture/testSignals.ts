@@ -10,6 +10,11 @@ export const TEST_SIGNALS = [
   { id: 'beat90', label: 'Beat 90 BPM' },
   { id: 'beat174', label: 'Beat 174 BPM' },
   { id: 'tempoRamp', label: 'Tempo ramp 100 ↔ 140' },
+  { id: 'startStop', label: 'Silence → beat → silence → restart' },
+  { id: 'breakdown', label: 'Dense → breakdown → rebuild → drop' },
+  { id: 'noiseMusic', label: 'Noise floor → music over hiss → noise only' },
+  { id: 'crescendo', label: 'Crescendo (12 s, fixed texture)' },
+  { id: 'hum', label: 'Noise floor (50 Hz hum)' },
   { id: 'buildDrop', label: 'Ambient → build → drop' },
   { id: 'fadeCut', label: 'Fade-out, then hard cut' },
   { id: 'phrases', label: 'Phrases over hiss (4 s on / 4 s off)' },
@@ -96,6 +101,28 @@ export class SignalGenerator {
         const bpm = 100 + 40 * (1 - Math.abs(2 * x - 1));
         this.beats += bpm / 60 / this.sampleRate;
         return this.groove(this.beats, bpm, t, 1, 0);
+      }
+      case 'startStop': {
+        const c = t % 24;
+        return c < 4 || (c >= 12 && c < 16) ? 0 : this.beat(t, 124);
+      }
+      case 'noiseMusic': {
+        const c = t % 28;
+        return this.pink() * HISS_GAIN + (c >= 8 && c < 20 ? this.beat(t, 124) : 0);
+      }
+      case 'hum':
+        return Math.sin(TWO_PI * 50 * t) * 0.001;
+      case 'crescendo': {
+        const c = t % 24;
+        const gain = 10 ** ((-32 + 26 * Math.min(c / 12, 1)) / 20);
+        return this.beat(t, 124) * gain;
+      }
+      case 'breakdown': {
+        const c = t % 40;
+        if (c < 12) return this.groove(t * 128 / 60, 128, t, 1.1, 1);
+        if (c < 20) return this.pad(t, 55) * 0.035;
+        // Reuse the established build signal, preserving its oscillators and deterministic noise.
+        return this.buildDrop(c - 10);
       }
       case 'buildDrop':
         return this.buildDrop(t);

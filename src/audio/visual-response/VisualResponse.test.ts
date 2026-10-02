@@ -17,6 +17,7 @@ function frame(values: Partial<AudioFrame> = {}, regions: Region[] = []): AudioF
     spectrum[b] = regions.includes(region) ? 0.8 : 0;
   }
   return {
+    centroidHz: 1000, rolloffHz: 1500, spreadHz: 100, rms: 0.1,
     time: 0,
     sampleRate: 48000,
     silent: false,

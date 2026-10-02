@@ -1,3 +1,4 @@
+import type { ModulationState } from '../../director/types';
 import { OrthographicCamera, Scene, type InterleavedBufferAttribute } from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
@@ -88,7 +89,7 @@ export class OscilloscopeVisualizer implements Visualizer {
     this.gridMaterial.color.copy(colors[1]).lerp(colors[2], 0.3);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
     const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const [input, bass, lead] = this.channels;
@@ -96,13 +97,13 @@ export class OscilloscopeVisualizer implements Visualizer {
     // CH1: the input, resampled; it flattens to a line as the sound goes (a bare noise floor included).
     const stride = WAVEFORM_SIZE / POINTS;
     for (let i = 0; i < POINTS; i++) input.values[i] = frame.waveform[Math.floor(i * stride)];
-    this.write(input, p.offsetY, p.amplitude * (0.5 + 0.8 * frame.volume) * response.presence);
+    this.write(input, p.offsetY, p.amplitude * (modulation ? 0.3 + 1.5 * modulation.distortion : 0.5 + 0.8 * frame.volume) * response.audible * (1 - 0.18 * tension));
 
     // CH2 and CH3: one real cycle of each voice, repeated; they drift only with the music.
     // Tension (build-ups) makes the voices more stepped, more "digital".
     const digital = Math.min(1, p.digital * (0.3 + 0.7 * music.stylePercussion) * (1 + 0.5 * tension));
     // MESO: busy music scrolls the voices; a held note stands still on the screen.
-    const scroll = 0.6 + 0.7 * motion;
+    const scroll = (0.03 + 1.2 * motion) * response.audible;
     this.bassPhase += dt * weight * music.pace * 0.2 * scroll;
     this.leadPhase += dt * flow * music.pace * 0.3 * scroll;
     const bassCycles = 2 + 1.5 * Math.max(Math.log2(music.bassPitch / 40), 0);
@@ -112,8 +113,8 @@ export class OscilloscopeVisualizer implements Visualizer {
     // Each channel flattens and fades with its region (slowly on a fade, at once on a cut).
     const { lowAudible, midAudible, audible } = response;
     // MACRO: a full sound spreads the channels apart; a lone voice keeps them close.
-    const spacing = p.voiceSpacing * (0.85 + 0.3 * openness);
-    this.write(bass, p.offsetY - spacing, p.voiceAmplitude * weight * lowAudible);
+    const spacing = p.voiceSpacing * (0.7 + 0.6 * openness) * (1 - 0.22 * tension);
+    this.write(bass, p.offsetY - spacing, p.voiceAmplitude * (modulation?.scale ?? weight) * lowAudible);
     this.write(lead, p.offsetY + spacing, p.voiceAmplitude * flow * (0.4 + 0.6 * music.leadVoice) * midAudible);
 
     // Bass → trace width, highs → brightness, drop → flash.
@@ -125,7 +126,9 @@ export class OscilloscopeVisualizer implements Visualizer {
     this.gridMaterial.opacity = p.graticule * (0.8 + 0.4 * density);
 
     // Hits lengthen the phosphor's persistence for a moment (the impacts' afterimage).
-    this.afterimage.uniforms.damp.value = Math.min(0.95, p.persistence + 0.12 * trace);
+    // Afterimage damping is per rendered frame: convert the 60 Hz preset to elapsed time.
+    // A drop briefly overdrives the phosphor, preserving the readable channel layout.
+    this.afterimage.uniforms.damp.value = Math.min(0.96, modulation ? 0.6 + 0.36 * modulation.persistence : p.persistence + 0.12 * trace + 0.07 * music.drop) ** (dt * 60);
   }
 
   resize(width: number, height: number): void {

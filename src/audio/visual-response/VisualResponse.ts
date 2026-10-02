@@ -1,4 +1,5 @@
-import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
+import type { AudioFrame, MusicState } from '../../types/audio';
+import { DynamicsMemory } from '../interpretation/DynamicsMemory';
 import { Audibility } from './Audibility';
 import { Envelope } from './Envelope';
 import { MusicalStateTracker } from './MusicalState';
@@ -22,7 +23,7 @@ const SHARE = [0.12, 0.2] as const;
 /** Meso and macro memories: movement over ~1 s, openness and tension over seconds, impacts' afterimage. */
 const MOTION = [0.12, 1.2] as const;
 const OPENNESS = [1.5, 4] as const;
-const TENSION = [0.6, 2] as const;
+const TENSION = [1.2, 2.5] as const;
 const TRACE = [0, 1.1] as const;
 /** A spectrum bin counts as covered above this level (openness). */
 const COVERED = 0.15;
@@ -39,10 +40,13 @@ const MID_END = hzToPosition(2000);
  * gives every role its own attack/release; then updates the slow musical
  * context (tempo clock, sections, per-song variation). Allocation-free per frame.
  */
-export class VisualResponse {
+export class MusicInterpreter {
+  private readonly dynamics = new DynamicsMemory();
   private readonly context = new MusicContext();
   private readonly states = new MusicalStateTracker();
-  readonly frame: VisualResponseFrame = {
+  readonly frame: MusicState = {
+    intensity: 0, brightness: 0, warmth: 0, transient: 0, rhythmicConfidence: 0, beatPhase: 0,
+    spectralFlux: 0, spectralFlatness: 0, shortEnergy: 0, energyDelta: 0, dynamicRange: 0, attack: 0, decay: 0,
     presence: 0,
     weight: 0,
     flow: 0,
@@ -55,6 +59,9 @@ export class VisualResponse {
     tension: 0,
     trace: 0,
     state: 'silent',
+    previousState: 'silent',
+    stateAge: 0,
+    stateConfidence: 1,
     lowShare: 1 / 3,
     midShare: 1 / 3,
     highShare: 1 / 3,
@@ -93,7 +100,7 @@ export class VisualResponse {
     return this.presence.floor;
   }
 
-  update(audio: AudioFrame, dt: number): VisualResponseFrame {
+  update(audio: AudioFrame, dt: number): MusicState {
     const out = this.frame;
     // Sound is there only above the learned noise floor: hiss or hum alone count as silence.
     const presence = this.presence.update(mixDb(audio.lowDb, audio.midDb, audio.highDb), audio.silent, dt);
@@ -147,17 +154,33 @@ export class VisualResponse {
 
     // Macro: how full the sound is (a tone covers ~0.2 of the spectrum, a full mix all of it; energy
     // is normalized to its own history, so it only nuances), and how much it is pushing.
-    const open = silent ? 0 : clamp01(coverage(audio.spectrum) * 1.1) * (0.75 + 0.25 * audio.energy);
+    const covered = coverage(audio.spectrum);
+    const open = silent ? 0 : clamp01(covered * 1.1) * (0.75 + 0.25 * audio.energy);
     out.openness = this.openness.update(open, dt);
     out.tension = this.tension.update(silent ? 0 : clamp01(Math.max(music.build, 0.6 * audio.flatness * music.intensity)), dt);
+    this.context.updateTrends(audio, out, covered, dt, silent);
     out.state = this.states.update(presence, music, dt);
+    out.previousState = this.states.previousState;
+    out.stateAge = this.states.time;
+    out.stateConfidence = this.states.confidence;
+    this.dynamics.update(audio.loudness * presence, dt, out);
+    out.intensity = music.intensity;
+    out.brightness = music.brightness * presence;
+    out.warmth = (out.lowShare + out.midShare * 0.4) * presence;
+    out.transient = clamp01(Math.max(audio.lowFlux * out.lowAudible, audio.midFlux * out.midAudible, audio.highFlux * out.highAudible, out.impact));
+    out.rhythmicConfidence = music.tempoLock;
+    out.beatPhase = music.beats - Math.floor(music.beats);
+    out.spectralFlux = flux * presence;
+    out.spectralFlatness = audio.flatness * presence;
     return out;
   }
 
   reset(): void {
+    this.dynamics.reset();
+    Object.assign(this.frame, { intensity: 0, brightness: 0, warmth: 0, transient: 0, rhythmicConfidence: 0, beatPhase: 0, spectralFlux: 0, spectralFlatness: 0, shortEnergy: 0, energyDelta: 0, dynamicRange: 0, attack: 0, decay: 0 });
     for (const e of [this.weight, this.flow, this.detail, this.shimmer, this.impact, this.density, this.highReference, this.motion, this.openness, this.tension, this.trace]) e.reset(0);
     for (const e of [this.lowShare, this.midShare, this.highShare]) e.reset(1 / 3);
-    Object.assign(this.frame, { presence: 0, weight: 0, flow: 0, detail: 0, shimmer: 0, impact: 0, density: 0, motion: 0, openness: 0, tension: 0, trace: 0, state: 'silent' });
+    Object.assign(this.frame, { presence: 0, weight: 0, flow: 0, detail: 0, shimmer: 0, impact: 0, density: 0, motion: 0, openness: 0, tension: 0, trace: 0, state: 'silent', previousState: 'silent', stateAge: 0, stateConfidence: 1 });
     this.presence.reset();
     this.states.reset();
     this.frame.lowShare = this.frame.midShare = this.frame.highShare = 1 / 3;
@@ -202,3 +225,6 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
+
+/** Compatibility name for existing integrations; there is only one interpreter. */
+export { MusicInterpreter as VisualResponse };

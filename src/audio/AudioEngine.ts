@@ -1,8 +1,8 @@
-import type { AudioFrame, AudioSourceId, CaptureStatus, VisualResponseFrame } from '../types/audio';
+import type { AudioFrame, AudioSourceId, CaptureStatus, MusicState } from '../types/audio';
 import { AudioAnalyzer, FFT_SIZE, VOICE_WINDOW, type AnalyzerSettings } from './analysis/AudioAnalyzer';
 import type { AudioCaptureProvider, Playback } from './capture/AudioCaptureProvider';
 import { createCaptureProvider, type SourceOptions } from './capture/createCaptureProvider';
-import { VisualResponse } from './visual-response/VisualResponse';
+import { MusicInterpreter } from './interpretation/MusicInterpreter';
 
 export interface AudioEngineState {
   source: AudioSourceId | null;
@@ -18,7 +18,7 @@ export interface AudioEngineState {
  */
 export class AudioEngine {
   readonly analyzer = new AudioAnalyzer();
-  readonly response = new VisualResponse();
+  readonly response = new MusicInterpreter();
   private provider: AudioCaptureProvider | null = null;
   /** Latest samples: the voice window, whose newest FFT_SIZE samples (a fixed view) feed the FFT. */
   private readonly samples = new Float32Array(VOICE_WINDOW);
@@ -37,7 +37,7 @@ export class AudioEngine {
     return this.analyzer.frame;
   }
 
-  get visual(): VisualResponseFrame {
+  get visual(): MusicState {
     return this.response.frame;
   }
 

@@ -1,3 +1,4 @@
+import type { ModulationState } from '../../director/types';
 import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4 } from 'three';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
@@ -66,6 +67,7 @@ const fragmentShader = /* glsl */ `
   #define MAX_RIBBONS ${MAX_RIBBONS}
   #define SHOCKS ${SHOCKS}
   uniform float uHalfWidth;
+  uniform float uWidth;
   uniform float uHorizonY;
   uniform int uRibbons;
   uniform float uLineWidth;
@@ -118,7 +120,8 @@ const fragmentShader = /* glsl */ `
   }
 
   void main() {
-    float v = vPos.x / (2.0 * uHalfWidth) + 0.5;
+    float v = vPos.x / (2.0 * uHalfWidth * uWidth) + 0.5;
+    float lateral = 1.0 - smoothstep(0.9, 1.0, abs(v * 2.0 - 1.0));
     float taper = sin(clamp(v, 0.0, 1.0) * 3.14159265);
     float wave = (texture2D(tWave, vec2(v, 0.5)).r * 2.0 - 1.0) * taper;
     float shock = shockwave(vPos.x);
@@ -171,7 +174,7 @@ const fragmentShader = /* glsl */ `
         }
       }
     }
-    gl_FragColor = vec4(color, 1.0);
+    gl_FragColor = vec4(color * lateral, 1.0);
   }
 `;
 
@@ -185,7 +188,7 @@ const fragmentShader = /* glsl */ `
  *
  * Over seconds the scene follows the song (MusicContext): it moves at the
  * song's tempo with the lower swells breathing once per bar, ribbons whose
- * band is absent dim, builds tighten the ripples and drops flash and send a
+ * band is absent dim, builds pull the fluid taut and drops widen it and send a
  * big ring; each song gets its own wave lengths, stacking and flow.
  */
 export class LiquidVisualizer implements Visualizer {
@@ -221,11 +224,14 @@ export class LiquidVisualizer implements Visualizer {
   private shockSlot = 0;
   private sinceShock = 0;
   private lastImpact = 0;
+  private lastDrop = 0;
   private readonly presenceEnvelopes: Envelope[] = [];
   private readonly swellPhase = new Float32Array(MAX_RIBBONS);
   private readonly curvePhase = new Float32Array(MAX_RIBBONS);
   private readonly ripplePhase = new Float32Array(MAX_RIBBONS);
   private clock = 0;
+  private barPhase = 0;
+  private afterimage: AfterimagePass | null = null;
 
   constructor(private readonly preset: VisualizerPreset<LiquidParams>) {}
 
@@ -249,6 +255,7 @@ export class LiquidVisualizer implements Visualizer {
       fragmentShader,
       uniforms: {
         uHalfWidth: { value: 1 },
+        uWidth: { value: 1 },
         // Horizon in camera units: the scene centre is at y = 0, half-height = 1.
         uHorizonY: { value: (SCENE_CENTER.y - HORIZON) * 2 },
         uRibbons: { value: this.ribbons },
@@ -279,7 +286,10 @@ export class LiquidVisualizer implements Visualizer {
     });
     // Phosphor: each frame fades into the next, like the persistence of a scope screen. A full-screen
     // pass (~7 ms at 1080p on an integrated GPU): High only, so Auto drops it when it steps down.
-    if (p.phosphor > 0 && quality.density >= 0.9) addPass(new AfterimagePass(p.phosphor), 'pre-bloom');
+    if (p.phosphor > 0 && quality.density >= 0.9) {
+      this.afterimage = new AfterimagePass(p.phosphor);
+      addPass(this.afterimage, 'pre-bloom');
+    }
     // Scaled to twice the view in resize(), so it still covers it after the scene-centre offset.
     this.mesh = new Mesh(new PlaneGeometry(2, 2), this.material);
     this.scene.add(this.mesh);
@@ -296,21 +306,27 @@ export class LiquidVisualizer implements Visualizer {
     (this.material.uniforms.uGlintColor.value as Color).copy(highlight).lerp(this.scratch.setRGB(1, 1, 1), 0.5);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
     const { weight, flow, detail, shimmer, density, music, motion, openness, trace } = response;
     const { variation: vary, drop } = music;
-    // Tension covers build-ups (and noisy, pushing loud parts): the surface tightens and speeds up.
+    // Tension covers build-ups (and noisy, pushing loud parts): the surface narrows and becomes laminar.
     const build = response.tension;
-    const amplitude = p.amplitude;
-    this.clock += dt;
+    const amplitude = p.amplitude * (modulation ? 0.3 + 1.6 * modulation.distortion : 1);
+    const moving = (0.04 + 1.4 * motion) * response.audible;
+    this.clock += dt * moving;
+    this.barPhase += dt * music.tempo / 60 / 4 * moving;
+    // Build pulls the fluid taut; release restores width and turbulent interference.
+    const freedom = (1 - 0.75 * build + 0.8 * drop) * (modulation ? 0.2 + 2 * modulation.turbulence : 1);
+    this.material.uniforms.uWidth.value = 0.85 - 0.24 * build + 0.2 * drop;
+    if (this.afterimage) this.afterimage.uniforms.damp.value = Math.min(0.96, modulation ? 0.65 + 0.31 * modulation.persistence : p.phosphor + 0.15 * trace) ** (dt * 60);
     const glints = this.detailQuality > 0.6;
 
     // Song character (fixed per song, see MusicContext.variation): wave lengths, stacking,
     // curvature, imprint, accent, ripple grain and whether the layers flow together or shear.
     const swellScale = 0.75 + 0.55 * vary[0];
     // MACRO: a full, wide sound opens the stack of layers; a lone voice keeps it low and close.
-    const stackHeight = (0.4 + 0.2 * vary[2]) * (0.8 + 0.35 * openness);
+    const stackHeight = (0.4 + 0.2 * vary[2]) * (0.65 + 0.65 * openness) * (1 - 0.4 * build + 0.35 * drop);
     const curveRatio = 1.8 + 1.2 * vary[3];
     const imprint = 0.5 + 0.6 * vary[4];
     const accent = 0.25 + 0.35 * vary[5];
@@ -318,16 +334,15 @@ export class LiquidVisualizer implements Visualizer {
     const shear = 2 * vary[7] - 1;
 
     // Like an oscilloscope, nothing moves on its own: every motion is driven by the sound
-    // (silence leaves flat, still traces). Pace: the song's tempo, a little faster while building.
-    const pace = music.pace * (1 + 0.25 * build);
-    const drift = dt * p.speed * pace * 1.2 * density;
+    // (silence leaves flat, still traces). Motion sets the rate; tempo provides only a small timing nuance.
+    const pace = 0.8 + 0.2 * music.pace;
+    const drift = dt * p.speed * pace * 1.2 * moving;
     // MESO: busy music (many transients) makes the currents travel; a held chord barely moves them.
-    const push = dt * p.speed * pace * 1.2 * flow * (0.6 + 0.7 * motion);
+    const push = dt * p.speed * pace * 1.2 * flow * moving;
     // Section and texture: shock rings need a kick pattern, glints need hats, the waveform needs tonal content.
     const shockGate = 0.4 + 0.6 * smoothstep(0.1, 0.4, music.lowPercussion);
     const glintGate = 0.4 + 0.6 * music.highPercussion;
     const waveGate = 0.4 + 0.6 * music.tonality;
-    const flash = 0.35 * drop;
 
     for (let k = 0; k < this.ribbons; k++) {
       // t: 0 = top ribbon (highs, in the sky) … 1 = bottom ribbon (lows, on the horizon).
@@ -363,32 +378,32 @@ export class LiquidVisualizer implements Visualizer {
       this.swell[k].set(
         this.material.uniforms.uHorizonY.value + (1 - k / this.ribbons) * stackHeight,
         cycles,
-        (this.swellPhase[k] + k * 1.3) / (2 * Math.PI) + lowness * (music.beats / 4),
-        amplitude * presence * heard * drive * (1 + 0.4 * drop * lowness),
+        (this.swellPhase[k] + k * 1.3) / (2 * Math.PI) + lowness * this.barPhase,
+        amplitude * presence * heard * drive * (1 - 0.3 * build + 0.5 * drop * lowness),
       );
       const freq = (2 + 4.5 * highness) * swellScale;
       // MID: secondary curvature; with shear, neighbouring ribbons drift in opposite directions.
-      this.curve[k].set(freq * curveRatio, this.curvePhase[k] + k * 2.1, amplitude * presence * 0.55 * flow * (0.35 + 0.65 * midness) * (1 - 0.8 * voiced), rippleGrain + 6 * k);
+      this.curve[k].set(freq * curveRatio, this.curvePhase[k] + k * 2.1, amplitude * presence * 0.55 * flow * freedom * heard * (0.35 + 0.65 * midness) * (1 - 0.8 * voiced), rippleGrain + 6 * k);
       this.detailTerms[k].set(
         // HIGH: fine ripples, mostly on the upper ribbons; tighter while building.
         this.ripplePhase[k] + k,
-        p.ripple * presence * 1.2 * detail * (0.3 + 0.7 * highness) * (1 + 0.6 * build) * this.detailQuality * (1 - voiced),
+        p.ripple * presence * 1.2 * detail * (0.3 + 0.7 * highness) * freedom * heard * this.detailQuality * (1 - voiced),
         // Waveform: organic local shape on the middle ribbons, for tonal content (voice, pads).
-        p.waveDepth * amplitude * midness * midness * (0.35 + 0.65 * flow) * waveGate * (1 - voiced),
+        p.waveDepth * amplitude * midness * midness * (0.35 + 0.65 * flow) * waveGate * freedom * heard * (1 - voiced),
         // TRANSIENT: shock rings, strongest near the horizon, when there is a kick pattern.
         p.shock * amplitude * (0.35 + 0.65 * lowness) * shockGate,
       );
       band.z = glints ? (0.5 * detail + shimmer) * highness * 1.6 * glintGate * presence * heard : 0;
       // Trace height; with shear, every other ribbon draws downwards.
-      band.w = p.trace * amplitude * (k % 2 === 0 ? 1 : 2 * vary[1] - 1);
+      band.w = p.trace * amplitude * (0.5 + trace * 0.8) * (k % 2 === 0 ? 1 : 2 * vary[1] - 1);
       this.traces.record(k, traceValue(frame, response, t, zone));
 
       // The bass deepens the lower bodies; the highs pull the upper edges towards the highlight hue.
       const hue = this.hues[k];
-      this.body[k].copy(hue).multiplyScalar(0.5 * presence * heard * (p.fill * (0.7 + 0.6 * density + 0.8 * trace * lowness) + 0.02 * weight * lowness));
-      this.scratch.copy(hue).lerp(this.highlight, Math.min(accent * 1.3 * detail * highness + 0.3 * build * highness, 1));
+      this.body[k].copy(hue).multiplyScalar(0.5 * presence * heard * (p.fill * (0.7 + 0.6 * density) + 0.02 * weight * lowness));
+      this.scratch.copy(hue).lerp(this.highlight, Math.min(accent * 1.3 * detail * highness, 1));
       // A faint trace stays visible in silence, like an idle oscilloscope.
-      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, heard * (0.06 + presence * (0.2 + 0.18 * density + 0.3 * zone) + flash));
+      this.edge[k].set(this.scratch.r, this.scratch.g, this.scratch.b, heard * (0.06 + presence * (0.2 + 0.18 * density + 0.3 * zone)));
     }
 
     this.material.uniforms.uImprint.value = p.imprint * amplitude * imprint;
@@ -402,7 +417,7 @@ export class LiquidVisualizer implements Visualizer {
 
     const u = this.material.uniforms;
     u.uClock.value = this.clock;
-    u.uGlintRate.value = (0.02 * detail + 0.12 * shimmer) * glintGate + 0.06 * build;
+    u.uGlintRate.value = (0.02 * detail + 0.12 * shimmer) * glintGate;
   }
 
   /** The ribbons rest on the layout's horizon (the water's edge, or low in the open window). */
@@ -460,9 +475,12 @@ export class LiquidVisualizer implements Visualizer {
   private updateShocks(impact: number, drop: number, dt: number): void {
     this.sinceShock += dt;
     const hit = impact > SHOCK_THRESHOLD && this.lastImpact <= SHOCK_THRESHOLD && this.sinceShock > SHOCK_MIN_INTERVAL;
-    if (hit || drop === 1) {
-      this.shockAge[this.shockSlot] = 0;
-      this.shockStrength[this.shockSlot] = drop === 1 ? 1.6 : impact;
+    const release = drop > 0.2 && drop > this.lastDrop;
+    this.lastDrop = drop;
+    if (hit || release) {
+      // Mounting midway through a crossfade still sees the shared release, already travelling.
+      this.shockAge[this.shockSlot] = release ? 1 - drop : 0;
+      this.shockStrength[this.shockSlot] = release ? 1.6 : impact;
       this.shockSlot = (this.shockSlot + 1) % SHOCKS;
       this.sinceShock = 0;
     }

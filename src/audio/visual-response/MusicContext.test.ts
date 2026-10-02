@@ -103,6 +103,11 @@ describe('MusicContext', { timeout: 60000 }, () => {
       if (time > 42 && time < 50) buildInBuild = Math.max(buildInBuild, m.build);
     });
     expect(buildInBuild).toBeGreaterThan(0.4);
+    expect(drops).toHaveLength(2);
+    expect(drops[0]).toBeGreaterThan(17.95);
+    expect(drops[0]).toBeLessThan(18.5);
+    expect(drops[1]).toBeGreaterThan(49.95);
+    expect(drops[1]).toBeLessThan(50.5);
     expect(drops.some((t) => t > 49.5 && t < 51.5)).toBe(true);
     expect(drops.every((t) => (t > 17 && t < 20) || (t > 49.5 && t < 51.5))).toBe(true);
 

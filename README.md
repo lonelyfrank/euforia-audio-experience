@@ -5,7 +5,7 @@ Visualizzatore musicale desktop in tempo reale, ispirato ai visualizer di Window
 L'app **non dipende da nessun player**: cattura l'audio che il computer sta riproducendo (Spotify, YouTube, VLC, giochi…) e lo trasforma in una scena a tutto schermo.
 
 ```
-SYSTEM AUDIO → AUDIO CAPTURE → AUDIO ANALYSIS → VISUAL ENGINE → REAL-TIME VISUALIZER
+SYSTEM AUDIO → AUDIO CAPTURE → AUDIO ANALYSIS → MUSIC INTERPRETER → VISUAL DIRECTOR → REAL-TIME VISUALIZER
 ```
 
 > Il visualizer è l'interfaccia. Oltre alla scena si vedono solo le informazioni sulla sorgente, a sinistra, e un pulsante circolare in basso al centro. Tutto il resto compare quando serve e si richiude da solo.
@@ -19,6 +19,7 @@ La UI implementa il **design system Halo** (token, componenti, le 8 fasi del moc
 - Cattura dell'audio di sistema su **Windows** (WASAPI loopback) e **Linux** (monitor PipeWire/PulseAudio); microfono su tutte le piattaforme
 - Un file audio trascinato sulla finestra viene riprodotto e visualizzato; in modalità browser c'è anche un segnale di test sintetico
 - Analisi centralizzata: FFT, 5 bande, energia spettrale, waveform, onset, beat detection, stima BPM
+- 8 mood e 5 modalità Experience componibili con scena e palette; direzione Auto opzionale con isteresi
 - 6 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**
 - Composizione Halo: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
@@ -27,16 +28,16 @@ La UI implementa il **design system Halo** (token, componenti, le 8 fasi del moc
 
 ## Interfaccia
 
-Tutta la UI dipende da tre valori: quale menu è aperto (`root`, `scene`, `audio`, `presets`, `quality` oppure nessuno), se il pannello Settings è aperto e se l'app è in idle.
+Tutta la UI dipende da tre valori: quale menu è aperto (`root`, `scene`, `audio`, `presets`, `direction`, `mood`, `experience`, `quality` oppure nessuno), se il pannello Settings è aperto e se l'app è in idle.
 
 | # | Fase | Cosa si vede |
 |---|---|---|
 | 01 | Idle | Scena, now playing, core chiuso |
-| 02 | Control active | Il core sale e si apre la ruota: Scene, Audio, Presets, Settings, Quality, Fullscreen |
+| 02 | Control active | Il core sale e si apre la ruota: Scene, Audio, Palette, Settings, Direction, Fullscreen |
 | 03 | Scene | Anello delle 6 scene |
 | 04 | Audio | Arco con System Audio e Microphone |
 | 05 | Presets | Arco con le 4 palette |
-| 06 | Quality | Arco con Auto, Low, Medium, High |
+| 06 | Direction | Mood, Experience, Auto e Quality (Auto / Low / Medium / High) |
 | 07 | Settings | Pannello sopra il core |
 | 08 | Auto-hide | Solo la scena; now playing attenuato, niente cursore |
 
@@ -44,7 +45,8 @@ Tutta la UI dipende da tre valori: quale menu è aperto (`root`, `scene`, `audio
 - **Nei sub-ring** la scelta si applica subito e l'anello resta aperto, così si possono confrontare le opzioni.
 - La ruota si chiude con un secondo click sul core, un click fuori, `Esc` o dopo 6 s di inattività.
 - L'auto-hide scatta dopo 3, 5 o 10 s (impostabile); qualsiasi movimento del mouse o tasto riporta la UI.
-- **Settings**: Sensitivity, Smoothing, Beat response, Track info (Always / Dim / Hidden), Hide controls after, Hide cursor when idle, **Audio delay**.
+- **Direction**: Mood (Euphoria, Dream, Dark, Pulse, Chaos, Ethereal, Melancholy, Focus), Experience (Ambient, Immersive, Reactive, Cinematic, Minimal), Auto. Una scelta manuale disattiva Auto.
+- **Settings**: Mood intensity (0–1), Sensitivity, Smoothing, Beat response, Track info (Always / Dim / Hidden), Hide controls after, Hide cursor when idle, **Audio delay**.
 - **Audio delay** (0–400 ms) ritarda l'analisi per compensare la latenza dell'uscita: l'audio di sistema viene catturato prima di arrivare alle cuffie, e con cuffie Bluetooth le immagini anticiperebbero il suono di 150–250 ms. Si regola a orecchio finché gli impulsi coincidono con la cassa.
 
 ### Tastiera e accessibilità
@@ -71,8 +73,14 @@ Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruot
  AudioAnalyzer           FFT 2048 · bande · AGC · smoothing · BeatDetector
       │
       ▼
- AudioFrame              valori normalizzati 0..1, array riusati
+ AudioFrame              misure normalizzate + RMS/Hz/dB, array riusati
       │
+      ▼
+ MusicInterpreter        ruoli + MusicContext + memoria della dinamica
+      │ MusicState
+      ▼
+ VisualDirector          mood + Experience + capacità/matrice della scena
+      │ ModulationState
       ▼
  Visualizer registry     auto-discovery + preset + palette
       │
@@ -85,7 +93,7 @@ Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruot
 
 Principi:
 
-- **I visualizer non conoscono la sorgente audio**: ricevono solo `AudioFrame` e i colori della palette.
+- **I visualizer non conoscono la sorgente audio**: ricevono `AudioFrame`, ruoli diretti, `ModulationState` e i colori della palette.
 - **La sorgente audio non conosce i visualizer**: un provider espone solo `readSamples()`.
 - **Un solo analizzatore**: nessun visualizer fa FFT per conto suo.
 - **Il render engine non conosce l'audio engine** né la UI: riceve una callback `frameSource(dt)`.
@@ -129,7 +137,7 @@ npm run desktop:dev      # app desktop (Tauri) con hot reload
 npm run desktop:build    # installer / bundle di produzione
 
 npm run dev              # solo frontend nel browser (segnale di test, file, microfono)
-npm run check            # typecheck + lint + build del frontend
+npm run check            # typecheck + lint + test + build del frontend
 ```
 
 In modalità browser (`npm run dev`) "System Audio" non è disponibile: la sorgente di default è il segnale di test sintetico. Il microfono passa da `getUserMedia` e un file si può trascinare sulla finestra. È utile per sviluppare le scene senza compilare la parte Rust.
@@ -151,7 +159,10 @@ src/
   audio/
     AudioEngine.ts  provider attivo + analizzatore
     capture/        AudioCaptureProvider e implementazioni
-    analysis/       AudioAnalyzer, FFT, BeatDetector, smoothing/AGC
+    analysis/       AudioAnalyzer, FFT, BeatDetector, smoothing/AGC, misure spettrali
+    interpretation/ MusicInterpreter (entry point), DynamicsMemory
+    visual-response/ ruoli, presenza, memoria sezioni e voci; alias VisualResponse compatibile
+  director/         mood, Experience, matrice, VisualDirector, AutoDirection
   renderer/         RenderEngine (layer, crossfade, loop), composizione Halo, qualità
   visualizers/
     registry.ts     auto-discovery delle scene
@@ -209,6 +220,20 @@ Come vengono calcolati:
 Misure su segnali di prova (mix realistici a 90, 124 e 174 BPM, anche a −26 dB): 100% dei colpi rilevati, precisione 86–95%, ritardo 11–17 ms, BPM entro ±3. Con un basso più forte della cassa il tracker può agganciarsi al levare: resta a tempo, ma sfasato di mezza battuta.
 
 Gli array appartengono all'analizzatore e vengono riusati: i visualizer non devono conservarli tra un frame e l'altro né modificarli.
+
+Le misure fisiche aggiuntive `rms`, `centroidHz`, `rolloffHz` (85% della potenza) e `spreadHz` sono indipendenti dall’AGC dello spettro grafico. Le tre misure spettrali riusano la FFT esistente su 20 Hz–16 kHz.
+
+## Interpretazione musicale nel tempo
+
+`MusicInterpreter` (alias compatibile `VisualResponse`) trasforma `AudioFrame` in ruoli condivisi: bassi → peso, medi → forma/flow, alti → dettaglio, impatti → eventi. Presence e audibilità per regione distinguono il segnale dal noise floor appreso e seguono fade/tagli.
+
+Tre scale: impact/shimmer in millisecondi, motion/density attorno al secondo, openness/tension e sezioni su più secondi. `MusicContext` conserva tempo, intensità relativa, build/drop e stile delle voci; espone trend firmati di energia, motion, copertura, tensione e apertura, più memoria recente di picchi e drop. Lo stato musicale ha confidence, durata e stato precedente, con isteresi e conferma temporale.
+
+Le sei scene interpretano gli stessi eventi secondo la propria geometria: un drop libera le spirali, apre il tunnel, espelle le particelle, allarga il fluido, emette un fronte sonar o carica i fosfori dell'oscilloscopio. In assenza sonora il moto si ferma e la memoria degli eventi decade.
+
+Architettura, mood/modalità, Director, capacità e istruzioni di estensione: [docs/visual-director.md](docs/visual-director.md).
+
+Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). L'overlay è solo di sviluppo (`?debug` o Shift+D), con dieci secondi di history.
 
 ## Aggiungere una scena
 
@@ -270,7 +295,7 @@ Gli array appartengono all'analizzatore e vengono riusati: i visualizer non devo
    });
    ```
 
-Non serve registrarla altrove: `registry.ts` trova automaticamente ogni `visualizers/*/index.ts` e la scena compare nell'anello Scene. Il design system consiglia al massimo 6 item per anello: una settima scena richiede di ripensare il sub-ring.
+Non serve registrarla altrove: `registry.ts` trova automaticamente ogni `visualizers/*/index.ts` e la scena compare nell'anello Scene. L'anello principale resta a sei elementi; Mood usa otto posizioni. Verificare spaziatura e leggibilità quando si aggiungono altre voci.
 
 Il contratto completo è in `src/types/visualizer.ts`:
 
@@ -280,7 +305,7 @@ interface Visualizer {
   readonly camera: Camera;
   init(context: VisualizerContext): void;
   setPalette(colors: PaletteColors): void;
-  update(frame: AudioFrame, deltaTime: number, time: number): void;
+  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame, modulation?: ModulationState): void;
   resize(width: number, height: number): void;
   dispose(): void;
 }
@@ -297,7 +322,7 @@ interface Visualizer {
 | Low | 0,5× (DPR max 1,5) | 35% | no |
 | Auto | parte da 1× (DPR max 1,5) | 100% | sì |
 
-**Auto** scende a Medium e poi a Low se per 3 secondi il frame rate resta sotto l'85% dei 60 fps. Gli stalli (caricamento, compilazione shader, finestra nascosta) non vengono conteggiati, e durante la sessione la qualità non risale, per evitare oscillazioni.
+**Auto** riduce prima la sola risoluzione a 0,85×, poi passa a Medium, riduce bloom/risoluzione e infine a Low. Soglia di discesa: 3 s sotto 51 fps. Recupera un passo dopo almeno 30 s a 58 fps e cooldown di 60 s. Gli stalli non costituiscono evidenza. I cambi di sola risoluzione non ricreano la scena.
 
 ## Supporto piattaforme
 
@@ -314,11 +339,11 @@ interface Visualizer {
 - **Linux**: "System Audio" registra il monitor dell'uscita predefinita *al momento dell'avvio della cattura*. Se poi si cambia uscita (per esempio dalle cuffie Bluetooth agli altoparlanti), bisogna riselezionare Audio → System Audio. Serve un server PipeWire o PulseAudio: con ALSA puro l'audio di sistema non è disponibile.
 - **Windows**: la cattura WASAPI compila ed è verificata staticamente (`cargo check`/`clippy` per `x86_64-pc-windows-msvc`), ma non è ancora stata provata su una macchina Windows reale.
 - **Dispositivo audio**: la UI Halo non prevede la scelta del dispositivo, quindi si usa sempre quello predefinito di sistema. Quando il predefinito cambia, cpal lo segue; se la cattura cade, l'app ritenta 5 volte.
-- **Preset**: sono palette globali, non ancora specifiche per scena.
+- **Palette / Mood / Experience** sono indipendenti. I profili iniziali richiedono ulteriore taratura percettiva su registrazioni reali; Auto non classifica generi o struttura completa dei brani.
 - **Fullscreen**: usa la finestra corrente; non c'è ancora la scelta del monitor.
 - Il beat tracking si basa sulla cassa: con musica senza percussioni o molto sincopata il tempo può non agganciarsi (restano comunque livelli e onset). La latenza dell'uscita non viene rilevata automaticamente: va impostata con *Audio delay*.
 - La qualità Auto misura solo il frame rate, non il tempo GPU.
-- Mancano test automatici nel repository.
+- Test automatici su analisi, presenza, semantica temporale e grammatica delle scene; la cattura reale WASAPI richiede ancora una verifica su Windows.
 
 ## Roadmap
 
@@ -326,4 +351,4 @@ interface Visualizer {
 - Su Linux, seguire automaticamente il cambio di uscita predefinita; verifica su macOS
 - Preset specifici per scena e caricamento di preset esterni
 - Beat tracking multi-banda (rullante, hi-hat) e stima automatica della latenza dell'uscita
-- Test automatici (analizzatore, macchina a stati della UI)
+- Estendere i test alla macchina a stati della UI e ai dispositivi audio reali

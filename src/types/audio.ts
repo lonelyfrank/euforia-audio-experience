@@ -2,8 +2,8 @@
  * Normalized snapshot of the audio signal, produced once per rendered frame by
  * the AudioAnalyzer and consumed read-only by visualizers.
  *
- * All scalar values are in the 0..1 range (already smoothed and auto-gained),
- * so visualizers can map them directly to visual parameters.
+ * Visual levels use 0..1; physical measurements retain documented units
+ * (seconds, Hz, dB, RMS). The interpreter and Director derive visual controls.
  *
  * The typed arrays are owned by the analyzer and reused between frames:
  * never keep a reference to them across frames and never mutate them.
@@ -14,6 +14,13 @@ export interface AudioFrame {
   sampleRate: number;
   /** True when the input is (almost) silent. */
   silent: boolean;
+
+  /** Physical spectral measurements, power weighted over 20 Hz–16 kHz (no display tilt). */
+  centroidHz: number;
+  rolloffHz: number;
+  spreadHz: number;
+  /** Raw RMS amplitude, independent of adaptive gain. */
+  rms: number;
 
   /** Overall loudness (smoothed RMS, auto-gained). */
   volume: number;
@@ -125,7 +132,7 @@ export interface VisualResponseFrame {
   impact: number;
   density: number;
   /**
-   * MESO (≈ 0.1–1 s): how much the music is moving — transients in any
+   * MESO (≈ 0.25–4 s): how much the music is moving — transients in any
    * region, averaged over about a second. A sustained pad reads ~0, a busy
    * groove high, even at the same loudness.
    */
@@ -138,6 +145,12 @@ export interface VisualResponseFrame {
   trace: number;
   /** Coarse state of the music over seconds; changes are confirmed and never flicker. */
   state: MusicalState;
+  /** Last committed state (not the unconfirmed candidate). */
+  previousState: MusicalState;
+  /** Seconds since the last committed transition. */
+  stateAge: number;
+  /** 0..1: persistent evidence supporting the current state, not a probability. */
+  stateConfidence: number;
   /** Share of the spectrum in 30–250 Hz, 250 Hz–2 kHz, 2–16 kHz (sum ≈ 1, balanced mix ≈ 1/3 each). */
   lowShare: number;
   midShare: number;
@@ -160,9 +173,18 @@ export interface VisualResponseFrame {
 /**
  * What the song is doing over seconds rather than frames, so scenes can move
  * at the song's pace, evolve with its sections and look different from song
- * to song. Everything glides; nothing here jumps between frames.
+ * to song. Continuous features glide; the shared drop pulse marks a section landing.
  */
 export interface MusicContextFrame {
+  /** Signed section trends, -1..1, comparing 1.5 s and 6 s memories. */
+  energyTrend: number;
+  motionTrend: number;
+  densityTrend: number;
+  tensionTrend: number;
+  opennessTrend: number;
+  /** Fading memory of section intensity (20 s) and the last drop (12 s). */
+  recentPeak: number;
+  recentDrop: number;
   /** Tempo the motion follows (BPM): the detected tempo when trusted, else a pace from the music's activity. */
   tempo: number;
   /** 0..1: how locked the motion is to the detected tempo. */
@@ -230,3 +252,21 @@ export type MusicalState = 'silent' | 'calm' | 'rising' | 'active' | 'peak' | 'f
 export type AudioSourceId = 'system' | 'microphone' | 'file' | 'fake';
 
 export type CaptureStatus = 'idle' | 'starting' | 'running' | 'error';
+
+/** Scene-independent interpretation. Existing sonic roles/context remain the migration API. */
+export interface MusicState extends VisualResponseFrame {
+  intensity: number;
+  brightness: number;
+  warmth: number;
+  transient: number;
+  rhythmicConfidence: number;
+  beatPhase: number;
+  spectralFlux: number;
+  spectralFlatness: number;
+  shortEnergy: number;
+  /** Signed instant-minus-short loudness, -1..1. */
+  energyDelta: number;
+  dynamicRange: number;
+  attack: number;
+  decay: number;
+}

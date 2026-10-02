@@ -25,6 +25,9 @@ function bars(lit: number): string {
 }
 
 const ICONS = {
+  direction: '<path d="M12 3l7 17-7-4-7 4z"/>',
+  mood: '<path d="M18 16A8 8 0 0 1 8 5a8 8 0 1 0 10 11z"/>',
+  experience: '<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="4" ry="8"/><path d="M4 12h16"/>',
   bars: '<path d="M8 9.5v5M12 7v10M16 9.5v5"/>',
   back: '<path d="M14 7l-5 5 5 5"/>',
   scene: '<path d="M3.5 18.5l5.5-8 4 5.2 2.6-3.2 4.9 6z"/><circle cx="16.5" cy="7" r="1.6"/>',

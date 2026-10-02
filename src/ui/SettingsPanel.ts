@@ -2,7 +2,7 @@ import { settingsStore, type Settings, type TrackInfoMode } from '../stores/sett
 import { h, svg } from './dom';
 import { icon } from './icons';
 
-type NumberKey = 'sensitivity' | 'smoothing' | 'audioDelay';
+type NumberKey = 'sensitivity' | 'smoothing' | 'audioDelay' | 'moodIntensity';
 type ToggleKey = 'beatResponse' | 'hideCursor' | 'reflection';
 
 const VERSION = `Halo ${__APP_VERSION__}`;
@@ -21,6 +21,7 @@ export class SettingsPanel {
       'div',
       { class: 'halo-panel', attrs: { role: 'dialog', 'aria-label': 'Settings', 'aria-modal': 'false' } },
       h('div', { class: 'halo-panel__head' }, h('h2', { class: 'halo-panel__title' }, 'Settings'), close),
+      this.row('Mood intensity', this.range('moodIntensity', 0, 1, 0.05, 'Mood intensity')),
       this.row('Sensitivity', this.range('sensitivity', 0.4, 1.8, 0.05)),
       this.row('Smoothing', this.range('smoothing', 0, 0.95, 0.05)),
       this.row('Beat response', this.toggle('beatResponse', 'Beat response')),

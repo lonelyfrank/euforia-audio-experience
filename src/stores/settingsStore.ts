@@ -1,3 +1,5 @@
+import { DEFAULT_DIRECTION, MOODS, EXPERIENCES, clamp01 } from '../director/profiles';
+import type { DirectionSettings } from '../director/types';
 import { supportsSystemAudio } from '../platform';
 import type { AudioSourceId } from '../types/audio';
 import type { QualitySetting } from '../types/visualizer';
@@ -7,7 +9,7 @@ import { createStore } from './createStore';
 export type TrackInfoMode = 'always' | 'dim' | 'hidden';
 
 /** User settings, persisted locally. Flat so partial updates stay simple. */
-export interface Settings {
+export interface Settings extends DirectionSettings {
   /** `file` is session-only and never persisted. */
   source: AudioSourceId;
   scene: string;
@@ -31,6 +33,7 @@ export interface Settings {
 const STORAGE_KEY = 'halo.settings.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
+  ...DEFAULT_DIRECTION,
   source: supportsSystemAudio ? 'system' : 'fake',
   scene: 'tunnel',
   preset: 'nebula',
@@ -53,6 +56,10 @@ function load(): Settings {
     if (settings.source === 'file' || (settings.source === 'system' && !supportsSystemAudio)) {
       settings.source = DEFAULT_SETTINGS.source;
     }
+    if (!MOODS.some((m) => m.id === settings.mood)) settings.mood = DEFAULT_DIRECTION.mood;
+    if (!EXPERIENCES.some((m) => m.id === settings.experience)) settings.experience = DEFAULT_DIRECTION.experience;
+    settings.moodIntensity = typeof settings.moodIntensity === 'number' && Number.isFinite(settings.moodIntensity) ? clamp01(settings.moodIntensity) : DEFAULT_DIRECTION.moodIntensity;
+    settings.autoDirection = settings.autoDirection === true;
     return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };

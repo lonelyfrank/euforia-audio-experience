@@ -1,3 +1,4 @@
+import { settingsStore } from '../../stores/settingsStore';
 import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, MusicalState, VisualResponseFrame } from '../../types/audio';
@@ -12,11 +13,11 @@ import type { App } from '../App';
  * never ships in production.
  */
 
-const COLUMN = 280;
+const COLUMN = 310;
 const GAP = 16;
 const WIDTH = COLUMN * 2 + GAP;
 const ROW = 14;
-const LABEL = 74;
+const LABEL = 100;
 const BAR = 150;
 const COLORS = { low: '#f0a050', mid: '#6fd08c', high: '#6cc8f0', hit: '#e070d0', level: '#d8dcf0', tempo: '#f0e070', dim: '#5a607a' };
 
@@ -53,14 +54,25 @@ const LEFT: Section[] = [
       ['LowFlux', COLORS.low, (a) => a.lowFlux],
       ['MidFlux', COLORS.mid, (a) => a.midFlux],
       ['HighFlux', COLORS.high, (a) => a.highFlux],
+      ['RMS', COLORS.level, (a) => a.rms],
       ['Flatness', COLORS.level, (a) => a.flatness],
     ],
   ],
 ];
 
+LEFT.push(['Section trends · −1…+1', [
+  ['EnergyTrend', COLORS.level, (_, r) => r.music.energyTrend],
+  ['MotionTrend', COLORS.mid, (_, r) => r.music.motionTrend],
+  ['DensityTrend', COLORS.high, (_, r) => r.music.densityTrend],
+  ['TensionTrend', COLORS.hit, (_, r) => r.music.tensionTrend],
+  ['OpenTrend', COLORS.tempo, (_, r) => r.music.opennessTrend],
+  ['RecentPeak', COLORS.level, (_, r) => r.music.recentPeak],
+  ['RecentDrop', COLORS.hit, (_, r) => r.music.recentDrop],
+]]);
+
 const RIGHT: Section[] = [
   [
-    'VisualResponse · sonic roles',
+    'MusicState · sonic roles',
     [
       ['Presence', COLORS.level, (_, r) => r.presence],
       ['Weight', COLORS.low, (_, r) => r.weight],
@@ -81,6 +93,7 @@ const RIGHT: Section[] = [
   [
     'Music context',
     [
+      ['State conf.', COLORS.level, (_, r) => r.stateConfidence],
       ['TempoLock', COLORS.tempo, (_, r) => r.music.tempoLock],
       ['Beat', COLORS.tempo, (_, r) => r.music.beats - Math.floor(r.music.beats)],
       ['Bar', COLORS.tempo, (_, r) => (r.music.beats / 4) % 1],
@@ -101,11 +114,13 @@ const rowsOf = (sections: Section[]) => sections.reduce((n, [, rows]) => n + row
 const COLUMNS_HEIGHT = 8 + Math.max(rowsOf(LEFT), rowsOf(RIGHT)) * ROW;
 const SPECTRUM_HEIGHT = 60;
 const SPECTRUM_TOP = COLUMNS_HEIGHT + 4 * ROW + 16;
-/** History strip: the last HISTORY overlay frames (~8 s at 60 fps) of energy, presence and section intensity. */
-const HISTORY = 480;
+/** Ten seconds sampled at 20 Hz, independent of rendering frame rate. */
+const HISTORY_RATE = 20;
+const HISTORY = 10 * HISTORY_RATE;
 const HISTORY_HEIGHT = 40;
 const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
-const HEIGHT = HISTORY_TOP + HISTORY_HEIGHT + 6;
+const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
+const HEIGHT = DIRECTOR_TOP + 7 * ROW;
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
   calm: COLORS.high,
@@ -143,14 +158,17 @@ class DebugOverlay {
   /** Ring buffers of the history strip. */
   private readonly energy = new Float32Array(HISTORY);
   private readonly presence = new Float32Array(HISTORY);
-  private readonly intensity = new Float32Array(HISTORY);
+  private readonly motion = new Float32Array(HISTORY);
+  private readonly openness = new Float32Array(HISTORY);
+  private readonly tension = new Float32Array(HISTORY);
+  private historyTime = 0;
   private head = 0;
 
   constructor(private readonly app: App) {
     this.root = document.createElement('div');
     this.root.style.cssText =
       'position:fixed;top:12px;right:12px;z-index:9999;padding:8px;border-radius:8px;background:rgba(6,8,18,.82);' +
-      'font:11px ui-monospace,monospace;color:#d8dcf0;user-select:none;max-width:calc(100vw - 24px);overflow:auto;';
+      'font:11px ui-monospace,monospace;color:#d8dcf0;user-select:none;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow:auto;';
 
     const select = document.createElement('select');
     select.style.cssText = 'width:100%;margin-bottom:6px;font:inherit;background:#12152a;color:inherit;border:1px solid #2a2f4a;';
@@ -182,6 +200,7 @@ class DebugOverlay {
   private readonly draw = (now: number): void => {
     this.rafId = requestAnimationFrame(this.draw);
     this.frameMs += (now - this.lastTime - this.frameMs) * 0.05;
+    const dt = Math.min((now - this.lastTime) / 1000, HISTORY / HISTORY_RATE);
     this.lastTime = now;
 
     const { ctx } = this;
@@ -203,7 +222,7 @@ class DebugOverlay {
     );
     y += ROW;
     ctx.fillStyle = STATE_COLORS[response.state];
-    ctx.fillText(`State: ${response.state.toUpperCase()}`, 0, y);
+    ctx.fillText(`State: ${response.state} ${response.stateAge.toFixed(1)}s ← ${response.previousState}`, 0, y);
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(`noise floor ${this.app.audio.response.noiseFloor.toFixed(1)} dB`, COLUMN + GAP, y);
     y += ROW;
@@ -251,24 +270,53 @@ class DebugOverlay {
       ctx.fillText(label, p * WIDTH + 3, top + SPECTRUM_HEIGHT + 10);
     }
 
-    // History (~8 s): energy, presence and section intensity, newest on the right; the state as a band.
-    this.energy[this.head] = audio.energy;
-    this.presence[this.head] = response.presence;
-    this.intensity[this.head] = music.intensity;
-    this.head = (this.head + 1) % HISTORY;
+    this.historyTime += dt;
+    while (this.historyTime >= 1 / HISTORY_RATE) {
+      this.historyTime -= 1 / HISTORY_RATE;
+      this.energy[this.head] = audio.loudness;
+      this.presence[this.head] = response.presence;
+      this.motion[this.head] = response.motion;
+      this.openness[this.head] = response.openness;
+      this.tension[this.head] = response.tension;
+      this.head = (this.head + 1) % HISTORY;
+    }
     ctx.fillStyle = COLORS.dim;
-    ctx.fillText('History ~8 s:', 0, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillText('History 10 s:', 0, HISTORY_TOP - ROW / 2 - 2);
     ctx.fillStyle = COLORS.level;
-    ctx.fillText('energy', 90, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillText('loudness', 90, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillStyle = COLORS.low;
+    ctx.fillText('presence', 160, HISTORY_TOP - ROW / 2 - 2);
     ctx.fillStyle = COLORS.mid;
-    ctx.fillText('presence', 140, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillText('motion', 230, HISTORY_TOP - ROW / 2 - 2);
     ctx.fillStyle = COLORS.tempo;
-    ctx.fillText('intensity', 206, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillText('openness', 290, HISTORY_TOP - ROW / 2 - 2);
+    ctx.fillStyle = COLORS.hit;
+    ctx.fillText('tension', 365, HISTORY_TOP - ROW / 2 - 2);
     ctx.fillStyle = '#1a1e36';
     ctx.fillRect(0, HISTORY_TOP, WIDTH, HISTORY_HEIGHT);
     this.trace(this.energy, COLORS.level);
-    this.trace(this.presence, COLORS.mid);
-    this.trace(this.intensity, COLORS.tempo);
+    this.trace(this.presence, COLORS.low);
+    this.trace(this.motion, COLORS.mid);
+    this.trace(this.openness, COLORS.tempo);
+    this.trace(this.tension, COLORS.hit);
+    const engine = this.app.directionDebug;
+    const direction = engine.effectiveDirection;
+    const modulation = engine.modulation;
+    ctx.fillStyle = COLORS.level;
+    ctx.fillText(`${settingsStore.get().scene} · ${direction.mood} · ${direction.experience} · auto ${direction.autoDirection ? engine.autoDirection.confidence.toFixed(2) : 'off'}`, 0, DIRECTOR_TOP);
+    ctx.fillText(`Centroid ${audio.centroidHz.toFixed(0)} Hz · rolloff ${audio.rolloffHz.toFixed(0)} Hz · spread ${audio.spreadHz.toFixed(0)} Hz`, 0, DIRECTOR_TOP + ROW);
+    const state = this.app.audio.visual;
+    ctx.fillText(`Short energy ${state.shortEnergy.toFixed(2)} · Δ ${state.energyDelta.toFixed(2)} · range ${state.dynamicRange.toFixed(2)} · transient ${state.transient.toFixed(2)}`, 0, DIRECTOR_TOP + ROW * 2);
+    if (modulation) {
+      this.bar('Expansion', COLORS.low, modulation.expansion, 0, DIRECTOR_TOP + ROW * 3);
+      this.bar('Distortion', COLORS.mid, modulation.distortion, COLUMN + GAP, DIRECTOR_TOP + ROW * 3);
+      this.bar('Camera', COLORS.tempo, modulation.cameraMotion, 0, DIRECTOR_TOP + ROW * 4);
+      this.bar('Particles', COLORS.high, modulation.particleEmission, COLUMN + GAP, DIRECTOR_TOP + ROW * 4);
+      this.bar('Bloom', COLORS.level, modulation.bloom, 0, DIRECTOR_TOP + ROW * 5);
+      this.bar('Persistence', COLORS.hit, modulation.persistence, COLUMN + GAP, DIRECTOR_TOP + ROW * 5);
+      this.bar('Impact', COLORS.hit, modulation.impact, 0, DIRECTOR_TOP + ROW * 6);
+      this.bar('Visibility', COLORS.level, modulation.visibility, COLUMN + GAP, DIRECTOR_TOP + ROW * 6);
+    }
   };
 
   private trace(values: Float32Array, color: string): void {
@@ -307,7 +355,10 @@ class DebugOverlay {
     ctx.fillStyle = '#1a1e36';
     ctx.fillRect(x + LABEL, y - 4, BAR, 8);
     ctx.fillStyle = color;
-    ctx.fillRect(x + LABEL, y - 4, Math.max(0, Math.min(value, 1)) * BAR, 8);
+    if (label.endsWith('Trend')) {
+      const width = Math.max(-1, Math.min(value, 1)) * BAR / 2;
+      ctx.fillRect(x + LABEL + BAR / 2, y - 4, width, 8);
+    } else ctx.fillRect(x + LABEL, y - 4, Math.max(0, Math.min(value, 1)) * BAR, 8);
     ctx.fillStyle = '#d8dcf0';
     ctx.fillText(value.toFixed(2), x + LABEL + BAR + 8, y);
   }

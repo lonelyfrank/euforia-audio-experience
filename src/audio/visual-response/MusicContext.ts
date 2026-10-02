@@ -1,6 +1,7 @@
 import { SHAPE_SIZE } from '../analysis/VoiceTracker';
 import type { AudioFrame, MusicContextFrame, VisualResponseFrame, VoiceFrame } from '../../types/audio';
 import { Envelope } from './Envelope';
+import { SectionTrend } from './SectionTrend';
 import { hzToPosition, sampleSpectrumRange } from './spectrum';
 
 /** Detected-tempo confidence mapped to lock between these. */
@@ -80,6 +81,13 @@ const OFFSETS = Array.from({ length: VARIATIONS }, (_, i) => (Math.sin((i + 1) *
  */
 export class MusicContext {
   readonly frame: MusicContextFrame = {
+    energyTrend: 0,
+    motionTrend: 0,
+    densityTrend: 0,
+    tensionTrend: 0,
+    opennessTrend: 0,
+    recentPeak: 0,
+    recentDrop: 0,
     tempo: 110,
     tempoLock: 0,
     beats: 0,
@@ -107,6 +115,11 @@ export class MusicContext {
     stylePercussion: 0.3,
   };
 
+  private readonly energyTrend = new SectionTrend();
+  private readonly motionTrend = new SectionTrend();
+  private readonly densityTrend = new SectionTrend();
+  private readonly tensionTrend = new SectionTrend();
+  private readonly opennessTrend = new SectionTrend();
   private readonly lock = new Envelope(...LOCK);
   private detectedTempo = 120;
   private readonly section = new Envelope(...SECTION);
@@ -126,6 +139,7 @@ export class MusicContext {
   private recentBuild = 0;
   private sinceDrop = DROP_MIN_INTERVAL;
   private lastImpact = 0;
+  private lastLowFlux = 0;
   private readonly flux = new Float32Array(3);
   private readonly hits = new Float32Array(3);
   private readonly brightness = new Envelope(...CHARACTER);
@@ -140,17 +154,29 @@ export class MusicContext {
   update(audio: AudioFrame, roles: VisualResponseFrame, dt: number, silent = audio.silent): MusicContextFrame {
     const out = this.frame;
     this.trackSong(silent, dt);
+    out.drop *= Math.exp(-dt / DROP_DECAY);
+    this.sinceDrop += dt;
     if (!silent) {
-      const bright = centroid(audio.spectrum);
-      this.updateSections(audio.loudness, bright, sampleSpectrumRange(audio.spectrum, 0, SUB_END), roles.impact, dt);
+      const bright = clamp(Math.log2(Math.max(audio.centroidHz, 30) / 30) / Math.log2(16000 / 30), 0, 1);
+      this.updateSections(audio.loudness, bright, sampleSpectrumRange(audio.spectrum, 0, SUB_END), roles, audio, dt);
       this.updatePercussion(audio, roles, dt);
       out.brightness = this.brightness.update(bright, dt);
       out.tonality = this.tonality.update(1 - audio.flatness, dt);
+    } else {
+      out.build = this.buildEnvelope.update(0, dt);
+      out.intensity *= Math.exp(-dt / 4);
+      this.lastImpact = this.lastLowFlux = 0;
+      this.flux.fill(0);
+      const decay = Math.exp(-dt / PERCUSSION_WINDOW);
+      for (let i = 0; i < 3; i++) this.hits[i] *= decay;
+      out.lowPercussion *= decay;
+      out.midPercussion *= decay;
+      out.highPercussion *= decay;
     }
     this.updateTempo(audio, silent, dt);
     if (!silent) this.learn(roles, dt);
-    out.bassVoice = this.updateVoice(audio.bassVoice, presenceOf(roles.lowShare), out.bassLine, out.bassStyle, dt, true);
-    out.leadVoice = this.updateVoice(audio.leadVoice, presenceOf(roles.midShare), out.leadLine, out.leadStyle, dt, false);
+    out.bassVoice = this.updateVoice(audio.bassVoice, presenceOf(roles.lowShare) * roles.lowAudible, out.bassLine, out.bassStyle, dt, true);
+    out.leadVoice = this.updateVoice(audio.leadVoice, presenceOf(roles.midShare) * roles.midAudible, out.leadLine, out.leadStyle, dt, false);
     if (!silent) {
       const style = 1 - Math.exp(-dt / STYLE_TAU);
       out.styleTonality += (out.tonality - out.styleTonality) * style;
@@ -160,6 +186,18 @@ export class MusicContext {
     const glide = 1 - Math.exp(-dt / VARIATION_GLIDE);
     for (let i = 0; i < VARIATIONS; i++) out.variation[i] += (this.targets[i] - out.variation[i]) * glide;
     return out;
+  }
+
+  /** Called after the macro roles, so every trend belongs to the same frame. */
+  updateTrends(audio: AudioFrame, roles: VisualResponseFrame, coverage: number, dt: number, silent: boolean): void {
+    const out = this.frame;
+    out.energyTrend = this.energyTrend.update(silent ? 0 : audio.loudness, dt);
+    out.motionTrend = this.motionTrend.update(roles.motion, dt);
+    out.densityTrend = this.densityTrend.update(silent ? 0 : coverage, dt);
+    out.tensionTrend = this.tensionTrend.update(roles.tension, dt);
+    out.opennessTrend = this.opennessTrend.update(roles.openness, dt);
+    out.recentPeak = Math.max(silent ? 0 : out.intensity, out.recentPeak * Math.exp(-dt / 20));
+    out.recentDrop = Math.max(out.drop, out.recentDrop * Math.exp(-dt / 12));
   }
 
   /**
@@ -194,6 +232,16 @@ export class MusicContext {
     out.songLock = 0;
     out.build = 0;
     out.drop = 0;
+    out.intensity = 0.5;
+    out.energyTrend = out.motionTrend = out.densityTrend = out.tensionTrend = out.opennessTrend = 0;
+    out.recentPeak = out.recentDrop = 0;
+    for (const trend of [this.energyTrend, this.motionTrend, this.densityTrend, this.tensionTrend, this.opennessTrend]) trend.reset();
+    this.buildEnvelope.reset();
+    this.hits.fill(0);
+    this.flux.fill(0);
+    out.lowPercussion = out.midPercussion = out.highPercussion = 0;
+    this.lastImpact = this.lastLowFlux = 0;
+    this.silentFor = 0;
     this.hasReference = false;
     this.referenceDelay = 0;
     this.warmupLoudness = 0;
@@ -229,6 +277,7 @@ export class MusicContext {
     out.tempo += (target - out.tempo) * (1 - Math.exp(-dt / TEMPO_GLIDE));
     out.pace = clamp(out.tempo / 120, PACE_MIN, PACE_MAX);
 
+    if (silent) return;
     out.beats += (dt * out.tempo) / 60;
     if (audio.bpm > 0 && out.tempoLock > 0) {
       let error = audio.beatPhase - (out.beats - Math.floor(out.beats));
@@ -244,7 +293,7 @@ export class MusicContext {
    * Build: intensity rising for seconds. Drop: the sub-bass coming back with
    * a hit, on a loud section right after a quiet or rising one.
    */
-  private updateSections(loudness: number, brightness: number, sub: number, impact: number, dt: number): void {
+  private updateSections(loudness: number, brightness: number, sub: number, roles: VisualResponseFrame, audio: AudioFrame, dt: number): void {
     const out = this.frame;
     if (!this.hasReference) {
       // A new song reads mid-intensity for its first seconds; then the references are set around its mean level.
@@ -279,24 +328,31 @@ export class MusicContext {
     // No build right after a drop: the new section's rise is the drop itself.
     const settled = this.learned >= SECTION_WARMUP && this.sinceDrop > BUILD_AFTER_DROP;
     const rising = smoothstep(0.03, 0.12, Math.max(louder, brighter * 0.8)) * (1 - smoothstep(0.85, 1, out.intensity));
-    out.build = this.buildEnvelope.update(settled ? rising : 0, dt);
+    // Loudness alone is insufficient: a build also develops rhythmic or spectral activity.
+    const activity = smoothstep(0.08, 0.35, roles.motion + out.highPercussion * 0.5 + Math.max(brighter, 0) * 3);
+    out.build = this.buildEnvelope.update(settled ? rising * activity : 0, dt);
 
     // Memory of the last seconds: how low the intensity went, how much it was building.
     this.recentLow = Math.min(out.intensity, this.recentLow + dt * 0.15);
     this.recentBuild = Math.max(out.build, this.recentBuild - dt * 0.08);
-    this.sinceDrop += dt;
-    const hit = impact > 0.6 && this.lastImpact <= 0.6;
+    const impact = roles.impact;
+    const hit = (impact > 0.6 && this.lastImpact <= 0.6) || (audio.lowFlux > 0.55 && this.lastLowFlux <= 0.55);
     this.lastImpact = impact;
-    const bassReturns = this.subFast.update(sub, dt) - this.subSlow.update(sub, dt) > SUB_RETURN;
-    if (this.learned >= SECTION_WARMUP && hit && bassReturns && out.intensity > 0.65 && (this.recentLow < 0.4 || this.recentBuild > 0.35) && this.sinceDrop > DROP_MIN_INTERVAL) {
+    this.lastLowFlux = audio.lowFlux;
+    const subFast = this.subFast.update(sub, dt);
+    const subSlow = this.subSlow.update(sub, dt);
+    // The raw return catches the landing itself; the follower also supports softer returns.
+    const bassReturns = subFast - subSlow > SUB_RETURN || sub - subSlow > SUB_RETURN * 1.4;
+    const landing = clamp((loudness - this.quiet) / range, 0, 1);
+    // Require a real low attack, not just the beat tracker's predicted pulse.
+    const supported = audio.lowFlux > 0.25 && (audio.tempoConfidence > 0.3 || this.recentBuild > 0.35);
+    if (this.learned >= SECTION_WARMUP && hit && supported && bassReturns && landing > 0.65 && (this.recentLow < 0.4 || this.recentBuild > 0.35) && this.sinceDrop > DROP_MIN_INTERVAL) {
       out.drop = 1;
       this.sinceDrop = 0;
       out.build = 0;
       this.buildEnvelope.reset(0);
       this.recentLow = 1;
       this.recentBuild = 0;
-    } else {
-      out.drop *= Math.exp(-dt / DROP_DECAY);
     }
   }
 
@@ -354,17 +410,6 @@ function sineCycle(): Float32Array {
   const cycle = new Float32Array(SHAPE_SIZE);
   for (let i = 0; i < SHAPE_SIZE; i++) cycle[i] = Math.sin((2 * Math.PI * i) / SHAPE_SIZE);
   return cycle;
-}
-
-/** Spectral centroid as a position on the log spectrum (0..1). */
-function centroid(spectrum: Float32Array): number {
-  let sum = 0;
-  let weighted = 0;
-  for (let i = 0; i < spectrum.length; i++) {
-    sum += spectrum[i];
-    weighted += spectrum[i] * (i + 0.5);
-  }
-  return sum > 1e-4 ? weighted / sum / spectrum.length : 0.5;
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
