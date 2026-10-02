@@ -64,6 +64,14 @@ export interface SceneLayout {
 export interface SceneInput {
   audio: AudioFrame;
   response: MusicState;
+  /** Fixture values from the Dynamics layer (read every frame; stable object). */
+  rig?: RigValues;
+}
+
+/** Fixture parameters driven by the Dynamics layer (migrated one at a time). */
+export interface RigValues {
+  /** Halo composition: the brief halo pulse on beats and kicks (instant attack, decay). */
+  haloPulse: number;
 }
 
 /** What the engine hands to a visualizer when it is mounted. */

@@ -281,7 +281,8 @@ export class RenderEngine {
     u.uWeight.value = response.weight;
     u.uDetail.value = response.detail;
     u.uDensity.value = response.density;
-    u.uImpact.value = response.impact;
+    // Migrated to the Dynamics layer: predicted beats and kicks, instant attack (falls back to the old envelope).
+    u.uImpact.value = input.rig?.haloPulse ?? response.impact;
     // Allow a short event afterimage to survive the live audibility gate.
     const directed = current.director.response ?? response;
     u.uAudible.value = Math.max(directed.audible, directed.trace * 0.5, directed.music.drop * 0.4);

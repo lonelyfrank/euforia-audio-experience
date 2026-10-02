@@ -8,7 +8,9 @@ import { isFullscreen, setFullscreen } from '../platform';
 import { RenderEngine } from '../renderer/RenderEngine';
 import { settingsStore, type Settings } from '../stores/settingsStore';
 import type { AudioSourceId } from '../types/audio';
-import type { QualitySetting, SceneInput } from '../types/visualizer';
+import type { QualitySetting, RigValues, SceneInput } from '../types/visualizer';
+import { CueScheduler } from '../dynamics/CueScheduler';
+import { Dynamics } from '../dynamics/Dynamics';
 import { Dial, type DialMenu } from '../ui/Dial';
 import { h } from '../ui/dom';
 import { swatch } from '../ui/icons';
@@ -41,7 +43,12 @@ const QUALITIES: { id: QualitySetting; label: string; icon: 'qauto' | 'qlow' | '
 export class App {
   readonly audio = new AudioEngine();
   /** Handed to the render engine every frame; both objects are updated in place. */
-  private readonly sceneInput: SceneInput = { audio: this.audio.frame, response: this.audio.visual };
+  /** Dynamics: fixture parameters driven by timed targets and impulses (see src/dynamics). */
+  readonly dynamics = new Dynamics();
+  private readonly haloPulse = this.dynamics.channel('halo.pulse', 'flash');
+  private readonly cues = new CueScheduler(this.dynamics, this.haloPulse);
+  private readonly rig: RigValues = { haloPulse: 0 };
+  private readonly sceneInput: SceneInput = { audio: this.audio.frame, response: this.audio.visual, rig: this.rig };
   private readonly stage: HTMLElement;
   private readonly render: RenderEngine;
   private readonly nowPlaying = new NowPlaying();
@@ -99,7 +106,23 @@ export class App {
     this.dial.setLevel(level);
     this.nowPlaying.draw(level, performance.now());
     this.calibration.frame(dt);
+    this.updateRig();
     return this.sceneInput;
+  }
+
+  /** Analysis events → Dynamics (on the heard audio clock) → fixture values for the renderer. */
+  private updateRig(): void {
+    const { features, timing, clock } = this.audio;
+    if (!clock.ready) return;
+    const { onsets, sections } = features;
+    // A new source restarts the capture clock: the rig starts over with it.
+    if (timing.heardTime < this.dynamics.time - 1) {
+      this.dynamics.restart();
+      this.cues.reset();
+    }
+    this.cues.update(features.frame, timing.gridWeight, onsets.items, onsets.count, sections.items, sections.count);
+    this.dynamics.advance(timing.heardTime);
+    this.rig.haloPulse = this.dynamics.value(this.haloPulse);
   }
 
   // ---- wheel ---------------------------------------------------------------

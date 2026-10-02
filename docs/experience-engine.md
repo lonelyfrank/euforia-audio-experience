@@ -81,3 +81,38 @@ drops and breaks within 1 bar, builds 2 bars late (the grid only locks once
 the build's snare roll has started) — a known limit. Cost: ~1% of a core
 more (5.3% total on the throttled i7 at 900 MHz). Not verified: real music
 and the corpus (boundary error criterion: ±1 bar on ≥ 60%).
+
+## Phase 4 — Dynamics layer (core + first fixture)
+
+`src/dynamics/` (pure TS, no DOM or rendering). The Director (Phase 5) will
+write timed targets and impulses; the renderer reads values every frame.
+
+- Two primitives, kept distinct: **envelopes** (flash, hit) jump to the peak
+  at the event's exact time and decay exponentially — evaluated analytically,
+  so an impulse is never quantized to a step or a frame and adds no latency;
+  **springs** (pulse, swing, glide, drift; ω and ζ in `presets.ts`) use the
+  exact solution of the damped oscillator per fixed step (240 Hz by default),
+  on absolute multiples of the audio clock, read interpolated between steps.
+- Clock: the capture time heard when the frame is seen (`Timing.heardTime`).
+  Events are queued sorted; past ones (late reports) take effect at once, an
+  envelope then starts at its peak when first seen. A snap zeroes spring
+  velocities, holds ζ = 1 for a while and clears envelopes. The layer starts
+  over when the capture clock does (a new source).
+- First fixture migrated: the Halo composition's halo pulse (`uImpact`).
+  `CueScheduler` schedules predicted beats ahead at their exact time
+  (weighted by the grid's weight), takes kicks off the grid on the fast path
+  (skipping those that are a scheduled beat) and snaps at section changes.
+
+Measured (tests): step responses match theory (critically damped glide/drift:
+no overshoot, 90% at 3.89/ω, 2% at 5.83/ω; pulse/swing overshoot e^(−πζ/√(1−ζ²)));
+values identical at 60 and 144 fps and with irregular frames; a snap leaves
+no trail after one bar. In the browser on the synthetic 124 BPM beat, the
+time from a kick being heard to the halo pulse reaching half its peak:
+
+| quality | before (per-frame envelope) | after (Dynamics) |
+|---|---|---|
+| Low (60 fps) | median 35.2 ms, max 61.5 | median 9.9 ms, max 15.6 |
+| High (~30 fps here) | median 72.2 ms, max 85.5 | median 26.4 ms, max 43.4 |
+
+The `hit` preset (60 ms decay) was first used and dropped: at 30 fps a frame
+can land after the pulse fell below half, so `flash` (120 ms) is used.

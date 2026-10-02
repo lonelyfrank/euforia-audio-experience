@@ -122,7 +122,8 @@ const HISTORY_HEIGHT = 40;
 const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
 const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
 const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
-const HEIGHT = ANALYSIS_TOP + 6 * ROW;
+const DYNAMICS_TOP = ANALYSIS_TOP + 6 * ROW + 6;
+const HEIGHT = DYNAMICS_TOP + 3 * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -373,6 +374,17 @@ class DebugOverlay {
       0,
       ANALYSIS_TOP + ROW * 5,
     );
+    // Dynamics: every channel with its type, ω, ζ (1 while snapped), value and velocity.
+    const dynamics = this.app.dynamics;
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(`Dynamics (${(1 / dynamics.step).toFixed(0)} Hz, audio clock ${dynamics.time.toFixed(2)} s${dynamics.dropped ? `, ${dynamics.dropped} events dropped` : ''})`, 0, DYNAMICS_TOP);
+    for (let c = 0; c < dynamics.channelCount; c++) {
+      const s = dynamics.inspect(c);
+      const params = s.omega > 0 ? `ω ${s.omega.toFixed(1)} ζ ${s.zeta.toFixed(2)} → ${s.target.toFixed(2)} v ${s.velocity.toFixed(2)}` : 'envelope';
+      this.bar(s.name, COLORS.hit, s.value, (c % 2) * (COLUMN + GAP), DYNAMICS_TOP + ROW * (1 + (c >> 1)));
+      ctx.fillStyle = COLORS.dim;
+      ctx.fillText(`${s.type} · ${params}`, (c % 2) * (COLUMN + GAP) + LABEL + BAR + 44, DYNAMICS_TOP + ROW * (1 + (c >> 1)));
+    }
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(
       `Latency: attack→frame ${ms(timing.onsetDelay)} + render ${ms(timing.renderLatency)} = ${ms(timing.onsetDelay + timing.renderLatency)} · ` +
