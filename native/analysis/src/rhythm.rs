@@ -39,6 +39,12 @@ const DENSITY_WINDOW: f32 = 2.0;
 const ODF_LATENCY: f64 = 0.0145;
 /// Multiples of a candidate period checked by the tempo comb.
 const COMB: usize = 4;
+/// Octave check: below this tempo, if the low end also repeats at half the period this strongly
+/// (relative to the period itself), the beat is the faster one (e.g. drum and bass read at half time).
+const DOUBLE_BELOW_BPM: f32 = 100.0;
+const DOUBLE_RATIO: f32 = 0.9;
+/// And the other way: if the low end repeats much more strongly at twice the period, the beat is the slower one.
+const HALVE_RATIO: f32 = 0.6;
 /// Onsets per second below which no tempo is trusted (a held chord's beating is periodic too).
 const MIN_DENSITY: f32 = 0.3;
 const FULL_DENSITY: f32 = 1.0;
@@ -202,6 +208,21 @@ impl Rhythm {
             if score > best_score {
                 best_score = score;
                 best_lag = lag;
+            }
+        }
+        // The bass carries the beat: the period is the one the low end repeats at. If it also hits halfway
+        // through a slow period, the beat is twice as fast; if it only hits every other period, half as fast.
+        if has_low && best_lag > 0 {
+            let bpm = 60.0 / (best_lag as f32 * self.hop_seconds);
+            let half = interpolate(&self.scores_low, best_lag as f32 / 2.0);
+            if bpm < DOUBLE_BELOW_BPM && bpm * 2.0 <= MAX_BPM && self.scores_low[best_lag] > 0.1 && half >= DOUBLE_RATIO * self.scores_low[best_lag] {
+                let i = best_lag / 2;
+                // The nearer of the two lags around the half.
+                best_lag = if self.scores[i + 1] > self.scores[i] { i + 1 } else { i };
+            } else if bpm / 2.0 >= MIN_BPM && 2 * best_lag < max_lag && self.scores_low[2 * best_lag] > 0.2 && self.scores_low[best_lag] < HALVE_RATIO * self.scores_low[2 * best_lag] {
+                // The bass only repeats every other period (kick against hat at half the beat).
+                let i = 2 * best_lag;
+                best_lag = if self.scores[i + 1] > self.scores[i] { i + 1 } else if self.scores[i - 1] > self.scores[i] { i - 1 } else { i };
             }
         }
         let best_raw = if best_lag > 0 { self.scores[best_lag] } else { 0.0 };

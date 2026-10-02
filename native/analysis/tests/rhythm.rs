@@ -92,11 +92,23 @@ fn tempo_of_steady_grooves() {
 }
 
 #[test]
-fn fast_tempo_is_found_up_to_an_octave() {
-    // 174 BPM may read as 87 (half time) before the beat tracker resolves the octave.
-    let r = run(10.0, groove(174.0));
-    let measured = r.frames.last().unwrap().tempo_bpm;
-    assert!((measured - 174.0).abs() < 2.0 || (measured - 87.0).abs() < 1.5, "measured {measured}");
+fn fast_tempo_is_not_halved() {
+    // Kick on every beat at 174: the low end repeats at the beat, so it is 174, not 87.
+    for bpm in [160.0f32, 174.0] {
+        let r = run(10.0, groove(bpm));
+        let measured = r.frames.last().unwrap().tempo_bpm;
+        assert!((measured - bpm).abs() < 2.0, "{bpm}: measured {measured}");
+    }
+}
+
+#[test]
+fn slow_tempo_is_not_doubled() {
+    // A slow groove whose hats (not the bass) fill the half beats stays slow.
+    for bpm in [75.0f32, 90.0] {
+        let r = run(10.0, groove(bpm));
+        let measured = r.frames.last().unwrap().tempo_bpm;
+        assert!((measured - bpm).abs() < 1.5, "{bpm}: measured {measured}");
+    }
 }
 
 #[test]
