@@ -82,7 +82,15 @@ export class Timing {
   impactCount = 0;
   /** Smoothed lateness (s) of the attacks shown (fast path). */
   impactLate = 0;
+  /**
+   * Measured (smoothed) seconds from an attack's capture to the frame that
+   * learns of it: capture buffering, transport and detection together.
+   */
+  onsetDelay = 0;
+  /** Estimated seconds from requestAnimationFrame to the picture (renderFrames × frame). */
+  renderLatency = 0;
 
+  private onsetMeasured = false;
   private readonly beatCue: BeatCue = { index: 0, barPosition: 0, downbeat: false, weight: 0 };
   private lastBeatAt = -Infinity;
   private beatIndex = 0;
@@ -103,7 +111,8 @@ export class Timing {
    * seconds per frame; `onsets`: attacks reported since the previous frame.
    */
   update(now: number, frame: number, input: TimingInput, onsets: ArrayLike<OnsetInput>, onsetCount: number, clock: ClockSync, dt: number): void {
-    this.presentTime = now + this.latency.renderFrames * frame;
+    this.renderLatency = this.latency.renderFrames * frame;
+    this.presentTime = now + this.renderLatency;
     this.beat = null;
     this.impactCount = 0;
     const weight = this.gate.update(input.beatConfidence * Math.min(1, input.presence * 2), dt);
@@ -113,6 +122,12 @@ export class Timing {
     this.lead = heard - input.time;
 
     this.updateGrid(heard, frame, input, weight);
+    for (let i = 0; i < onsetCount; i++) {
+      const delay = now - clock.toHost(onsets[i].time);
+      // The first measurement is taken as is; later ones are averaged.
+      this.onsetDelay = this.onsetMeasured ? this.onsetDelay + (delay - this.onsetDelay) * 0.2 : delay;
+      this.onsetMeasured = true;
+    }
     this.updateImpacts(heard, frame, onsets, onsetCount);
   }
 
@@ -121,6 +136,8 @@ export class Timing {
     this.lastBeatAt = -Infinity;
     this.beatIndex = 0;
     this.pendingCount = 0;
+    this.onsetMeasured = false;
+    this.onsetDelay = 0;
     this.beat = null;
     this.impactCount = 0;
     this.bpm = this.beatPhase = this.barPhase = 0;

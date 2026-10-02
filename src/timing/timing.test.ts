@@ -151,6 +151,9 @@ describe('Timing', () => {
     const fast = simulate(4, 0, 0.03, 0.9, [2.0]);
     expect(fast.impacts).toHaveLength(1);
     expect(fast.impacts[0].late).toBeGreaterThan(0.03);
+    // The detection delay is measured from the attack's capture to the frame that learns of it.
+    expect(fast.timing.onsetDelay).toBeGreaterThanOrEqual(0.03);
+    expect(fast.timing.onsetDelay).toBeLessThan(0.03 + frame + 1e-9);
   });
 
   it('gives no beats without a trusted grid', () => {

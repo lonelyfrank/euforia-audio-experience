@@ -121,7 +121,7 @@ const HISTORY_HEIGHT = 40;
 const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
 const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
 const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
-const HEIGHT = ANALYSIS_TOP + 3 * ROW;
+const HEIGHT = ANALYSIS_TOP + 5 * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -158,6 +158,7 @@ class DebugOverlay {
   private lastTime = performance.now();
   private frameMs = 16;
   private lastBeat = 0;
+  private lastCue = 0;
   /** Ring buffers of the history strip. */
   private readonly energy = new Float32Array(HISTORY);
   private readonly presence = new Float32Array(HISTORY);
@@ -347,6 +348,26 @@ class DebugOverlay {
         `onsets ${f.onsetDensity.toFixed(1)}/s · key ${key} (${f.keyConfidence.toFixed(2)})`,
       0,
       ANALYSIS_TOP + ROW * 2,
+    );
+
+    // Timing: what this frame shows and the measured latencies.
+    const { timing, clock } = this.app.audio;
+    if (timing.beat) this.lastCue = performance.now();
+    const cueLit = performance.now() - this.lastCue < 90;
+    const ms = (s: number) => `${(s * 1000).toFixed(0)} ms`;
+    ctx.fillStyle = cueLit ? COLORS.hit : COLORS.level;
+    ctx.fillText(
+      `${cueLit ? '●' : '○'} cue · ${timing.mode} ${timing.gridWeight.toFixed(2)} · beat ${timing.beatPhase.toFixed(2)} bar ${timing.barPhase.toFixed(2)} · lead ${ms(timing.lead)} · ` +
+        `clock ${clock.ready ? 'synced' : '–'}`,
+      0,
+      ANALYSIS_TOP + ROW * 3,
+    );
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(
+      `Latency: attack→frame ${ms(timing.onsetDelay)} + render ${ms(timing.renderLatency)} = ${ms(timing.onsetDelay + timing.renderLatency)} · ` +
+        `attacks shown ${ms(timing.impactLate)} after heard · output ${ms(timing.latency.output)}`,
+      0,
+      ANALYSIS_TOP + ROW * 4,
     );
   }
 
