@@ -26,6 +26,7 @@ mod beat;
 mod fft;
 mod follow;
 mod frame;
+mod harmony;
 mod loudness;
 mod presence;
 mod rhythm;

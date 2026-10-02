@@ -73,6 +73,14 @@ pub struct FeatureFrame {
     /// Predicted time (s, capture clock) of the next beat; 0 while not tracking.
     pub next_beat_time: f64,
 
+    // Harmony.
+    /// Pitch classes C, C#, … B (0..1, the strongest at 1).
+    pub chroma: [f32; 12],
+    pub chroma_confidence: f32,
+    /// Estimated key: 0–11 = C … B major, 12–23 = C … B minor, -1 while unknown.
+    pub key: i8,
+    pub key_confidence: f32,
+
     // Stereo.
     /// 0 mono … 1 all side (out of phase).
     pub width: f32,
@@ -108,6 +116,13 @@ impl Field for u64 {
     fn put(&self, out: &mut [f64]) {
         // Exact up to 2^53 samples (≈ 6000 years at 48 kHz).
         out[0] = *self as f64;
+    }
+}
+
+impl Field for i8 {
+    const LEN: usize = 1;
+    fn put(&self, out: &mut [f64]) {
+        out[0] = f64::from(*self);
     }
 }
 
@@ -183,6 +198,10 @@ layout!(FeatureFrame {
     beat_confidence: f32,
     downbeat_confidence: f32,
     next_beat_time: f64,
+    chroma: [f32; 12],
+    chroma_confidence: f32,
+    key: i8,
+    key_confidence: f32,
     width: f32,
     correlation: f32,
     band_pan: [f32; BANDS],

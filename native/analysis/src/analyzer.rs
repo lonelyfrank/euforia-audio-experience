@@ -6,6 +6,7 @@ use crate::frame::{FeatureFrame, BANDS, BAND_EDGES};
 use crate::loudness::Loudness;
 use crate::presence::Presence;
 use crate::beat::BeatTracker;
+use crate::harmony::{Harmony, CHROMA_EVERY, CHROMA_SIZE};
 use crate::rhythm::Rhythm;
 use crate::Event;
 use crate::SILENCE_DB;
@@ -15,6 +16,8 @@ pub const HOP: usize = 256;
 /// Analysis window (≈ 43 ms at 48 kHz).
 pub const FFT_SIZE: usize = 2048;
 
+/// Samples kept per channel (the chroma window, the longest one).
+const RING: usize = CHROMA_SIZE;
 /// Peak below which the window is digitally silent.
 const SILENCE_PEAK: f32 = 1e-4;
 /// A sample at or above this magnitude counts as clipped.
@@ -42,13 +45,15 @@ const TINY: f32 = 1e-12;
 pub struct Analyzer {
     sample_rate: f32,
     channels: usize,
-    /// Rings of the last FFT_SIZE samples of the left and right (or only) channel.
+    /// Rings of the last RING samples of the left and right (or only) channel.
+    /// The main analysis reads the newest FFT_SIZE, the chroma all of them.
     left: Vec<f32>,
     right: Vec<f32>,
     write: usize,
     since_hop: usize,
     sample: u64,
     hop_clipped: u32,
+    hops: u64,
 
     fft: Fft,
     window: Vec<f32>,
@@ -77,6 +82,7 @@ pub struct Analyzer {
     pan: [Follower; BANDS],
     rhythm: Rhythm,
     beats: BeatTracker,
+    harmony: Harmony,
 
     frame: FeatureFrame,
 }
@@ -94,12 +100,13 @@ impl Analyzer {
         Self {
             sample_rate,
             channels,
-            left: vec![0.0; FFT_SIZE],
-            right: vec![0.0; FFT_SIZE],
+            left: vec![0.0; RING],
+            right: vec![0.0; RING],
             write: 0,
             since_hop: 0,
             sample: 0,
             hop_clipped: 0,
+            hops: 0,
             fft: Fft::new(FFT_SIZE),
             window,
             // One-sided bin powers → mean square of the signal (Parseval with the window's energy).
@@ -126,7 +133,8 @@ impl Analyzer {
             pan: [Follower::symmetric(STEREO_TAU, 0.0); BANDS],
             rhythm: Rhythm::new(HOP as f32 / sample_rate),
             beats: BeatTracker::default(),
-            frame: FeatureFrame::default(),
+            harmony: Harmony::new(sample_rate),
+            frame: FeatureFrame { key: -1, ..FeatureFrame::default() },
         }
     }
 
@@ -155,7 +163,7 @@ impl Analyzer {
             let r = if channels > 1 { frame[1] } else { l };
             self.left[self.write] = l;
             self.right[self.write] = r;
-            self.write = (self.write + 1) % FFT_SIZE;
+            self.write = (self.write + 1) % RING;
             if frame.iter().any(|x| x.abs() >= CLIP_LEVEL) {
                 self.hop_clipped += 1;
             }
@@ -208,7 +216,7 @@ impl Analyzer {
         let dt = HOP as f32 / self.sample_rate;
         let mut peak = 0.0f32;
         for i in 0..FFT_SIZE {
-            let j = (self.write + i) % FFT_SIZE;
+            let j = (self.write + RING - FFT_SIZE + i) % RING;
             peak = peak.max(self.left[j].abs()).max(self.right[j].abs());
             self.a[i] = self.left[j] * self.window[i];
             self.b[i] = self.right[j] * self.window[i];
@@ -284,6 +292,24 @@ impl Analyzer {
         self.measure_flux(dt);
         let f = &mut self.frame;
         f.timbre_confidence = f.presence;
+
+        // Harmony, every few hops on the longer window.
+        self.hops += 1;
+        if self.hops % CHROMA_EVERY as u64 == 0 {
+            let tonal = if f.silent { 0.0 } else { f.presence * (1.0 - f.flatness) };
+            let (left, right, write) = (&self.left, &self.right, self.write);
+            let at = |i: usize| {
+                let j = (write + i) % RING;
+                (left[j], right[j])
+            };
+            let h = self.harmony.analyze(at, tonal, dt * CHROMA_EVERY as f32);
+            let f = &mut self.frame;
+            f.chroma = h.chroma;
+            f.chroma_confidence = h.chroma_confidence;
+            f.key = h.key;
+            f.key_confidence = h.key_confidence;
+        }
+        let f = &mut self.frame;
 
         // Stereo.
         if self.channels > 1 && !f.silent {
