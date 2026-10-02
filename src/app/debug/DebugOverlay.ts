@@ -120,7 +120,9 @@ const HISTORY = 10 * HISTORY_RATE;
 const HISTORY_HEIGHT = 40;
 const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
 const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
-const HEIGHT = DIRECTOR_TOP + 7 * ROW;
+const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
+const HEIGHT = ANALYSIS_TOP + 3 * ROW;
+const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
   calm: COLORS.high,
@@ -155,6 +157,7 @@ class DebugOverlay {
   private rafId = 0;
   private lastTime = performance.now();
   private frameMs = 16;
+  private lastBeat = 0;
   /** Ring buffers of the history strip. */
   private readonly energy = new Float32Array(HISTORY);
   private readonly presence = new Float32Array(HISTORY);
@@ -317,7 +320,35 @@ class DebugOverlay {
       this.bar('Impact', COLORS.hit, modulation.impact, 0, DIRECTOR_TOP + ROW * 6);
       this.bar('Visibility', COLORS.level, modulation.visibility, COLUMN + GAP, DIRECTOR_TOP + ROW * 6);
     }
+    this.drawAnalysis();
   };
+
+  /** The Rust analysis (spectrum-analysis), as received this frame: capture clock, levels, timbre, grid, key. */
+  private drawAnalysis(): void {
+    const { ctx } = this;
+    const features = this.app.audio.features;
+    const f = features.frame;
+    if (features.beats.count > 0) this.lastBeat = performance.now();
+    const beatLit = performance.now() - this.lastBeat < 90;
+    const key = f.key < 0 ? '–' : `${KEYS[f.key % 12]}${f.key >= 12 ? 'm' : ''}`;
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(`Analysis (Rust) · capture clock ${f.time.toFixed(2)} s · ${features.frames ? 'live' : 'no frames'}`, 0, ANALYSIS_TOP);
+    ctx.fillStyle = COLORS.level;
+    ctx.fillText(
+      `presence ${f.presence.toFixed(2)} · ${f.loudnessMomentary.toFixed(1)} / ${f.loudnessShort.toFixed(1)} LUFS · slope ${f.loudnessSlope.toFixed(1)} LU/s · ` +
+        `centroid ${f.centroidHz.toFixed(0)} Hz · perc ${f.percussive.toFixed(2)} · width ${f.width.toFixed(2)}${f.clipping > 0.1 ? ' · CLIP' : ''}`,
+      0,
+      ANALYSIS_TOP + ROW,
+    );
+    ctx.fillStyle = beatLit ? COLORS.hit : COLORS.tempo;
+    ctx.fillText(
+      `${beatLit ? '●' : '○'} grid ${f.beatBpm.toFixed(1)} (${f.beatConfidence.toFixed(2)}) beat ${f.beatPhase.toFixed(2)} bar ${f.barPhase.toFixed(2)} ` +
+        `downbeat ${f.downbeatConfidence.toFixed(2)} · tempo ${f.tempoBpm.toFixed(1)} (${f.tempoConfidence.toFixed(2)}) · ` +
+        `onsets ${f.onsetDensity.toFixed(1)}/s · key ${key} (${f.keyConfidence.toFixed(2)})`,
+      0,
+      ANALYSIS_TOP + ROW * 2,
+    );
+  }
 
   private trace(values: Float32Array, color: string): void {
     const { ctx } = this;
