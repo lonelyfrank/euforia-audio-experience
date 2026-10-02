@@ -22,6 +22,7 @@
 //! ```
 
 mod analyzer;
+mod beat;
 mod fft;
 mod follow;
 mod frame;
@@ -30,6 +31,7 @@ mod presence;
 mod rhythm;
 
 pub use analyzer::{Analyzer, FFT_SIZE, HOP};
+pub use beat::{BeatEvent, BEATS_PER_BAR};
 pub use frame::{FeatureFrame, Field, BANDS, BAND_EDGES};
 pub use loudness::SILENT_LUFS;
 pub use rhythm::{OnsetEvent, MAX_BPM, MIN_BPM};
@@ -41,6 +43,8 @@ pub enum Event<'a> {
     Frame(&'a FeatureFrame),
     /// An attack, stamped at its peak (reported one hop later).
     Onset(OnsetEvent),
+    /// A beat of the tracked grid, stamped at its predicted time (reported in the hop that reaches it).
+    Beat(BeatEvent),
 }
 
 /// Level reported for silence (dB).

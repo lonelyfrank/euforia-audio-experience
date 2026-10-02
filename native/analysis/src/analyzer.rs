@@ -5,6 +5,7 @@ use crate::follow::{power_db, Follower, Relative};
 use crate::frame::{FeatureFrame, BANDS, BAND_EDGES};
 use crate::loudness::Loudness;
 use crate::presence::Presence;
+use crate::beat::BeatTracker;
 use crate::rhythm::Rhythm;
 use crate::Event;
 use crate::SILENCE_DB;
@@ -75,6 +76,7 @@ pub struct Analyzer {
     correlation: Follower,
     pan: [Follower; BANDS],
     rhythm: Rhythm,
+    beats: BeatTracker,
 
     frame: FeatureFrame,
 }
@@ -123,6 +125,7 @@ impl Analyzer {
             correlation: Follower::symmetric(STEREO_TAU, 1.0),
             pan: [Follower::symmetric(STEREO_TAU, 0.0); BANDS],
             rhythm: Rhythm::new(HOP as f32 / sample_rate),
+            beats: BeatTracker::default(),
             frame: FeatureFrame::default(),
         }
     }
@@ -142,7 +145,8 @@ impl Analyzer {
 
     /// Feeds interleaved samples (any count; a trailing partial frame is ignored)
     /// and reports events in time order: for each completed hop, the onset
-    /// found at the previous hop (if any), then the hop's `FeatureFrame`.
+    /// found at the previous hop (if any), the beat predicted inside the hop
+    /// (if any), then the hop's `FeatureFrame`.
     /// Allocation-free.
     pub fn push(&mut self, interleaved: &[f32], mut on_event: impl FnMut(Event)) {
         let channels = self.channels;
@@ -163,10 +167,27 @@ impl Analyzer {
                 self.analyze();
                 let f = &self.frame;
                 let (reading, onset) = self.rhythm.hop([f.flux_low, f.flux_mid, f.flux_high], f.silent || !f.sounding, f.sample, self.sample_rate, HOP);
+                let (time, sample_rate) = (f.time, self.sample_rate);
+                let confidence = reading.tempo_confidence * f.presence;
+                self.beats.tempo(reading.tempo_bpm, confidence, time);
                 if let Some(onset) = onset {
+                    // Accents are judged on the absolute low-end level (a flux rise is relative,
+                    // so a loud kick's tail would make the next hit look weaker, not the loud one stronger).
+                    let low = (10f32.powf(f.band_db[0] / 10.0) + 10f32.powf(f.band_db[1] / 10.0)).sqrt();
+                    self.beats.onset(&onset, low, reading.tempo_bpm);
                     on_event(Event::Onset(onset));
                 }
+                if let Some(beat) = self.beats.hop(time, sample_rate) {
+                    on_event(Event::Beat(beat));
+                }
+                let grid = self.beats.reading();
                 let f = &mut self.frame;
+                f.beat_bpm = grid.bpm;
+                f.beat_phase = grid.beat_phase;
+                f.bar_phase = grid.bar_phase;
+                f.beat_confidence = grid.confidence;
+                f.downbeat_confidence = grid.downbeat_confidence;
+                f.next_beat_time = grid.next_beat;
                 f.onset_strength = reading.onset_strength;
                 f.onset_density = reading.onset_density;
                 f.tempo_bpm = reading.tempo_bpm;

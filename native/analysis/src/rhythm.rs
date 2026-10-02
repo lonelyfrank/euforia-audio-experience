@@ -53,6 +53,8 @@ pub struct OnsetEvent {
     pub strength: f32,
     /// Region carrying most of it: 0 low, 1 mid, 2 high.
     pub region: u8,
+    /// 0..1: strength in the low region alone (kicks, bass attacks).
+    pub low: f32,
 }
 
 /// Rhythm readings for the current hop.
@@ -138,7 +140,7 @@ impl Rhythm {
             let offset = if curvature < 0.0 { (0.5 * (before - odf) / curvature).clamp(-0.5, 0.5) } else { 0.0 };
             let peak_sample = sample as f64 - hop as f64 * (1.0 - f64::from(offset));
             let at = (peak_sample - ODF_LATENCY * f64::from(sample_rate)).max(0.0).round() as u64;
-            onset = Some(OnsetEvent { sample: at, time: at as f64 / f64::from(sample_rate), strength: peak.min(1.0), region: region as u8 });
+            onset = Some(OnsetEvent { sample: at, time: at as f64 / f64::from(sample_rate), strength: peak.min(1.0), region: region as u8, low: self.previous_regions[0] });
             self.since_onset = 0.0;
         }
         self.threshold.update(odf, dt);

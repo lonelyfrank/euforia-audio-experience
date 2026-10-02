@@ -64,6 +64,14 @@ pub struct FeatureFrame {
     /// Strongest periodicity of the onsets (BPM), 0 while unknown; octave errors are possible here.
     pub tempo_bpm: f32,
     pub tempo_confidence: f32,
+    /// Tracked beat grid (PLL): tempo, position in the beat and in the bar (0 = on the beat / downbeat).
+    pub beat_bpm: f32,
+    pub beat_phase: f32,
+    pub bar_phase: f32,
+    pub beat_confidence: f32,
+    pub downbeat_confidence: f32,
+    /// Predicted time (s, capture clock) of the next beat; 0 while not tracking.
+    pub next_beat_time: f64,
 
     // Stereo.
     /// 0 mono … 1 all side (out of phase).
@@ -169,6 +177,12 @@ layout!(FeatureFrame {
     onset_density: f32,
     tempo_bpm: f32,
     tempo_confidence: f32,
+    beat_bpm: f32,
+    beat_phase: f32,
+    bar_phase: f32,
+    beat_confidence: f32,
+    downbeat_confidence: f32,
+    next_beat_time: f64,
     width: f32,
     correlation: f32,
     band_pan: [f32; BANDS],

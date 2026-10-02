@@ -20,6 +20,7 @@ fn run(seconds: f32, f: impl Fn(f32) -> f32) -> Run {
         analyzer.push(chunk, |event| match event {
             Event::Frame(frame) => out.frames.push(*frame),
             Event::Onset(onset) => out.onsets.push(onset),
+            Event::Beat(_) => {}
         });
     }
     out
