@@ -11,8 +11,8 @@ use crate::follow::Follower;
 
 /// FFT size of the chroma analysis (≈ 170 ms at 48 kHz, ≈ 5.9 Hz per bin).
 pub const CHROMA_SIZE: usize = 8192;
-/// Hops between two chroma analyses.
-pub const CHROMA_EVERY: usize = 4;
+/// Hops between two chroma analyses (≈ 43 ms at 48 kHz).
+pub const CHROMA_EVERY: usize = 8;
 const FROM_HZ: f32 = 55.0;
 const TO_HZ: f32 = 5000.0;
 const CHROMA_TAU: f32 = 0.15;

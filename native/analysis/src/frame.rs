@@ -55,6 +55,14 @@ pub struct FeatureFrame {
     pub flux_mid: f32,
     pub flux_high: f32,
     pub timbre_confidence: f32,
+    /// Harmonic/percussive split (median filtering every 4 hops, ≈ 50 ms lag on the harmonic side):
+    /// percussive share of the power, 0..1, overall and per region; levels of both parts.
+    pub percussive: f32,
+    pub percussive_low: f32,
+    pub percussive_mid: f32,
+    pub percussive_high: f32,
+    pub harmonic_db: f32,
+    pub percussive_db: f32,
 
     // Rhythm.
     /// Onset detection function, 0..1 (weighted per-region flux, each region relative to its recent strongest).
@@ -188,6 +196,12 @@ layout!(FeatureFrame {
     flux_mid: f32,
     flux_high: f32,
     timbre_confidence: f32,
+    percussive: f32,
+    percussive_low: f32,
+    percussive_mid: f32,
+    percussive_high: f32,
+    harmonic_db: f32,
+    percussive_db: f32,
     onset_strength: f32,
     onset_density: f32,
     tempo_bpm: f32,

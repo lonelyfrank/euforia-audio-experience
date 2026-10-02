@@ -27,6 +27,7 @@ mod fft;
 mod follow;
 mod frame;
 mod harmony;
+mod hpss;
 mod loudness;
 mod presence;
 mod rhythm;

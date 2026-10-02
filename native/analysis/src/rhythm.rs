@@ -86,6 +86,7 @@ pub struct Rhythm {
     since_retempo: f32,
     scores: Vec<f32>,
     scores_low: Vec<f32>,
+    linear: Vec<f32>,
     reading: RhythmReading,
 }
 
@@ -109,6 +110,7 @@ impl Rhythm {
             since_retempo: 0.0,
             scores: vec![0.0; max_lag + 1],
             scores_low: vec![0.0; max_lag + 1],
+            linear: vec![0.0; len],
             reading: RhythmReading::default(),
         }
     }
@@ -173,11 +175,11 @@ impl Rhythm {
         }
         let max_lag = (self.scores.len() - 1).min(n / 2);
         let start = (self.index + self.history.len() - n) % self.history.len();
-        if !autocorrelate(&self.history, start, n, max_lag, &mut self.scores) {
+        if !autocorrelate(&self.history, start, n, max_lag, &mut self.linear, &mut self.scores) {
             self.reading.tempo_confidence = 0.0;
             return;
         }
-        let has_low = autocorrelate(&self.history_low, start, n, max_lag, &mut self.scores_low);
+        let has_low = autocorrelate(&self.history_low, start, n, max_lag, &mut self.linear, &mut self.scores_low);
         let interpolate = |scores: &[f32], lag: f32| {
             let i = lag.floor() as usize;
             let t = lag - i as f32;
@@ -219,22 +221,23 @@ impl Rhythm {
 }
 
 /// Unbiased normalized autocorrelation of the last `n` values of a ring for lags 1..=max_lag;
-/// false when the signal is flat (nothing to correlate).
-fn autocorrelate(ring: &[f32], start: usize, n: usize, max_lag: usize, scores: &mut [f32]) -> bool {
+/// false when the signal is flat (nothing to correlate). `linear` is scratch space (≥ n).
+fn autocorrelate(ring: &[f32], start: usize, n: usize, max_lag: usize, linear: &mut [f32], scores: &mut [f32]) -> bool {
+    // Unroll the ring once (oldest first), centred: the products below are then plain slice dot products.
     let len = ring.len();
-    let at = |i: usize| ring[(start + i) % len];
-    let mean = (0..n).map(at).sum::<f32>() / n as f32;
-    let energy: f32 = (0..n).map(|i| (at(i) - mean).powi(2)).sum();
+    let first = (len - start).min(n);
+    linear[..first].copy_from_slice(&ring[start..start + first]);
+    linear[first..n].copy_from_slice(&ring[..n - first]);
+    let x = &mut linear[..n];
+    let mean = x.iter().sum::<f32>() / n as f32;
+    x.iter_mut().for_each(|v| *v -= mean);
+    let energy: f32 = x.iter().map(|v| v * v).sum();
     if energy / (n as f32) < 1e-4 {
         return false;
     }
     for lag in 1..=max_lag {
-        let mut r = 0.0;
-        for i in lag..n {
-            r += (at(i) - mean) * (at(i - lag) - mean);
-        }
+        let r: f32 = x[lag..].iter().zip(&x[..n - lag]).map(|(a, b)| a * b).sum();
         scores[lag] = r / energy * n as f32 / (n - lag) as f32;
     }
     true
-
 }

@@ -7,6 +7,7 @@ use crate::loudness::Loudness;
 use crate::presence::Presence;
 use crate::beat::BeatTracker;
 use crate::harmony::{Harmony, CHROMA_EVERY, CHROMA_SIZE};
+use crate::hpss::{Hpss, HpssReading};
 use crate::rhythm::Rhythm;
 use crate::Event;
 use crate::SILENCE_DB;
@@ -16,6 +17,8 @@ pub const HOP: usize = 256;
 /// Analysis window (≈ 43 ms at 48 kHz).
 pub const FFT_SIZE: usize = 2048;
 
+/// Hops between two harmonic/percussive splits.
+const HPSS_EVERY: u64 = 4;
 /// Samples kept per channel (the chroma window, the longest one).
 const RING: usize = CHROMA_SIZE;
 /// Peak below which the window is digitally silent.
@@ -83,6 +86,8 @@ pub struct Analyzer {
     rhythm: Rhythm,
     beats: BeatTracker,
     harmony: Harmony,
+    hpss: Hpss,
+    split: HpssReading,
 
     frame: FeatureFrame,
 }
@@ -134,6 +139,8 @@ impl Analyzer {
             rhythm: Rhythm::new(HOP as f32 / sample_rate),
             beats: BeatTracker::default(),
             harmony: Harmony::new(sample_rate),
+            hpss: Hpss::new(sample_rate, FFT_SIZE),
+            split: HpssReading::default(),
             frame: FeatureFrame { key: -1, ..FeatureFrame::default() },
         }
     }
@@ -214,12 +221,19 @@ impl Analyzer {
 
     fn analyze(&mut self) {
         let dt = HOP as f32 / self.sample_rate;
+        // The newest FFT_SIZE samples, oldest first: at most two contiguous runs of the ring.
+        let start = (self.write + RING - FFT_SIZE) % RING;
+        let first = (RING - start).min(FFT_SIZE);
         let mut peak = 0.0f32;
-        for i in 0..FFT_SIZE {
-            let j = (self.write + RING - FFT_SIZE + i) % RING;
-            peak = peak.max(self.left[j].abs()).max(self.right[j].abs());
-            self.a[i] = self.left[j] * self.window[i];
-            self.b[i] = self.right[j] * self.window[i];
+        for (run, (from, len)) in [(start, first), (0, FFT_SIZE - first)].into_iter().enumerate() {
+            let at = if run == 0 { 0 } else { first };
+            let (left, right) = (&self.left[from..from + len], &self.right[from..from + len]);
+            let window = &self.window[at..at + len];
+            for ((((a, b), l), r), w) in self.a[at..at + len].iter_mut().zip(&mut self.b[at..at + len]).zip(left).zip(right).zip(window) {
+                peak = peak.max(l.abs()).max(r.abs());
+                *a = l * w;
+                *b = r * w;
+            }
         }
         self.fft.stereo(&self.a, &self.b, &mut self.spec_l, &mut self.spec_r);
         for (k, p) in self.power.iter_mut().enumerate() {
@@ -290,11 +304,23 @@ impl Analyzer {
         let n = (to - from) as f32;
         f.flatness = if f.silent { 0.0 } else { ((log_sum / n).exp() / (lin_sum / n) / NOISE_FLATNESS).clamp(0.0, 1.0) };
         self.measure_flux(dt);
+        self.hops += 1;
+        // The split feeds slow readings only: every few hops is enough.
+        if self.hops % HPSS_EVERY == 0 {
+            self.split = self.hpss.hop(&self.power, HPSS_EVERY as f32 * dt);
+        }
+        let split = self.split;
         let f = &mut self.frame;
         f.timbre_confidence = f.presence;
+        let quiet = f.silent || !f.sounding;
+        f.percussive = if quiet { 0.0 } else { split.percussive };
+        f.percussive_low = if quiet { 0.0 } else { split.percussive_low };
+        f.percussive_mid = if quiet { 0.0 } else { split.percussive_mid };
+        f.percussive_high = if quiet { 0.0 } else { split.percussive_high };
+        f.harmonic_db = split.harmonic_db;
+        f.percussive_db = split.percussive_db;
 
         // Harmony, every few hops on the longer window.
-        self.hops += 1;
         if self.hops % CHROMA_EVERY as u64 == 0 {
             let tonal = if f.silent { 0.0 } else { f.presence * (1.0 - f.flatness) };
             let (left, right, write) = (&self.left, &self.right, self.write);
