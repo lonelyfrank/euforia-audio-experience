@@ -1,4 +1,4 @@
-import { approach, VisualDirector } from '../director/VisualDirector';
+import { approach, VisualDirector, type DirectorClock } from '../director/VisualDirector';
 import { AutoDirection } from '../director/AutoDirection';
 import { DEFAULT_DIRECTION } from '../director/profiles';
 import type { DirectionSettings, SceneDirection } from '../director/types';
@@ -40,6 +40,8 @@ interface LayerSize {
  * offscreen target so two of them can be crossfaded.
  */
 class Layer {
+  /** Reused timed input of the Director. */
+  private readonly clock: DirectorClock = { time: 0, impact: 0 };
   readonly director: VisualDirector;
   private bloom: UnrealBloomPass | null = null;
   readonly visualizer: Visualizer;
@@ -115,7 +117,12 @@ class Layer {
   }
 
   update(input: SceneInput, settings: DirectionSettings, dt: number, time: number): void {
-    const modulation = this.director.update(input.response, settings, dt);
+    const rig = input.rig;
+    if (rig?.timed) {
+      this.clock.time = rig.time;
+      this.clock.impact = rig.haloPulse;
+    }
+    const modulation = this.director.update(input.response, settings, dt, rig?.timed ? this.clock : undefined);
     this.visualizer.update(input.audio, dt, time, this.director.response!, modulation);
     if (this.bloom) this.bloom.strength = this.source.preset.bloom.strength * (0.25 + 1.5 * modulation.bloom);
   }

@@ -1,6 +1,30 @@
 import type { MusicState, VisualResponseFrame } from '../types/audio';
 import { clamp01, experienceById, moodAmount, moodById, NEUTRAL } from './profiles';
 import type { Character, DirectionSettings, Feature, Mapping, ModulationKey, ModulationState, SceneDirection } from './types';
+import { Dynamics } from '../dynamics/Dynamics';
+import type { DynamicsType } from '../dynamics/presets';
+
+/**
+ * Parameters migrated to the Dynamics layer: slow, symmetric motion becomes a
+ * spring whose target the Director sets (it picks the type, not the
+ * coefficients). The others still follow their asymmetric envelopes.
+ */
+const DYNAMIC_TYPES: Partial<Record<ModulationKey, DynamicsType>> = {
+  expansion: 'glide',
+  rotation: 'glide',
+  cameraMotion: 'drift',
+  depth: 'drift',
+  persistence: 'drift',
+  contrast: 'drift',
+};
+
+/** Timed inputs from the host: the heard audio clock and the transient pulse from the Dynamics rig. */
+export interface DirectorClock {
+  /** Audio time (s) heard when this frame is seen. */
+  time: number;
+  /** Instant-attack pulse on predicted beats and kicks (0..1). */
+  impact: number;
+}
 
 const DEFAULT_ROUTES: readonly Mapping[] = [
   { source: 'low', target: 'scale', amount: 0.65 }, { source: 'pulse', target: 'scale', amount: 0.2 },
@@ -45,13 +69,25 @@ export class VisualDirector {
   private minimal = 0;
   private attack = 1;
   private release = 1;
+  /** Springs of the migrated parameters, on the audio clock. */
+  readonly dynamics = new Dynamics();
+  private readonly channels: Partial<Record<ModulationKey, number>> = {};
 
   constructor(private readonly direction: SceneDirection = { capabilities: {} }) {
     const custom = direction.mappings ?? [];
     this.routes = [...DEFAULT_ROUTES.filter((r) => !custom.some((c) => c.target === r.target)), ...custom];
+    for (const key of KEYS) {
+      const type = DYNAMIC_TYPES[key];
+      if (type) this.channels[key] = this.dynamics.channel(key, type);
+    }
   }
 
-  update(music: MusicState, settings: DirectionSettings, dt: number): ModulationState {
+  /**
+   * With a `clock`, the migrated parameters move as springs on the audio
+   * clock and `impact` is the rig's timed pulse; without one (hosts with no
+   * clock, tests) every parameter follows its envelope as before.
+   */
+  update(music: MusicState, settings: DirectionSettings, dt: number, clock?: DirectorClock): ModulationState {
     const mood = moodById(settings.mood).character;
     const experience = experienceById(settings.experience);
     const c = this.character;
@@ -87,10 +123,27 @@ export class VisualDirector {
       if (modifier) t[key] *= c[modifier];
       if ((key === 'cameraMotion' && !caps.cameraMotion) || (key === 'particleEmission' && !caps.particles) ||
           (key === 'depth' && !caps.depth) || (key === 'rotation' && !caps.rotation) || (key === 'distortion' && !caps.distortion)) t[key] = 0;
+      const channel = this.channels[key];
+      if (clock && channel !== undefined) {
+        this.dynamics.setTarget(channel, clamp01(t[key]), clock.time);
+        continue;
+      }
+      if (clock && key === 'impact') {
+        // Timed pulse (instant attack on the beat), scaled by how much this scene and mood take transients.
+        this.frame.impact = clamp01(clock.impact * Math.min(1, t.impact / 0.8 + 0.5));
+        continue;
+      }
       const [a, r] = TIMES[key];
       // The impact envelope keeps a fast edge even with fluid geometry.
       const fluidity = key === 'impact' ? 1 : c.fluidity;
       this.frame[key] = approach(this.frame[key], clamp01(t[key]), dt, a * this.attack * fluidity, r * this.release * c.persistence);
+    }
+    if (clock) {
+      this.dynamics.advance(clock.time);
+      for (const key of KEYS) {
+        const channel = this.channels[key];
+        if (channel !== undefined) this.frame[key] = clamp01(this.dynamics.value(channel));
+      }
     }
     this.adapt(music);
     return this.frame;

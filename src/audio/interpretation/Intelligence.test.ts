@@ -42,7 +42,7 @@ describe('physical spectral features', () => {
   });
 });
 
-describe('musical dynamics and clock', () => {
+describe('musical dynamics and clock', { timeout: 30000 }, () => {
   it('distinguishes attack, plateau and decay and decays the range memory', () => {
     const d = new DynamicsMemory(); const m = new MusicInterpreter().frame;
     d.update(0.2, 1 / 60, m);

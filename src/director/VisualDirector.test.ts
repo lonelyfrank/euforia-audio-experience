@@ -64,6 +64,37 @@ describe('VisualDirector', () => {
   });
 });
 
+describe('VisualDirector on the audio clock', () => {
+  it('moves the slow parameters as springs and takes the timed impact pulse', () => {
+    const music = musicFixture();
+    const director = new VisualDirector(galaxy.direction);
+    const clock = { time: 10, impact: 0 };
+    const camera: number[] = [];
+    for (let f = 0; f < 600; f++) {
+      clock.time = 10 + f / 60;
+      clock.impact = f === 300 ? 1 : 0;
+      const m = director.update(music, DEFAULT_DIRECTION, 1 / 60, clock);
+      camera.push(m.cameraMotion);
+      if (f === 300) expect(m.impact).toBeGreaterThan(0.5);
+      if (f === 301) expect(m.impact).toBe(0);
+    }
+    // A drift spring: continuous motion (no frame-to-frame jump) that settles near its target.
+    for (let i = 1; i < camera.length; i++) expect(Math.abs(camera[i] - camera[i - 1])).toBeLessThan(0.01);
+    expect(camera[camera.length - 1]).toBeGreaterThan(0.1);
+    expect(Math.abs(camera[camera.length - 1] - camera[camera.length - 30])).toBeLessThan(0.01);
+    const channels = director.dynamics.channelCount;
+    expect(channels).toBe(6);
+  });
+
+  it('keeps the envelopes when the host has no audio clock', () => {
+    const music = musicFixture();
+    const a = new VisualDirector(galaxy.direction);
+    for (let f = 0; f < 60; f++) a.update(music, DEFAULT_DIRECTION, 1 / 60);
+    expect(a.dynamics.time).toBe(0);
+    expect(a.frame.impact).toBeGreaterThan(0.3);
+  });
+});
+
 describe('AutoDirection', () => {
   it('requires sustained evidence, dwell and recovers gracefully after a source reset', () => {
     const auto = new AutoDirection();

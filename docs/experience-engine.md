@@ -118,3 +118,17 @@ time from a kick being heard to the halo pulse reaching half its peak:
 
 The `hit` preset (60 ms decay) was first used and dropped: at 30 fps a frame
 can land after the pulse fell below half, so `flash` (120 ms) is used.
+
+### Director parameters on the Dynamics layer (first batch)
+
+With the audio clock available (`SceneInput.rig`), the per-scene
+`VisualDirector` sets spring *targets* on its own Dynamics instance for the
+slow, symmetric parameters — expansion and rotation (`glide`), camera
+motion, depth, persistence and contrast (`drift`) — and its `impact` is the
+rig's timed pulse (predicted beats, kicks), scaled by how much the scene
+and mood take transients. Hosts without a clock keep the old envelopes.
+Mood fluidity/persistence no longer stretch these six parameters' times:
+the type is the Director's choice, the coefficients live in the presets.
+Not migrated yet (open question): scale, distortion, turbulence, particle
+emission, brightness, bloom and visibility follow audio levels with a fast
+attack and a slow release, which neither primitive reproduces.

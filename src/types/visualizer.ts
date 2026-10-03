@@ -70,6 +70,10 @@ export interface SceneInput {
 
 /** Fixture parameters driven by the Dynamics layer (migrated one at a time). */
 export interface RigValues {
+  /** Audio clock (s) heard when this frame is seen: the Dynamics clock. */
+  time: number;
+  /** Whether `time` is valid (the clock is synchronized). */
+  timed: boolean;
   /** Halo composition: the brief halo pulse on beats and kicks (instant attack, decay). */
   haloPulse: number;
 }

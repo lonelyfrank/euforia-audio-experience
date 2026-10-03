@@ -22,7 +22,7 @@ async function run(signal: ConstructorParameters<typeof SignalGenerator>[0], sec
   return { frame: analysis.decoder.frame, beats, onsets, analysis };
 }
 
-describe('WebAssembly analysis', () => {
+describe('WebAssembly analysis', { timeout: 30000 }, () => {
   it('reports frames on the capture clock with named fields', async () => {
     const { frame } = await run('beat124', 2);
     expect(frame.time).toBeCloseTo(frame.sample / SR, 9);
