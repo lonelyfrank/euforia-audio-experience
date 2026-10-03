@@ -129,6 +129,14 @@ rig's timed pulse (predicted beats, kicks), scaled by how much the scene
 and mood take transients. Hosts without a clock keep the old envelopes.
 Mood fluidity/persistence no longer stretch these six parameters' times:
 the type is the Director's choice, the coefficients live in the presets.
-Not migrated yet (open question): scale, distortion, turbulence, particle
-emission, brightness, bloom and visibility follow audio levels with a fast
-attack and a slow release, which neither primitive reproduces.
+The level-tracking parameters (scale, distortion, turbulence, particle
+emission, brightness, bloom, visibility) follow audio levels with a fast
+attack and a slow release, which neither primitive reproduces. Decision
+(user, 2026-10-03): a third primitive, the **follower** (one pole per
+direction, fixed step, interpolated, deterministic on the audio clock),
+with presets `level` (40/400 ms), `sparkle` (15/250 ms) and `swell`
+(250/900 ms). The Director picks each follower's type from how fluid the
+mood × experience is (slow tier above 1.7, fast below 0.55, with
+hysteresis): e.g. Dream/Ambient scale → `swell`, Chaos/Reactive → `sparkle`.
+All 13 continuous parameters are now on the Dynamics layer; `impact` is the
+rig's timed pulse.

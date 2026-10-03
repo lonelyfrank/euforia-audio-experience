@@ -5,18 +5,33 @@ import { Dynamics } from '../dynamics/Dynamics';
 import type { DynamicsType } from '../dynamics/presets';
 
 /**
- * Parameters migrated to the Dynamics layer: slow, symmetric motion becomes a
- * spring whose target the Director sets (it picks the type, not the
- * coefficients). The others still follow their asymmetric envelopes.
+ * Every parameter except `impact` (the rig's timed pulse) lives on the
+ * Dynamics layer; the Director sets targets and picks the type, never the
+ * coefficients. Slow, symmetric motion is a spring; parameters that track
+ * the music's level are followers, whose type follows the mood and
+ * experience: [normal, slow (fluid), fast (reactive)].
  */
-const DYNAMIC_TYPES: Partial<Record<ModulationKey, DynamicsType>> = {
-  expansion: 'glide',
-  rotation: 'glide',
-  cameraMotion: 'drift',
-  depth: 'drift',
-  persistence: 'drift',
-  contrast: 'drift',
+const DYNAMIC_TYPES: Partial<Record<ModulationKey, readonly [DynamicsType, DynamicsType, DynamicsType]>> = {
+  expansion: ['glide', 'glide', 'glide'],
+  rotation: ['glide', 'glide', 'glide'],
+  cameraMotion: ['drift', 'drift', 'drift'],
+  depth: ['drift', 'drift', 'drift'],
+  persistence: ['drift', 'drift', 'drift'],
+  contrast: ['drift', 'drift', 'drift'],
+  scale: ['level', 'swell', 'sparkle'],
+  distortion: ['level', 'swell', 'sparkle'],
+  turbulence: ['level', 'swell', 'sparkle'],
+  particleEmission: ['sparkle', 'level', 'sparkle'],
+  brightness: ['level', 'swell', 'level'],
+  bloom: ['swell', 'swell', 'level'],
+  visibility: ['level', 'swell', 'sparkle'],
 };
+const NORMAL = 0;
+const SLOW = 1;
+const FAST = 2;
+/** Speed tiers from fluidity × experience attack, with hysteresis (enter, leave). */
+const SLOW_ABOVE = [1.7, 1.5] as const;
+const FAST_BELOW = [0.55, 0.65] as const;
 
 /** Timed inputs from the host: the heard audio clock and the transient pulse from the Dynamics rig. */
 export interface DirectorClock {
@@ -72,13 +87,15 @@ export class VisualDirector {
   /** Springs of the migrated parameters, on the audio clock. */
   readonly dynamics = new Dynamics();
   private readonly channels: Partial<Record<ModulationKey, number>> = {};
+  /** Current speed tier of the followers (NORMAL, SLOW, FAST). */
+  private tier = NORMAL;
 
   constructor(private readonly direction: SceneDirection = { capabilities: {} }) {
     const custom = direction.mappings ?? [];
     this.routes = [...DEFAULT_ROUTES.filter((r) => !custom.some((c) => c.target === r.target)), ...custom];
     for (const key of KEYS) {
-      const type = DYNAMIC_TYPES[key];
-      if (type) this.channels[key] = this.dynamics.channel(key, type);
+      const types = DYNAMIC_TYPES[key];
+      if (types) this.channels[key] = this.dynamics.channel(key, types[NORMAL]);
     }
   }
 
@@ -117,6 +134,7 @@ export class VisualDirector {
     t.persistence = clamp01(0.35 * c.persistence + music.trace * 0.2);
     t.contrast = clamp01(c.contrast * 0.45);
     t.visibility = music.audible * (1 - this.minimal + this.minimal * clamp01(music.shortEnergy * 1.8));
+    if (clock) this.chooseTypes();
     const caps = this.direction.capabilities;
     for (const key of KEYS) {
       const modifier = MODIFIER[key];
@@ -147,6 +165,23 @@ export class VisualDirector {
     }
     this.adapt(music);
     return this.frame;
+  }
+
+  /** The Director picks the followers' types from how fluid the mood and experience are. */
+  private chooseTypes(): void {
+    const speed = this.character.fluidity * this.attack;
+    const tier = this.tier;
+    let next = tier;
+    if (tier === SLOW) next = speed < SLOW_ABOVE[1] ? NORMAL : SLOW;
+    else if (tier === FAST) next = speed > FAST_BELOW[1] ? NORMAL : FAST;
+    if (next === NORMAL) next = speed > SLOW_ABOVE[0] ? SLOW : speed < FAST_BELOW[0] ? FAST : NORMAL;
+    if (next === tier) return;
+    this.tier = next;
+    for (const key of KEYS) {
+      const types = DYNAMIC_TYPES[key];
+      const channel = this.channels[key];
+      if (types && channel !== undefined) this.dynamics.setType(channel, types[next]);
+    }
   }
 
   private adapt(music: MusicState): void {

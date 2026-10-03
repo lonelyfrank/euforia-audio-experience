@@ -64,6 +64,36 @@ describe('spring presets: step response', () => {
   });
 });
 
+describe('followers', () => {
+  it('rise with their attack and fall with their release', () => {
+    const d = new Dynamics();
+    const c = d.channel('level', 'level');
+    d.advance(0);
+    d.setTarget(c, 1, 0);
+    // Targets apply at the next step boundary (one step: the price of identical values at any frame rate).
+    const h = d.step;
+    d.advance(0.04 + h);
+    expect(d.value(c)).toBeCloseTo(1 - Math.exp(-1), 3);
+    d.advance(1);
+    d.setTarget(c, 0, 1);
+    d.advance(1.4 + h);
+    expect(d.value(c)).toBeCloseTo(Math.exp(-1), 3);
+  });
+
+  it('change type with their state carried over, not across primitives', () => {
+    const d = new Dynamics();
+    const c = d.channel('bloom', 'level');
+    d.advance(0);
+    d.setTarget(c, 1, 0);
+    d.advance(0.1);
+    const before = d.value(c);
+    d.setType(c, 'swell');
+    d.advance(0.1001);
+    expect(d.value(c)).toBeCloseTo(before, 3);
+    expect(() => d.setType(c, 'glide')).toThrow();
+  });
+});
+
 describe('envelopes', () => {
   it('jump to the peak at the impulse time, with no step or frame quantization', () => {
     const d = new Dynamics();
@@ -96,12 +126,15 @@ describe('determinism', () => {
     const pulse = d.channel('pulse', 'pulse');
     const glide = d.channel('glide', 'glide');
     const flash = d.channel('flash', 'flash');
+    const level = d.channel('level', 'level');
     d.advance(0);
     for (let beat = 0; beat < 8; beat++) {
       d.impulse(pulse, 0.5, beat * 0.5 + 0.013);
       d.impulse(flash, 1, beat * 0.5 + 0.013);
     }
     d.setTarget(glide, 1, 0.7);
+    d.setTarget(level, 0.8, 0.3);
+    d.setTarget(level, 0.1, 1.2);
     d.snap(2.0, 0.5);
     d.setTarget(glide, 0, 2.0);
     const samples = new Map<number, number[]>();
@@ -109,7 +142,7 @@ describe('determinism', () => {
     for (const frame of frames) {
       t += frame;
       d.advance(t);
-      samples.set(Math.round(t * 1e6), [d.value(pulse), d.value(glide), d.value(flash)]);
+      samples.set(Math.round(t * 1e6), [d.value(pulse), d.value(glide), d.value(flash), d.value(level)]);
     }
     return samples;
   }
@@ -127,7 +160,7 @@ describe('determinism', () => {
         const v = other.get(time);
         if (!v) continue;
         compared++;
-        for (let k = 0; k < 3; k++) expect(v[k]).toBeCloseTo(values[k], 9);
+        for (let k = 0; k < 4; k++) expect(v[k]).toBeCloseTo(values[k], 9);
       }
     }
     expect(compared).toBeGreaterThan(200);

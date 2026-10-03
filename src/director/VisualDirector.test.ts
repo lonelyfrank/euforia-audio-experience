@@ -83,7 +83,20 @@ describe('VisualDirector on the audio clock', () => {
     expect(camera[camera.length - 1]).toBeGreaterThan(0.1);
     expect(Math.abs(camera[camera.length - 1] - camera[camera.length - 30])).toBeLessThan(0.01);
     const channels = director.dynamics.channelCount;
-    expect(channels).toBe(6);
+    expect(channels).toBe(13);
+  });
+
+  it('picks slower followers for a fluid mood and faster ones for a reactive one', () => {
+    const music = musicFixture();
+    const run = (mood: 'dream' | 'chaos', experience: 'ambient' | 'reactive') => {
+      const director = new VisualDirector(galaxy.direction);
+      const settings = { ...DEFAULT_DIRECTION, mood, experience, moodIntensity: 1 };
+      for (let f = 0; f < 600; f++) director.update(music, settings, 1 / 60, { time: f / 60, impact: 0 });
+      const scale = [...Array(director.dynamics.channelCount).keys()].map((c) => director.dynamics.inspect(c)).find((s) => s.name === 'scale')!;
+      return scale.type;
+    };
+    expect(run('dream', 'ambient')).toBe('swell');
+    expect(run('chaos', 'reactive')).toBe('sparkle');
   });
 
   it('keeps the envelopes when the host has no audio clock', () => {

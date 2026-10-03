@@ -54,7 +54,12 @@ export class Dynamics {
 
   private readonly names: string[] = [];
   private readonly types: DynamicsType[] = [];
+  /** 1 for springs and followers: both step on the fixed clock (followers have no velocity). */
   private readonly isSpring = new Uint8Array(MAX_CHANNELS);
+  private readonly isFollower = new Uint8Array(MAX_CHANNELS);
+  /** Followers: per-step blend factors when rising and when falling. */
+  private readonly rise = new Float64Array(MAX_CHANNELS);
+  private readonly fall = new Float64Array(MAX_CHANNELS);
   // Springs: state at stepTime (x, v), state at stepTime + step (nx, nv), target.
   private readonly x = new Float64Array(MAX_CHANNELS);
   private readonly v = new Float64Array(MAX_CHANNELS);
@@ -87,8 +92,26 @@ export class Dynamics {
   channel(name: string, type: DynamicsType, initial = 0): number {
     if (this.count >= MAX_CHANNELS) throw new Error('Too many dynamics channels');
     const id = this.count++;
-    const preset: DynamicsPreset = PRESETS[type];
     this.names[id] = name;
+    this.configure(id, type);
+    if (this.isSpring[id]) this.x[id] = this.nx[id] = this.target[id] = initial;
+    else this.level[id] = initial;
+    return id;
+  }
+
+  /**
+   * Changes a channel's type (the Director's choice, e.g. a slower follower
+   * for a fluid mood). Only between types of the same primitive: the state
+   * carries over.
+   */
+  setType(channel: number, type: DynamicsType): void {
+    if (this.types[channel] === type) return;
+    if (PRESETS[type].kind !== PRESETS[this.types[channel]].kind) throw new Error(`Cannot turn ${this.types[channel]} into ${type}`);
+    this.configure(channel, type);
+  }
+
+  private configure(id: number, type: DynamicsType): void {
+    const preset: DynamicsPreset = PRESETS[type];
     this.types[id] = type;
     if (preset.kind === 'spring') {
       this.isSpring[id] = 1;
@@ -97,12 +120,14 @@ export class Dynamics {
       this.zeta[id] = preset.damping;
       springMatrix(omega, preset.damping, this.step, this.matrix, id * 4);
       springMatrix(omega, 1, this.step, this.critical, id * 4);
-      this.x[id] = this.nx[id] = this.target[id] = initial;
+    } else if (preset.kind === 'follower') {
+      this.isSpring[id] = 1;
+      this.isFollower[id] = 1;
+      this.rise[id] = 1 - Math.exp(-this.step / preset.attack);
+      this.fall[id] = 1 - Math.exp(-this.step / preset.release);
     } else {
       this.decay[id] = preset.decay;
-      this.level[id] = initial;
     }
-    return id;
   }
 
   /** Moves a spring's target at audio time `at` (default: now). */
@@ -184,14 +209,14 @@ export class Dynamics {
 
   /** Diagnostics for one channel (allocates: debug use only). */
   inspect(channel: number): ChannelState {
-    const spring = this.isSpring[channel] === 1;
+    const spring = this.isSpring[channel] === 1 && this.isFollower[channel] === 0;
     const snapped = spring && this.time < this.snapUntil[channel];
     return {
       name: this.names[channel],
       type: this.types[channel],
       value: this.value(channel),
       velocity: spring ? this.v[channel] : 0,
-      target: spring ? this.target[channel] : 0,
+      target: this.isSpring[channel] ? this.target[channel] : 0,
       omega: spring ? this.omega[channel] : 0,
       zeta: spring ? (snapped ? 1 : this.zeta[channel]) : 0,
     };
@@ -206,6 +231,12 @@ export class Dynamics {
   private computeNext(): void {
     for (let c = 0; c < this.count; c++) {
       if (!this.isSpring[c]) continue;
+      if (this.isFollower[c]) {
+        const k = this.target[c] > this.x[c] ? this.rise[c] : this.fall[c];
+        this.nx[c] = this.x[c] + (this.target[c] - this.x[c]) * k;
+        this.nv[c] = 0;
+        continue;
+      }
       const m = this.stepTime < this.snapUntil[c] ? this.critical : this.matrix;
       const i = c * 4;
       const e = this.x[c] - this.target[c];
@@ -257,7 +288,8 @@ export class Dynamics {
     }
     if (this.isSpring[c]) {
       if (kind === EVENT_TARGET) this.target[c] = value;
-      // A kick: about `value` of displacement at its peak.
+      // A kick: about `value` of displacement at its peak (a follower jumps by it).
+      else if (this.isFollower[c]) this.x[c] = this.nx[c] = this.x[c] + value;
       else this.v[c] += value * this.omega[c];
       return;
     }
