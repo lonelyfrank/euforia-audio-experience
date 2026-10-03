@@ -76,6 +76,8 @@ export interface RigValues {
   timed: boolean;
   /** Halo composition: the brief halo pulse on beats and kicks (instant attack, decay). */
   haloPulse: number;
+  /** Audio time of a section boundary reported this frame (snap), or -1. */
+  snapAt: number;
 }
 
 /** What the engine hands to a visualizer when it is mounted. */

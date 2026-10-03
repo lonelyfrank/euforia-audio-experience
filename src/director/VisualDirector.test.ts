@@ -99,6 +99,21 @@ describe('VisualDirector on the audio clock', () => {
     expect(run('chaos', 'reactive')).toBe('sparkle');
   });
 
+  it('snaps its springs at a section boundary', () => {
+    const music = musicFixture();
+    const director = new VisualDirector(galaxy.direction);
+    const clock = { time: 0, impact: 0, snapAt: -1 };
+    for (let f = 0; f < 240; f++) {
+      clock.time = f / 60;
+      clock.snapAt = f === 180 ? clock.time : -1;
+      director.update(music, DEFAULT_DIRECTION, 1 / 60, clock);
+      if (f === 181) {
+        const springs = [...Array(director.dynamics.channelCount).keys()].map((c) => director.dynamics.inspect(c)).filter((s) => s.omega > 0);
+        for (const s of springs) expect(s.zeta).toBe(1);
+      }
+    }
+  });
+
   it('keeps the envelopes when the host has no audio clock', () => {
     const music = musicFixture();
     const a = new VisualDirector(galaxy.direction);

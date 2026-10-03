@@ -47,7 +47,7 @@ export class App {
   readonly dynamics = new Dynamics();
   private readonly haloPulse = this.dynamics.channel('halo.pulse', 'flash');
   private readonly cues = new CueScheduler(this.dynamics, this.haloPulse);
-  readonly rig: RigValues = { time: 0, timed: false, haloPulse: 0 };
+  readonly rig: RigValues = { time: 0, timed: false, haloPulse: 0, snapAt: -1 };
   private readonly sceneInput: SceneInput = { audio: this.audio.frame, response: this.audio.visual, rig: this.rig };
   private readonly stage: HTMLElement;
   private readonly render: RenderEngine;
@@ -125,6 +125,8 @@ export class App {
     this.rig.time = timing.heardTime;
     this.rig.timed = true;
     this.rig.haloPulse = this.dynamics.value(this.haloPulse);
+    // Section boundaries snap every Director's dynamics too (no trail of the build into the drop).
+    this.rig.snapAt = sections.count > 0 ? sections.items[sections.count - 1].time : -1;
   }
 
   // ---- wheel ---------------------------------------------------------------

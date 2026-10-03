@@ -41,7 +41,7 @@ interface LayerSize {
  */
 class Layer {
   /** Reused timed input of the Director. */
-  private readonly clock: DirectorClock = { time: 0, impact: 0 };
+  private readonly clock: DirectorClock = { time: 0, impact: 0, snapAt: -1 };
   readonly director: VisualDirector;
   private bloom: UnrealBloomPass | null = null;
   readonly visualizer: Visualizer;
@@ -121,6 +121,7 @@ class Layer {
     if (rig?.timed) {
       this.clock.time = rig.time;
       this.clock.impact = rig.haloPulse;
+      this.clock.snapAt = rig.snapAt;
     }
     const modulation = this.director.update(input.response, settings, dt, rig?.timed ? this.clock : undefined);
     this.visualizer.update(input.audio, dt, time, this.director.response!, modulation);

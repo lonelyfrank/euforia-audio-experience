@@ -39,7 +39,12 @@ export interface DirectorClock {
   time: number;
   /** Instant-attack pulse on predicted beats and kicks (0..1). */
   impact: number;
+  /** Audio time of a section boundary to snap at, or -1. */
+  snapAt?: number;
 }
+
+/** How long a section snap holds critical damping (s). */
+const SNAP_SECONDS = 0.5;
 
 const DEFAULT_ROUTES: readonly Mapping[] = [
   { source: 'low', target: 'scale', amount: 0.65 }, { source: 'pulse', target: 'scale', amount: 0.2 },
@@ -134,7 +139,10 @@ export class VisualDirector {
     t.persistence = clamp01(0.35 * c.persistence + music.trace * 0.2);
     t.contrast = clamp01(c.contrast * 0.45);
     t.visibility = music.audible * (1 - this.minimal + this.minimal * clamp01(music.shortEnergy * 1.8));
-    if (clock) this.chooseTypes();
+    if (clock) {
+      this.chooseTypes();
+      if (clock.snapAt !== undefined && clock.snapAt >= 0) this.dynamics.snap(clock.snapAt, SNAP_SECONDS);
+    }
     const caps = this.direction.capabilities;
     for (const key of KEYS) {
       const modifier = MODIFIER[key];
