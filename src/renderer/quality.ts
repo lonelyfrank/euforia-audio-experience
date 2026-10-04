@@ -39,6 +39,8 @@ export class QualityController {
   private frames = 0;
   private stable = 0;
   private cooldown = 0;
+  /** Smoothed frame rate, measured at every quality setting (stalls excluded): the GPU budget reads it. */
+  fps = 60;
 
   get profile(): QualityProfile {
     return this.setting === 'auto' ? AUTO_STEPS[this.autoStep] : QUALITY_PROFILES[this.setting];
@@ -54,6 +56,7 @@ export class QualityController {
   /** Returns true when the profile changed. */
   sample(dt: number): boolean {
     // Stalls (loading, shader compiles, a hidden window) are not frame-rate evidence.
+    if (dt > 0 && dt <= STALL) this.fps += (1 / dt - this.fps) * 0.02;
     if (this.setting !== 'auto') return false;
     if (dt <= 0 || dt > STALL) { this.resetWindow(); this.stable = 0; return false; }
     this.cooldown = Math.max(0, this.cooldown - dt);

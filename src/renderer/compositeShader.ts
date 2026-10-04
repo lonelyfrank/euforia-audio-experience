@@ -1,4 +1,4 @@
-import { Color, Vector2 } from 'three';
+import { Color, Vector2, Vector4 } from 'three';
 
 /** Horizon line, as a fraction of the height from the top (Halo layout). */
 export const HORIZON = 0.47;
@@ -23,9 +23,14 @@ export const OPEN_HORIZON = 0.66;
 export const CompositeShader = {
   name: 'HaloCompositeShader',
   uniforms: {
-    tA: { value: null },
-    tB: { value: null },
-    uMix: { value: 1 },
+    tL0: { value: null },
+    tL1: { value: null },
+    tL2: { value: null },
+    tL3: { value: null },
+    /** Per layer: weight, scale, horizontal offset, mirrored pair (0/1). */
+    uLayer: { value: [new Vector4(1, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0)] },
+    /** Per layer: strobe flash (extra brightness). */
+    uFlash: { value: [0, 0, 0, 0] },
     uMinimal: { value: 1 },
     uContrast: { value: 0.45 },
     uReflection: { value: 1 },
@@ -52,9 +57,12 @@ export const CompositeShader = {
     }
   `,
   fragmentShader: /* glsl */ `
-    uniform sampler2D tA;
-    uniform sampler2D tB;
-    uniform float uMix;
+    uniform sampler2D tL0;
+    uniform sampler2D tL1;
+    uniform sampler2D tL2;
+    uniform sampler2D tL3;
+    uniform vec4 uLayer[4];
+    uniform float uFlash[4];
     uniform float uMinimal;
     uniform float uContrast;
     uniform float uReflection;
@@ -81,8 +89,26 @@ export const CompositeShader = {
       return fract(p.x * p.y);
     }
 
+    // One rendered fixture, scaled around the scene centre and offset; outside its frame it is dark.
+    vec3 sampleLayer(sampler2D t, vec2 q) {
+      if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) return vec3(0.0);
+      return texture2D(t, q).rgb;
+    }
+
+    vec3 layerAt(sampler2D t, vec4 p, float flash, vec2 uv) {
+      if (p.x <= 0.0) return vec3(0.0);
+      vec2 q = uCenter + (uv - uCenter) / p.y;
+      vec3 color = sampleLayer(t, vec2(q.x - p.z, q.y));
+      // Mirrored pair: the same fixture flipped on the other side of the centre.
+      if (p.w > 0.5) color += sampleLayer(t, vec2(2.0 * uCenter.x - q.x - p.z, q.y));
+      return color * p.x * (1.0 + flash);
+    }
+
+    // The rig: up to four layers (fixtures and the ones fading out), added together.
     vec3 scene(vec2 uv) {
-      return mix(texture2D(tA, uv).rgb, texture2D(tB, uv).rgb, uMix) * uAudible;
+      vec3 color = layerAt(tL0, uLayer[0], uFlash[0], uv) + layerAt(tL1, uLayer[1], uFlash[1], uv)
+        + layerAt(tL2, uLayer[2], uFlash[2], uv) + layerAt(tL3, uLayer[3], uFlash[3], uv);
+      return color * uAudible;
     }
 
     // Background of the sky: void, a haze tinted by the palette, twinkling stars.

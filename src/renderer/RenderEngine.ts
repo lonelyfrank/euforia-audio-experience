@@ -2,7 +2,7 @@ import { approach, VisualDirector, type DirectorClock } from '../director/Visual
 import { AutoDirection } from '../director/AutoDirection';
 import { DEFAULT_DIRECTION } from '../director/profiles';
 import type { DirectionSettings, SceneDirection } from '../director/types';
-import { Color, HalfFloatType, OrthographicCamera, PerspectiveCamera, Vector2, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { Color, HalfFloatType, OrthographicCamera, PerspectiveCamera, Vector2, WebGLRenderer, WebGLRenderTarget, type Vector4 } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { Pass } from 'three/addons/postprocessing/Pass.js';
@@ -139,16 +139,55 @@ class Layer {
   }
 }
 
+/** Fixtures that can play at once (the show director's slots). */
+export const SLOTS = 3;
+/** Layers the composition samples at most (slots plus the ones fading out). */
+const MAX_LAYERS = 4;
+
+/** Generic fixture parameters of a slot, applied in the composition (values from the Dynamics layer). */
+export interface SlotParams {
+  /** 0..1: brightness of the fixture. */
+  weight: number;
+  /** Scale around the scene centre. */
+  size: number;
+  /** Horizontal offset (fraction of the width). */
+  offset: number;
+  /** Draw the mirrored pair too. */
+  mirror: boolean;
+  /** Strobe flash (extra brightness, 0..1). */
+  flash: number;
+}
+
+/** A slot of the rig: its fixture (with the previous one while they crossfade) and parameters. */
+class Slot {
+  current: Layer | null = null;
+  previous: Layer | null = null;
+  mix = 1;
+  hue = 0;
+  readonly params: SlotParams = { weight: 0, size: 1, offset: 0, mirror: false, flash: 0 };
+  /** The palette in this slot's hue order (the lead hue first). */
+  readonly palette: [Color, Color, Color] = [new Color(), new Color(), new Color()];
+
+  dispose(): void {
+    this.current?.dispose();
+    this.previous?.dispose();
+    this.current = this.previous = null;
+  }
+}
+
 /**
  * Owns the WebGL renderer, the frame loop and the final Halo composition
- * (crossfade, sky, reflective floor, horizon). Audio comes in through the
- * `frameSource` callback, so it does not depend on the audio engine.
+ * (the rig's layers, sky, reflective floor, horizon). Audio comes in through
+ * the `frameSource` callback, so it does not depend on the audio engine.
+ * Up to SLOTS fixtures (scenes) play at once; slot 0 is the protagonist.
  */
 export class RenderEngine {
   readonly renderer: WebGLRenderer;
   paused = false;
   readonly autoDirection = new AutoDirection();
   private readonly direction: DirectionSettings = { ...DEFAULT_DIRECTION };
+  /** The protagonist's layer (slot 0). */
+  get current(): Layer | null { return this.slots[0].current; }
   get modulation() { return this.current?.director.frame; }
   get effectiveDirection() { return this.autoDirection.settings; }
   setDirection(settings: DirectionSettings): void {
@@ -164,9 +203,8 @@ export class RenderEngine {
   private readonly quality = new QualityController();
   private readonly resizeObserver: ResizeObserver;
   private readonly palette: [Color, Color, Color] = [new Color(), new Color(), new Color()];
-  private current: Layer | null = null;
-  private previous: Layer | null = null;
-  private mix = 1;
+  private readonly slots: Slot[] = Array.from({ length: SLOTS }, () => new Slot());
+  private readonly layerTextures = ['tL0', 'tL1', 'tL2', 'tL3'] as const;
   private rafId = 0;
   private lastTime = 0;
   private time = 0;
@@ -190,6 +228,8 @@ export class RenderEngine {
     this.composer = new EffectComposer(this.renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType }));
     this.composer.addPass(this.composite);
     this.composer.addPass(this.output);
+    // Until a show director drives the slots, the protagonist plays as designed.
+    this.slots[0].params.weight = 1;
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -201,14 +241,31 @@ export class RenderEngine {
     this.applyQuality();
   }
 
+  /** Frame rate measured by the quality controller (for the GPU budget). */
+  get measuredFps(): number {
+    return this.quality.fps;
+  }
+
   /** Palette colours are copied; the scenes and the composition pick them up at once. */
   setPalette(colors: PaletteColors): void {
     colors.forEach((c, i) => this.palette[i].copy(c));
-    this.current?.visualizer.setPalette(this.palette);
-    this.previous?.visualizer.setPalette(this.palette);
+    for (let i = 0; i < SLOTS; i++) this.applyHue(i);
     const u = this.composite.uniforms;
     (u.uHaze.value as Color).copy(this.palette[1]).multiplyScalar(0.25);
     (u.uSheen.value as Color).copy(this.palette[1]);
+  }
+
+  /** Which palette hue leads a slot's fixture (0..2); the palette stays the user's. */
+  setSlotHue(index: number, hue: number): void {
+    const slot = this.slots[index];
+    if (slot.hue === hue) return;
+    slot.hue = hue;
+    this.applyHue(index);
+  }
+
+  /** Per-frame fixture parameters of a slot (copied). */
+  setSlotParams(index: number, params: SlotParams): void {
+    Object.assign(this.slots[index].params, params);
   }
 
   /** Shows or hides the water reflection (animated, except the first time). */
@@ -221,13 +278,20 @@ export class RenderEngine {
     }
   }
 
-  /** Mounts a scene. With one already showing, the two crossfade. */
+  /** Mounts a scene as the protagonist (slot 0). With one already showing, the two crossfade. */
   show(source: SceneSource): void {
+    this.setSlot(0, source, true);
+  }
+
+  /** Puts a fixture in a slot (null empties it); a change crossfades within the slot. */
+  setSlot(index: number, source: SceneSource | null, force = false): void {
+    const slot = this.slots[index];
+    if (!force && (slot.current?.source ?? null) === source) return;
     // A switch during a crossfade drops the oldest scene.
-    this.previous?.dispose();
-    this.previous = this.current;
-    this.current = new Layer(this.renderer, source, this.quality.profile, this.layerSize, this.palette, this.layout);
-    this.mix = this.previous ? 0 : 1;
+    slot.previous?.dispose();
+    slot.previous = slot.current;
+    slot.current = source ? new Layer(this.renderer, source, this.quality.profile, this.layerSize, slot.palette, this.layout) : null;
+    slot.mix = slot.previous ? 0 : 1;
     this.quality.resetWindow();
   }
 
@@ -240,14 +304,34 @@ export class RenderEngine {
   dispose(): void {
     cancelAnimationFrame(this.rafId);
     this.rafId = 0;
-    this.previous?.dispose();
-    this.current?.dispose();
+    for (const slot of this.slots) slot.dispose();
     this.resizeObserver.disconnect();
     this.composite.dispose();
     this.output.dispose();
     this.composer.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
+  }
+
+  /** Updates and renders one layer and gives it a place in the composition; returns the places used. */
+  private drawLayer(layer: Layer | null, slot: Slot, amount: number, used: number, input: SceneInput, direction: DirectionSettings, dt: number): number {
+    if (!layer) return used;
+    if (!this.paused) layer.update(input, direction, dt, this.time + dt);
+    layer.render(dt);
+    if (used >= MAX_LAYERS) return used;
+    const u = this.composite.uniforms;
+    const p = slot.params;
+    u[this.layerTextures[used]].value = layer.texture;
+    (u.uLayer.value as Vector4[])[used].set(p.weight * amount, p.size, p.offset, p.mirror ? 1 : 0);
+    (u.uFlash.value as number[])[used] = p.flash;
+    return used + 1;
+  }
+
+  private applyHue(index: number): void {
+    const slot = this.slots[index];
+    for (let k = 0; k < 3; k++) slot.palette[k].copy(this.palette[(k + slot.hue) % 3]);
+    slot.current?.visualizer.setPalette(slot.palette);
+    slot.previous?.visualizer.setPalette(slot.palette);
   }
 
   private readonly tick = (now: number): void => {
@@ -266,25 +350,22 @@ export class RenderEngine {
       this.updateLayout(dt, this.floatPhase);
     }
 
-    if (this.previous) {
-      this.mix = Math.min(this.mix + dt / CROSSFADE, 1);
-      if (this.mix >= 1) {
-        this.previous.dispose();
-        this.previous = null;
-      }
-    }
-    if (!this.paused) {
-      this.time += dt;
-      current.update(input, direction, dt, this.time);
-      this.previous?.update(input, direction, dt, this.time);
-    }
-    current.render(dt);
-    this.previous?.render(dt);
-
     const u = this.composite.uniforms;
-    u.tA.value = (this.previous ?? current).texture;
-    u.tB.value = current.texture;
-    u.uMix.value = this.mix;
+    let used = 0;
+    for (const slot of this.slots) {
+      if (slot.previous) {
+        slot.mix = Math.min(slot.mix + dt / CROSSFADE, 1);
+        if (slot.mix >= 1) {
+          slot.previous.dispose();
+          slot.previous = null;
+        }
+      }
+      used = this.drawLayer(slot.current, slot, slot.mix, used, input, direction, dt);
+      used = this.drawLayer(slot.previous, slot, 1 - slot.mix, used, input, direction, dt);
+    }
+    for (let i = used; i < MAX_LAYERS; i++) (u.uLayer.value as Vector4[])[i].x = 0;
+    if (!this.paused) this.time += dt;
+
     u.uTime.value = this.time;
     u.uWeight.value = response.weight;
     u.uDetail.value = response.detail;
@@ -328,16 +409,20 @@ export class RenderEngine {
     layout.horizon = horizon;
     layout.reflection = r;
     (this.composite.uniforms.uCenter.value as Vector2).set(centerX, 1 - centerY);
-    this.current?.setLayout(layout);
-    this.previous?.setLayout(layout);
+    for (const slot of this.slots) {
+      slot.current?.setLayout(layout);
+      slot.previous?.setLayout(layout);
+    }
   }
 
-  /** Quality can change geometry density, so the scene is rebuilt (crossfaded). */
+  /** Quality can change geometry density, so the scenes are rebuilt (crossfaded). */
   private applyQuality(): void {
     this.resize();
-    const current = this.current;
     const profile = this.quality.profile;
-    if (current && (current.quality.density !== profile.density || current.quality.bloom !== profile.bloom)) this.show(current.source);
+    this.slots.forEach((slot, i) => {
+      const current = slot.current;
+      if (current && (current.quality.density !== profile.density || current.quality.bloom !== profile.bloom)) this.setSlot(i, current.source, true);
+    });
   }
 
   private resize(): void {
@@ -351,7 +436,9 @@ export class RenderEngine {
     this.composer.setPixelRatio(pixelRatio);
     this.composer.setSize(width, height);
     (this.composite.uniforms.uResolution.value as Vector2).set(width * pixelRatio, height * pixelRatio);
-    this.current?.resize(this.layerSize);
-    this.previous?.resize(this.layerSize);
+    for (const slot of this.slots) {
+      slot.current?.resize(this.layerSize);
+      slot.previous?.resize(this.layerSize);
+    }
   }
 }
