@@ -62,7 +62,8 @@ export const DEFAULT_SETTINGS: Settings = {
 function load(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const settings = { ...DEFAULT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<Settings>) : {}) };
+    const saved = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
+    const settings = { ...DEFAULT_SETTINGS, ...saved };
     // A file cannot be restored across sessions; system audio may be unavailable here.
     // 'file' was a source in older versions: only live sources remain.
     if ((settings.source as string) === 'file' || (settings.source === 'system' && !supportsSystemAudio)) {
@@ -72,7 +73,7 @@ function load(): Settings {
     if (!EXPERIENCES.some((m) => m.id === settings.experience)) settings.experience = DEFAULT_DIRECTION.experience;
     settings.moodIntensity = typeof settings.moodIntensity === 'number' && Number.isFinite(settings.moodIntensity) ? clamp01(settings.moodIntensity) : DEFAULT_DIRECTION.moodIntensity;
     // Older versions had an Auto toggle: it becomes the hybrid mode.
-    if (!RIG_MODES.includes(settings.rigMode)) settings.rigMode = settings.autoDirection === true ? 'hybrid' : 'preset';
+    if (!saved.rigMode || !RIG_MODES.includes(saved.rigMode)) settings.rigMode = saved.autoDirection === true ? 'hybrid' : 'preset';
     settings.autoDirection = settings.autoDirection === true && settings.rigMode !== 'preset';
     return settings;
   } catch {
