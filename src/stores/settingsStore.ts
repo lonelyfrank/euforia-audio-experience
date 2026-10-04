@@ -5,6 +5,9 @@ import type { AudioSourceId } from '../types/audio';
 import type { QualitySetting } from '../types/visualizer';
 import type { PaletteId } from '../visualizers/palettes';
 import { createStore } from './createStore';
+import type { RigMode } from '../show/types';
+
+const RIG_MODES: readonly RigMode[] = ['preset', 'hybrid', 'free'];
 
 export type TrackInfoMode = 'always' | 'dim' | 'hidden';
 
@@ -28,6 +31,13 @@ export interface Settings extends DirectionSettings {
   audioDelay: number;
   /** Reflective water floor below the horizon; off = the scene uses the whole window. */
   reflection: boolean;
+  /**
+   * How freely the show is directed: preset (the chosen scene as designed),
+   * hybrid (the chosen scene with variations at phrase boundaries and an
+   * automatic mood), free (the director composes the fixtures). Replaces the
+   * old Auto direction; `autoDirection` now follows it (and a manual mood pick).
+   */
+  rigMode: RigMode;
 }
 
 const STORAGE_KEY = 'halo.settings.v1';
@@ -46,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideCursor: true,
   audioDelay: 0,
   reflection: true,
+  rigMode: 'preset',
 };
 
 function load(): Settings {
@@ -60,7 +71,9 @@ function load(): Settings {
     if (!MOODS.some((m) => m.id === settings.mood)) settings.mood = DEFAULT_DIRECTION.mood;
     if (!EXPERIENCES.some((m) => m.id === settings.experience)) settings.experience = DEFAULT_DIRECTION.experience;
     settings.moodIntensity = typeof settings.moodIntensity === 'number' && Number.isFinite(settings.moodIntensity) ? clamp01(settings.moodIntensity) : DEFAULT_DIRECTION.moodIntensity;
-    settings.autoDirection = settings.autoDirection === true;
+    // Older versions had an Auto toggle: it becomes the hybrid mode.
+    if (!RIG_MODES.includes(settings.rigMode)) settings.rigMode = settings.autoDirection === true ? 'hybrid' : 'preset';
+    settings.autoDirection = settings.autoDirection === true && settings.rigMode !== 'preset';
     return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };

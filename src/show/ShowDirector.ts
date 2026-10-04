@@ -47,6 +47,8 @@ const EFFECT_IDS: readonly EffectId[] = ['none', 'pulse', 'chase', 'sweep', 'fan
  * - a breath (near blackout) on the last beat before an expected drop, and
  *   a snap when the section lands;
  * - the full brightness is kept for drops;
+ * - preset mode plays the user's scene as designed: full brightness, no
+ *   added effects, no breath (those are direction choices);
  * - with a weak grid, no beat-locked effects (atmosphere and attacks only);
  * - no more fixtures than the GPU budget allows.
  *
@@ -134,10 +136,12 @@ export class ShowDirector {
       cost += c;
     }
     // Hue: the palette's primary leads the drops; elsewhere a seeded choice among its three.
-    const hue = section === 'drop' ? 0 : Math.floor(rng.next() * 3);
+    // Preset plays the scene as designed: its own colours, no effects.
+    const preset = this.mode === 'preset';
+    const hue = section === 'drop' || preset ? 0 : Math.floor(rng.next() * 3);
     // Symmetry by default; it breaks only in drops (and then the mirror effect makes no sense).
-    const asymmetric = section === 'drop' && rng.next() < 0.35;
-    const effect = EFFECT_IDS[rng.pick(EFFECT_IDS.map((e) => (asymmetric && e === 'mirror' ? 0 : EFFECTS[section][e] ?? 0)))] ?? 'none';
+    const asymmetric = !preset && section === 'drop' && rng.next() < 0.35;
+    const effect = preset ? 'none' : (EFFECT_IDS[rng.pick(EFFECT_IDS.map((e) => (asymmetric && e === 'mirror' ? 0 : EFFECTS[section][e] ?? 0)))] ?? 'none');
     const look: Look = { fixtures: chosen, hue, effect, asymmetric };
     this.looks.set(section, look);
     this.applyLook(input, sink, look, `${why}; cost ${cost.toFixed(1)}/${this.budget.toFixed(1)}`);
@@ -146,7 +150,7 @@ export class ShowDirector {
   /** Puts a look on the slots: fixtures, hue, symmetry, brightness, effect. */
   private applyLook(input: ShowInput, sink: ShowSink, look: Look, why: string): void {
     const { fixtures: chosen, hue, effect, asymmetric } = look;
-    const ceiling = CEILING[this.section];
+    const ceiling = this.mode === 'preset' ? 1 : CEILING[this.section];
     for (let s = 0; s < this.slots.length; s++) {
       const slot = this.slots[s];
       slot.fixture = chosen[s] ?? null;
@@ -177,15 +181,15 @@ export class ShowDirector {
 
   /** The last beat before an expected drop: a breath, then the drop lands on the boundary. */
   private breathe(input: ShowInput, sink: ShowSink): void {
-    if (this.section !== 'build' || input.dropExpected < DROP_EXPECTED || input.nextPhraseTime <= 0 || input.beatBpm <= 0) return;
+    if (this.mode === 'preset' || this.section !== 'build' || input.dropExpected < DROP_EXPECTED || input.nextPhraseTime <= 0 || input.beatBpm <= 0) return;
     if (input.phraseBar !== input.phraseBars - 1 || this.breathAt === input.nextPhraseTime) return;
     const period = 60 / input.beatBpm;
     this.breathAt = input.nextPhraseTime;
     for (let s = 0; s < this.slots.length; s++) {
       if (!this.slots[s].fixture) continue;
-      sink.target(s, 'intensity', BREATH, input.nextPhraseTime - period);
+      sink.target(s, 'dim', BREATH, input.nextPhraseTime - period);
       // Back on the boundary (the drop's own decision will set its look; a missed drop gets its light back).
-      sink.target(s, 'intensity', this.slots[s].intensity, input.nextPhraseTime);
+      sink.target(s, 'dim', 1, input.nextPhraseTime);
     }
     sink.snap(input.nextPhraseTime);
     this.record(input.time, `breath at ${(input.nextPhraseTime - period).toFixed(2)} s`, `build, drop expected ${input.dropExpected.toFixed(2)} at the phrase end`);

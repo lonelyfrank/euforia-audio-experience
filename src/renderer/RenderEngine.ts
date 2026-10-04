@@ -241,6 +241,12 @@ export class RenderEngine {
     this.applyQuality();
   }
 
+  /** The quality tier in effect (Auto resolves to the tier of its current step). */
+  get qualityTier(): 'low' | 'medium' | 'high' {
+    const density = this.quality.profile.density;
+    return density >= 0.9 ? 'high' : density >= 0.5 ? 'medium' : 'low';
+  }
+
   /** Frame rate measured by the quality controller (for the GPU budget). */
   get measuredFps(): number {
     return this.quality.fps;

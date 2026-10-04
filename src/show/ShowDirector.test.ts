@@ -92,7 +92,7 @@ describe('ShowDirector', () => {
   it('breathes on the last beat before an expected drop and snaps when it lands', () => {
     const { calls, director } = run('hybrid');
     const drop = 16 * BAR;
-    const breath = calls.find((c) => c.kind === 'target' && c.slot === 0 && c.param === 'intensity' && c.value <= 0.1 + 1e-9);
+    const breath = calls.find((c) => c.kind === 'target' && c.slot === 0 && c.param === 'dim' && c.value <= 0.1 + 1e-9);
     expect(breath).toBeDefined();
     expect(breath!.at).toBeCloseTo(drop - BEAT, 6);
     expect(calls.some((c) => c.kind === 'snap' && Math.abs(c.at - drop) < 1e-6)).toBe(true);
@@ -125,7 +125,10 @@ describe('ShowDirector', () => {
     expect(wide.intensities.some((s) => s[1] > 0 && s[2] > 0)).toBe(true);
     const preset = run('preset', 3);
     expect(preset.director.slots[0].fixture).toBe('galaxy');
-    expect(preset.intensities.every((s) => s[1] === 0)).toBe(true);
+    expect(preset.intensities.every((s) => s[0] === 1 && s[1] === 0)).toBe(true);
+    // Preset plays the scene as designed: its own colours, no added effects, no breath.
+    expect(preset.director.log.every((d) => d.what.includes('hue 0') && d.what.includes('none') && !d.what.includes('asymmetric'))).toBe(true);
+    expect(preset.calls.filter((c) => c.kind === 'impulse' || c.param === 'dim')).toHaveLength(0);
     const hybrid = run('hybrid', 3);
     for (const d of hybrid.director.log) if (!d.what.startsWith('breath')) expect(d.what.startsWith('galaxy')).toBe(true);
   });

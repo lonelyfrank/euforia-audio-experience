@@ -61,8 +61,12 @@ export interface ShowSettings {
   scene: string;
 }
 
-/** Timed commands for the Dynamics layer: slot parameters by name. */
-export type SlotParam = 'intensity' | 'size' | 'offset' | 'strobe';
+/**
+ * Timed commands for the Dynamics layer: slot parameters by name. `dim`
+ * multiplies the intensity for quick dips (the breath before a drop), so
+ * the intensity itself can glide slowly.
+ */
+export type SlotParam = 'intensity' | 'dim' | 'size' | 'offset' | 'strobe';
 
 export interface ShowSink {
   /** A parameter's new target at audio time `at`. */

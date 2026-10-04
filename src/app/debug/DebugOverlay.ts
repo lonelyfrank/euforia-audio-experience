@@ -123,7 +123,10 @@ const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
 const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
 const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
 const DYNAMICS_TOP = ANALYSIS_TOP + 6 * ROW + 6;
-const HEIGHT = DYNAMICS_TOP + 3 * ROW;
+/** Room for 16 Dynamics channels (two per row). */
+const DYNAMICS_ROWS = 9;
+const SHOW_TOP = DYNAMICS_TOP + DYNAMICS_ROWS * ROW + 6;
+const HEIGHT = SHOW_TOP + 6 * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -380,11 +383,17 @@ class DebugOverlay {
     ctx.fillText(`Dynamics (${(1 / dynamics.step).toFixed(0)} Hz, audio clock ${dynamics.time.toFixed(2)} s${dynamics.dropped ? `, ${dynamics.dropped} events dropped` : ''})`, 0, DYNAMICS_TOP);
     for (let c = 0; c < dynamics.channelCount; c++) {
       const s = dynamics.inspect(c);
-      const params = s.omega > 0 ? `ω ${s.omega.toFixed(1)} ζ ${s.zeta.toFixed(2)} → ${s.target.toFixed(2)} v ${s.velocity.toFixed(2)}` : 'envelope';
-      this.bar(s.name, COLORS.hit, s.value, (c % 2) * (COLUMN + GAP), DYNAMICS_TOP + ROW * (1 + (c >> 1)));
-      ctx.fillStyle = COLORS.dim;
-      ctx.fillText(`${s.type} · ${params}`, (c % 2) * (COLUMN + GAP) + LABEL + BAR + 44, DYNAMICS_TOP + ROW * (1 + (c >> 1)));
+      const params = s.omega > 0 ? ` ω${s.omega.toFixed(1)} ζ${s.zeta.toFixed(2)}` : '';
+      ctx.fillStyle = s.value > 0.02 ? COLORS.hit : COLORS.dim;
+      ctx.fillText(`${s.name.padEnd(16)}${s.value.toFixed(2).padStart(6)} ${s.type}${params}`, (c % 2) * (COLUMN + GAP), DYNAMICS_TOP + ROW * (1 + (c >> 1)));
     }
+    // Show: the director's mode, budget and effect, the slots, and its last decisions with why.
+    const show = this.app.show;
+    ctx.fillStyle = COLORS.tempo;
+    const slots = show.slots.map((s, i) => (s.fixture ? `${i === 0 ? '★' : '·'}${s.fixture} ${s.intensity.toFixed(2)} h${s.hue}${s.mirror ? ' ⇋' : ''}` : '–')).join('  ');
+    ctx.fillText(`Show ${show.mode} · budget ${show.budget.toFixed(1)} · effect ${show.activeEffect}${show.activeEffect !== show.effect ? ` (${show.effect} needs a grid)` : ''} · ${slots}`, 0, SHOW_TOP);
+    ctx.fillStyle = COLORS.dim;
+    show.log.slice(-5).forEach((d, i) => ctx.fillText(`${d.time.toFixed(1)} s  ${d.what}  ← ${d.why}`, 0, SHOW_TOP + ROW * (i + 1)));
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(
       `Latency: attack→frame ${ms(timing.onsetDelay)} + render ${ms(timing.renderLatency)} = ${ms(timing.onsetDelay + timing.renderLatency)} · ` +

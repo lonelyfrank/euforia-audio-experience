@@ -10,6 +10,10 @@ import { settingsStore, type Settings } from '../stores/settingsStore';
 import type { AudioSourceId } from '../types/audio';
 import type { QualitySetting, RigValues, SceneInput } from '../types/visualizer';
 import { CueScheduler } from '../dynamics/CueScheduler';
+import { ShowDirector } from '../show/ShowDirector';
+import { GpuBudget } from '../show/GpuBudget';
+import type { RigMode, ShowInput, ShowSink, SlotParam } from '../show/types';
+import { SLOTS, type SceneSource, type SlotParams } from '../renderer/RenderEngine';
 import { Dynamics } from '../dynamics/Dynamics';
 import { Dial, type DialMenu } from '../ui/Dial';
 import { h } from '../ui/dom';
@@ -35,6 +39,8 @@ const QUALITIES: { id: QualitySetting; label: string; icon: 'qauto' | 'qlow' | '
   { id: 'high', label: 'High', icon: 'qhigh' },
 ];
 
+const RIG_LABELS: Readonly<Record<RigMode, string>> = { preset: 'Preset', hybrid: 'Hybrid', free: 'Free' };
+
 /**
  * Application controller. Wires audio engine → render engine and drives the
  * Halo UI: one core button, a radial wheel with sub-rings, a settings panel
@@ -48,6 +54,31 @@ export class App {
   private readonly haloPulse = this.dynamics.channel('halo.pulse', 'flash');
   private readonly cues = new CueScheduler(this.dynamics, this.haloPulse);
   readonly rig: RigValues = { time: 0, timed: false, haloPulse: 0, snapAt: -1 };
+  /** The show: which fixtures (scenes) play, how, with which effects (see src/show). */
+  readonly show = new ShowDirector();
+  private readonly budget = new GpuBudget();
+  /** Dynamics channels of each slot's generic parameters. */
+  private readonly slotChannels = Array.from({ length: SLOTS }, (_, i) => ({
+    intensity: this.dynamics.channel(`slot${i}.intensity`, 'glide', i === 0 ? 1 : 0),
+    dim: this.dynamics.channel(`slot${i}.dim`, 'sparkle', 1),
+    size: this.dynamics.channel(`slot${i}.size`, 'pulse', 1),
+    offset: this.dynamics.channel(`slot${i}.offset`, 'swing', 0),
+    strobe: this.dynamics.channel(`slot${i}.strobe`, 'flash'),
+  }));
+  private readonly showSink: ShowSink = {
+    target: (slot, param, value, at) => this.dynamics.setTarget(this.slotChannel(slot, param), value, at),
+    impulse: (slot, param, amount, at) => this.dynamics.impulse(this.slotChannel(slot, param), amount, at),
+    snap: (at) => this.dynamics.snap(at, 0.5),
+  };
+  private readonly showInput: ShowInput = {
+    time: 0, presence: 0, section: 0, sectionId: -1, barIndex: 0, phraseBar: 0, phraseBars: 8, nextPhraseTime: 0, beatBpm: 0,
+    nextBeatTime: 0, barPhase: 0, dropExpected: 0, structureConfidence: 0, key: -1, genre: [], gridWeight: 0,
+  };
+  private readonly showSettings: { mode: RigMode; scene: string } = { mode: 'preset', scene: '' };
+  /** The fixture mounted in each slot, and one source object per scene (stable, so slots can compare). */
+  private readonly mounted: (string | null)[] = Array.from({ length: SLOTS }, () => null);
+  private readonly sources = new Map<string, SceneSource>();
+  private readonly slotParams: SlotParams = { weight: 1, size: 1, offset: 0, mirror: false, flash: 0 };
   private readonly sceneInput: SceneInput = { audio: this.audio.frame, response: this.audio.visual, rig: this.rig };
   private readonly stage: HTMLElement;
   private readonly render: RenderEngine;
@@ -97,7 +128,7 @@ export class App {
     await this.selectSource(s.source);
   }
 
-  // ---- frame ---------------------------------------------------------------
+// ---- frame ---------------------------------------------------------------
 
   private onFrame(dt: number): SceneInput {
     const frame = this.audio.update(dt);
@@ -106,12 +137,12 @@ export class App {
     this.dial.setLevel(level);
     this.nowPlaying.draw(level, performance.now());
     this.calibration.frame(dt);
-    this.updateRig();
+    this.updateRig(dt);
     return this.sceneInput;
   }
 
   /** Analysis events → Dynamics (on the heard audio clock) → fixture values for the renderer. */
-  private updateRig(): void {
+  private updateRig(dt: number): void {
     const { features, timing, clock } = this.audio;
     if (!clock.ready) return;
     const { onsets, sections } = features;
@@ -121,12 +152,76 @@ export class App {
       this.cues.reset();
     }
     this.cues.update(features.frame, timing.gridWeight, onsets.items, onsets.count, sections.items, sections.count);
+    this.directShow(dt);
     this.dynamics.advance(timing.heardTime);
+    this.applyShow();
     this.rig.time = timing.heardTime;
     this.rig.timed = true;
     this.rig.haloPulse = this.dynamics.value(this.haloPulse);
     // Section boundaries snap every Director's dynamics too (no trail of the build into the drop).
     this.rig.snapAt = sections.count > 0 ? sections.items[sections.count - 1].time : -1;
+  }
+
+  /** The show director's decisions for this frame (targets and impulses go to the Dynamics layer). */
+  private directShow(dt: number): void {
+    const f = this.audio.features.frame;
+    const i = this.showInput;
+    i.time = this.audio.timing.heardTime;
+    i.presence = f.presence;
+    i.section = f.section;
+    i.sectionId = f.sectionId;
+    i.barIndex = f.barIndex;
+    i.phraseBar = f.phraseBar;
+    i.phraseBars = f.phraseBars;
+    i.nextPhraseTime = f.nextPhraseTime;
+    i.beatBpm = f.beatBpm;
+    i.nextBeatTime = f.nextBeatTime;
+    i.barPhase = f.barPhase;
+    i.dropExpected = f.dropExpected;
+    i.structureConfidence = f.structureConfidence;
+    i.key = f.key;
+    i.genre = f.genre;
+    i.gridWeight = this.audio.timing.gridWeight;
+    const s = settingsStore.get();
+    this.showSettings.mode = s.rigMode;
+    this.showSettings.scene = s.scene;
+    this.show.setBudget(this.budget.update(this.render.measuredFps, dt, this.render.qualityTier));
+    this.show.update(i, this.showSettings, this.showSink);
+  }
+
+  /** Mounts the planned fixtures and hands their parameters (Dynamics values) to the renderer. */
+  private applyShow(): void {
+    for (let s = 0; s < SLOTS; s++) {
+      const plan = this.show.slots[s];
+      if (plan.fixture !== this.mounted[s]) {
+        this.render.setSlot(s, plan.fixture ? this.sourceFor(plan.fixture) : null);
+        this.mounted[s] = plan.fixture;
+      }
+      this.render.setSlotHue(s, plan.hue);
+      const c = this.slotChannels[s];
+      const p = this.slotParams;
+      p.weight = Math.max(0, this.dynamics.value(c.intensity) * this.dynamics.value(c.dim));
+      p.size = this.dynamics.value(c.size);
+      p.offset = this.dynamics.value(c.offset);
+      p.mirror = plan.mirror;
+      p.flash = this.dynamics.value(c.strobe);
+      this.render.setSlotParams(s, p);
+    }
+  }
+
+  private slotChannel(slot: number, param: SlotParam): number {
+    return this.slotChannels[slot][param];
+  }
+
+  /** One source object per scene id (so a slot can tell whether its fixture changed). */
+  private sourceFor(id: string): SceneSource {
+    let source = this.sources.get(id);
+    if (!source) {
+      const def = findVisualizer(id) ?? visualizers[0];
+      source = { create: () => def.create(def.preset), preset: def.preset, direction: def.direction };
+      this.sources.set(id, source);
+    }
+    return source;
   }
 
   // ---- wheel ---------------------------------------------------------------
@@ -138,9 +233,15 @@ export class App {
         return { caption: 'Direction', actions: true, items: [
           { id: 'mood', label: 'Mood', icon: 'mood' },
           { id: 'experience', label: 'Experience', icon: 'experience' },
-          { id: 'auto', label: s.autoDirection ? 'Auto · On' : 'Auto · Off', icon: 'qauto', selected: s.autoDirection },
+          { id: 'rig', label: `Rig · ${RIG_LABELS[s.rigMode]}`, icon: 'qauto', selected: s.rigMode !== 'preset' },
           { id: 'quality', label: 'Quality', icon: 'quality' },
         ] };
+      case 'rig':
+        return {
+          caption: 'Rig',
+          layout: 'arc',
+          items: (['preset', 'hybrid', 'free'] as const).map((id) => ({ id, label: RIG_LABELS[id], icon: id === 'free' ? 'qauto' : id === 'hybrid' ? 'mood' : 'scene', selected: s.rigMode === id })),
+        };
       case 'mood':
         return { caption: 'Mood', items: MOODS.map((m) => ({ id: m.id, label: m.name, icon: 'mood', selected: m.id === s.mood })) };
       case 'experience':
@@ -185,7 +286,7 @@ export class App {
   private onCore(): void {
     const menu = this.dial.menu;
     if (this.panel.isOpen) this.closePanel();
-    else if (menu && menu !== 'root') this.dial.open(['mood', 'experience', 'quality'].includes(menu) ? 'direction' : 'root');
+    else if (menu && menu !== 'root') this.dial.open(['mood', 'experience', 'quality', 'rig'].includes(menu) ? 'direction' : 'root');
     else if (menu) this.dial.close();
     else this.dial.open('root');
   }
@@ -204,10 +305,11 @@ export class App {
       return;
     }
     if (menu === 'direction') {
-      if (id === 'auto') { settingsStore.set({ autoDirection: !settingsStore.get().autoDirection }); this.dial.open('direction'); }
-      else this.dial.open(id);
+      this.dial.open(id);
       return;
     }
+    // Hybrid and free choose the mood themselves; a manual pick keeps the mode but stops that.
+    if (menu === 'rig') settingsStore.set({ rigMode: id as RigMode, autoDirection: id !== 'preset' });
     if (menu === 'mood') settingsStore.set({ mood: id as MoodId, autoDirection: false });
     if (menu === 'experience') settingsStore.set({ experience: id as ExperienceId, autoDirection: false });
     // Sub-ring picks apply at once and keep the ring open for comparison.
@@ -389,6 +491,10 @@ export class App {
     }
     if (!previous || s.reflection !== previous.reflection) this.render.setReflection(s.reflection);
     if (!previous || s.quality !== previous.quality) this.render.setQuality(s.quality);
-    if (!previous || s.scene !== previous.scene) this.render.show({ create: () => def.create(def.preset), preset: def.preset, direction: def.direction });
+    // The chosen scene is the protagonist, except in free mode where the director picks it (it starts there).
+    if (!previous || (s.scene !== previous.scene && s.rigMode !== 'free')) {
+      this.render.show(this.sourceFor(s.scene));
+      this.mounted[0] = s.scene;
+    }
   }
 }

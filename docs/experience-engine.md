@@ -140,3 +140,38 @@ mood × experience is (slow tier above 1.7, fast below 0.55, with
 hysteresis): e.g. Dream/Ambient scale → `swell`, Chaos/Reactive → `sparkle`.
 All 13 continuous parameters are now on the Dynamics layer; `impact` is the
 rig's timed pulse.
+
+## Phase 5 — Show director and fixture rig
+
+Decisions (user, 2026-10-04): each **scene is a fixture**; the **palette
+stays the user's** (the director only picks which of its three hues leads,
+per slot); the three modes **replace Auto** (Direction → Rig: Preset /
+Hybrid / Free; a saved Auto setting becomes Hybrid).
+
+- `src/show/ShowDirector.ts` (pure): decides the look (fixtures, lead hue,
+  effect, symmetry, brightness ceiling) at section changes, or at phrase
+  boundaries after an 8-bar hold (hybrid/free); movement per bar (sweep,
+  fan); impulses on the predicted beat (pulse, chase, mirror accents).
+  Returning sections reuse their kind's look. A breath (near blackout via a
+  fast `dim` parameter) on the last beat before an expected drop, then a
+  snap. Ceilings: drop 1, build 0.7, intro 0.6, outro 0.5, break 0.45;
+  supporting fixtures at 45% of the protagonist. No beat effects under a
+  0.3 grid weight. Seeded from section, tempo, key, genre and mode; every
+  decision logged with why. Preset plays the chosen scene as designed: full
+  brightness, its own colours, no effects, no breath; Hybrid keeps the
+  chosen scene as protagonist with variations and the automatic mood;
+  Free also picks the fixtures (by affinity to the section).
+- `src/show/GpuBudget.ts`: fixture cost units from the measured frame rate
+  (start at 1, +1 after 10 s at ≥ 57 fps up to Low 3 / Medium 2.2 / High
+  1.6, −1 after 2 s under 50 fps, then no increase for 60 s).
+- Renderer: three slots (crossfade within each), up to four composed
+  layers with weight, scale, offset, mirrored pair and strobe; per-slot
+  palette hue order. Each slot's parameters are Dynamics channels
+  (intensity glide, dim sparkle, size pulse, offset swing, strobe flash).
+
+Measured in the browser (Low, synthetic "ambient → build → drop"): Free
+grows to 3 fixtures within ~20 s and stays at 60 fps (p95 16.8 ms); looks
+change only at sections/phrases; the second drop and break come back with
+their looks. Preset: one scene at full brightness, no effects. Not verified:
+real music, High quality with several fixtures on this iGPU (the budget
+should keep it to one), the look on Windows/WebView2.
