@@ -1,3 +1,4 @@
+import { INTENT, type ExperienceSnapshot, type VisualIntent } from '../experience/types';
 import type { MusicState, VisualResponseFrame } from '../types/audio';
 import { clamp01, experienceById, moodAmount, moodById, NEUTRAL } from './profiles';
 import type { Character, DirectionSettings, Feature, Mapping, ModulationKey, ModulationState, SceneDirection } from './types';
@@ -35,6 +36,7 @@ const FAST_BELOW = [0.55, 0.65] as const;
 
 /** Timed inputs from the host: the heard audio clock and the transient pulse from the Dynamics rig. */
 export interface DirectorClock {
+  releaseLight?: number;
   /** Audio time (s) heard when this frame is seen. */
   time: number;
   /** Instant-attack pulse on predicted beats and kicks (0..1). */
@@ -111,7 +113,9 @@ export class VisualDirector {
    * clock and `impact` is the rig's timed pulse; without one (hosts with no
    * clock, tests) every parameter follows its envelope as before.
    */
-  update(music: MusicState, settings: DirectionSettings, dt: number, clock?: DirectorClock): ModulationState {
+  update(music: MusicState, settings: DirectionSettings, dt: number, clock?: DirectorClock, experienceState?: ExperienceSnapshot): ModulationState {
+    if (experienceState) this.frame.experienceState = experienceState;
+    else delete this.frame.experienceState;
     const mood = moodById(settings.mood).character;
     const experience = experienceById(settings.experience);
     const c = this.character;
@@ -135,15 +139,42 @@ export class VisualDirector {
     f.tension = clamp01(music.tension * c.structure);
     f.release = clamp01(music.music.drop * c.structure);
     f.warmth = music.warmth;
+    if (experienceState) {
+      const s = experienceState.state, p = experienceState.plan;
+      f.intensity = s.energy;
+      f.openness = s.openness + s.release * 0.3;
+      f.tension = s.tension * c.structure;
+      f.flux = s.motion * (0.3 + p.desiredEntropy * 0.7);
+      f.release = Math.min(s.release, clock?.releaseLight ?? 0);
+      f.brightness = experienceState.acoustic.perceivedBrightness;
+      f.warmth = experienceState.acoustic.lowWeight;
+      f.pulse = weight(experienceState.intents[INTENT.pulse]) * s.confidence;
+    }
     const t = this.target;
     for (const key of KEYS) t[key] = 0;
     for (const route of this.routes) t[route.target] += f[route.source] * route.amount;
     t.persistence = clamp01(0.35 * c.persistence + music.trace * 0.2);
     t.contrast = clamp01(c.contrast * 0.45);
-    t.visibility = music.audible * (1 - this.minimal + this.minimal * clamp01(music.shortEnergy * 1.8));
+    t.visibility = (experienceState ? experienceState.acoustic.presence : music.audible) * (1 - this.minimal + this.minimal * clamp01(music.shortEnergy * 1.8));
     if (clock) {
       this.chooseTypes();
       if (clock.snapAt !== undefined && clock.snapAt >= 0) this.dynamics.snap(clock.snapAt, SNAP_SECONDS);
+    }
+    if (experienceState) {
+      // Intents are weighed by their confidence: a doubtful forecast moves the picture less.
+      const intent = experienceState.intents;
+      const plan = experienceState.plan;
+      const suspend = weight(intent[INTENT.suspend]);
+      const pace = 1 + 0.3 * (weight(intent[INTENT.accelerate]) - weight(intent[INTENT.decelerate]));
+      t.expansion += weight(intent[INTENT.expand]) * 0.25 - weight(intent[INTENT.contract]) * 0.2;
+      t.rotation = (t.rotation + weight(intent[INTENT.rotate]) * 0.2) * pace;
+      t.depth += weight(intent[INTENT.reveal]) * 0.15;
+      t.distortion *= 0.4 + plan.desiredEntropy * 0.6;
+      t.turbulence *= 0.3 + plan.desiredEntropy * 0.7;
+      t.particleEmission *= 0.35 + plan.desiredEntropy * 0.65;
+      t.brightness *= plan.maxIntensity;
+      t.bloom *= plan.maxIntensity * (1 - suspend * 0.65);
+      t.cameraMotion *= (1 - suspend) * pace;
     }
     const caps = this.direction.capabilities;
     for (const key of KEYS) {
@@ -174,7 +205,12 @@ export class VisualDirector {
         if (channel !== undefined) this.frame[key] = clamp01(this.dynamics.value(channel));
       }
     }
-    this.adapt(music);
+    if (experienceState) {
+      // Momentum is a geometric displacement; it never bypasses the shared brightness guard.
+      this.frame.expansion = clamp01(this.frame.expansion + experienceState.physics.displacement * 0.22);
+      this.frame.scale = clamp01(this.frame.scale + Math.abs(experienceState.physics.displacement) * 0.12);
+    }
+    this.adapt(music, experienceState, clock?.releaseLight ?? 0);
     return this.frame;
   }
 
@@ -195,7 +231,7 @@ export class VisualDirector {
     }
   }
 
-  private adapt(music: MusicState): void {
+  private adapt(music: MusicState, experience?: ExperienceSnapshot, releaseLight = 0): void {
     // Only the initial mount allocates; nested musical context is copied to avoid mutating the interpreter.
     if (!this.response) this.response = { ...music, music: { ...music.music } };
     const out = this.response;
@@ -219,7 +255,37 @@ export class VisualDirector {
     out.midAudible = clamp01(music.midAudible * light);
     out.highAudible = clamp01(music.highAudible * light);
     out.audible = Math.max(out.lowAudible, out.midAudible, out.highAudible);
-    context.drop = clamp01(music.music.drop * c.structure);
+    context.drop = clamp01((experience ? Math.min(experience.state.release, releaseLight) : music.music.drop) * c.structure);
+    if (experience) {
+      const s = experience.state;
+      out.motion = clamp01(s.motion * c.motion + Math.abs(experience.physics.velocity) * 0.025);
+      out.tension = s.tension;
+      out.density = s.density;
+      // Opposite-phase stereo can cancel the graphical mono waveform, not auditory presence.
+      const a = experience.acoustic;
+      const audible = a.silent ? 0 : a.presence;
+      out.weight = bandLevel(a.bandDb, 0, 2) * audible * c.low;
+      out.flow = bandLevel(a.bandDb, 2, 4) * audible * c.mid;
+      out.detail = bandLevel(a.bandDb, 4, 8) * audible * c.high;
+      out.lowAudible = audible * clamp01(out.weight * 3) * light;
+      out.midAudible = audible * clamp01(out.flow * 3) * light;
+      out.highAudible = audible * clamp01(out.detail * 3) * light;
+      out.audible = Math.max(out.lowAudible, out.midAudible, out.highAudible);
+      context.build = s.anticipation;
+      context.intensity = s.energy;
+      context.energyTrend = s.energyTrend;
+    }
 
   }
+}
+
+function bandLevel(bands: Float64Array, from: number, to: number): number {
+  let power = 0;
+  for (let b = from; b < to; b++) power += 10 ** (bands[b] / 10);
+  return clamp01((10 * Math.log10(Math.max(1e-12, power)) + 65) / 55);
+}
+
+/** An intent's effective weight: strength attenuated by its confidence. */
+function weight(intent: VisualIntent): number {
+  return intent.strength * intent.confidence;
 }

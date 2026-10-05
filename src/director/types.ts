@@ -1,3 +1,4 @@
+import type { ExperienceSnapshot } from '../experience/types';
 export type MoodId = 'euphoria' | 'dream' | 'dark' | 'pulse' | 'chaos' | 'ethereal' | 'melancholy' | 'focus';
 export type ExperienceId = 'ambient' | 'immersive' | 'reactive' | 'cinematic' | 'minimal';
 
@@ -10,6 +11,8 @@ export interface DirectionSettings {
 
 /** Normalized controls. Scenes choose their physical units, never reclassify the music. */
 export interface ModulationState {
+  /** Shared grammar and physical memory, read-only and owned by the audio engine. */
+  experienceState?: ExperienceSnapshot;
   scale: number;
   expansion: number;
   distortion: number;
@@ -25,7 +28,7 @@ export interface ModulationState {
   contrast: number;
   visibility: number;
 }
-export type ModulationKey = keyof ModulationState;
+export type ModulationKey = Exclude<keyof ModulationState, 'experienceState'>;
 export type Feature = 'low' | 'mid' | 'high' | 'transient' | 'pulse' | 'brightness' | 'flux' | 'intensity' | 'openness' | 'tension' | 'release' | 'warmth';
 export interface Mapping { source: Feature; target: ModulationKey; amount: number }
 export interface SceneCapabilities {

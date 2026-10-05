@@ -13,7 +13,9 @@ import {
 } from 'three';
 import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
-import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
+import type { PaletteColors, SceneClock, VisualizerContext } from '../../types/visualizer';
+import { INTENT, type VisualIntent } from '../../experience/types';
+import { TunnelBody, type TunnelForces } from './TunnelBody';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
@@ -219,6 +221,11 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   private sparkTravel = 0;
   private roll = 0;
   private shapePhase = 0;
+  /** Physical response on the heard clock (with a SceneClock); otherwise the direct mapping below. */
+  private readonly body = new TunnelBody();
+  private readonly forces: TunnelForces = { rest: 1, expand: 0, speed: 0, pace: 0, surge: 0, roll: 0 };
+  private bodyTravel = 0;
+  private bodyRoll = 0;
   private leadPhase = 0;
 
   init({ quality, renderer }: VisualizerContext): void {
@@ -307,19 +314,44 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     for (let i = 0; i < 3; i++) (u[`uColor${i}`].value as Color).copy(colors[i]);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void {
     const p = this.preset.visual;
     const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
     const vary = music.variation;
 
     // Motion owns forward speed. Tempo remains in the spacing of historical impacts.
-    const advance = dt * (2 / p.ringDensity) * response.audible * (0.04 + 1.6 * motion) * (1 + 0.18 * tension + 1.1 * music.drop);
+    const speed = (2 / p.ringDensity) * response.audible * (0.04 + 1.6 * motion) * (1 + 0.18 * tension + 1.1 * music.drop);
+    const rollRate = (modulation?.rotation ?? flow) * (0.04 + motion) * response.audible * 0.2 * (1 + tension * 0.5);
+    // MACRO: a full, wide sound widens the tunnel; a lone voice narrows it.
+    const opening = (0.82 + 0.38 * openness) * (1 - 0.28 * tension + 0.4 * music.drop);
+    let advance: number;
+    let radius: number;
+    if (clock) {
+      // Forces, not positions: the wall springs about the opening and rings after hits; travel and roll carry momentum.
+      const intents = modulation?.experienceState?.intents;
+      const f = this.forces;
+      f.rest = opening;
+      f.expand = intents ? (effective(intents[INTENT.expand]) - effective(intents[INTENT.contract])) * 6 : 0;
+      f.speed = speed;
+      f.pace = intents ? (effective(intents[INTENT.accelerate]) - effective(intents[INTENT.decelerate])) * speed : 0;
+      f.surge = (2 / p.ringDensity) * 0.8;
+      f.roll = rollRate;
+      this.body.advance(clock.time, f, clock.hits, clock.hitScale);
+      advance = Math.max(0, this.body.travel.position - this.bodyTravel);
+      this.bodyTravel = this.body.travel.position;
+      this.roll += this.body.roll.position - this.bodyRoll;
+      this.bodyRoll = this.body.roll.position;
+      radius = Math.max(0.3, this.body.wall.x);
+    } else {
+      advance = dt * speed;
+      this.roll += dt * rollRate;
+      radius = opening;
+    }
     this.travel += advance;
     this.sparkTravel += advance * 1.6 + dt * detail * music.highPercussion * 20;
     // The wall's shape and the ring lines drift with the mids, never on their own.
     this.shapePhase += dt * flow * (0.04 + motion) * response.audible * 0.15;
     this.leadPhase -= dt * flow * (0.04 + motion) * response.audible * 0.25;
-    this.roll += dt * (modulation?.rotation ?? flow) * (0.04 + motion) * response.audible * 0.2 * (1 + tension * 0.5);
 
     const { spectrum } = frame;
     this.traces.record(LOW, traceValue(frame, response, 1, sampleSpectrumRange(spectrum, 0, LOW_END)));
@@ -330,8 +362,7 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
 
     const u = this.tunnelMaterial.uniforms;
     u.uTravel.value = this.travel;
-    // MACRO: a full, wide sound widens the tunnel; a lone voice narrows it.
-    u.uRadius.value = p.radius * (modulation ? 0.75 + 0.5 * modulation.scale : 1) * (0.82 + 0.38 * openness) * (1 - 0.28 * tension + 0.4 * music.drop);
+    u.uRadius.value = p.radius * (modulation ? 0.75 + 0.5 * modulation.scale : 1) * radius;
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
     // Bass: the section's depth (weight) and lobes (pitch: higher notes, more lobes; per song a base count).
@@ -372,4 +403,9 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     this.traces.dispose();
     super.dispose();
   }
+}
+
+/** An intent's effective weight: strength attenuated by its confidence. */
+function effective(intent: VisualIntent): number {
+  return intent.strength * intent.confidence;
 }

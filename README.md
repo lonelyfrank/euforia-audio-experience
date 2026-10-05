@@ -5,7 +5,8 @@ Visualizzatore musicale desktop in tempo reale, ispirato ai visualizer di Window
 L'app **non dipende da nessun player**: cattura l'audio che il computer sta riproducendo (Spotify, YouTube, VLC, giochi…) e lo trasforma in una scena a tutto schermo.
 
 ```
-SYSTEM AUDIO → CAPTURE → ANALYSIS + TIMING → SHOW / VISUAL DIRECTOR → GPU COMPOSITION
+LIVE AUDIO → AUDIO CLOCK → ANALISI MULTI-RATE (Rust/WASM fuori dal RAF) → ACOUSTIC / CONTEXT
+  → EXPERIENCE / MEMORIA / EVENTI → PREVISIONE → PLANNER → INTENTI → FISICA → GPU
 ```
 
 > Il visualizer è l'interfaccia. Oltre alla scena si vedono solo le informazioni sulla sorgente, a sinistra, e un pulsante circolare in basso al centro. Tutto il resto compare quando serve e si richiude da solo.
@@ -18,9 +19,11 @@ La UI implementa il **design system Halo** (token, componenti, le 8 fasi del moc
 
 - Cattura dell'audio di sistema su **Windows** (WASAPI loopback) e **Linux** (monitor PipeWire/PulseAudio); microfono su tutte le piattaforme
 - Solo audio dal vivo: niente file né tracce precaricate; in sviluppo c'è un segnale di test sintetico
-- Due percorsi di analisi condivisi dalle scene: TypeScript per spettro/waveform/voci, Rust nativo o WASM per feature, onset multi-banda, beat, armonia e struttura
+- Rust nativo/WASM: analisi stereo multi-risoluzione 512/2048/8192, ERB, loudness con percentili, noise floor per banda, fase, H/P/R, note e ritmo con ipotesi di metro e downbeat previsto; nel browser gira in un worker, mai sul frame loop; TS conserva spettro/waveform/voci grafiche
+- Memoria multiscala, ricorrenza di motivi, narrativa probabilistica con isteresi, trajectory, anticipazione causale, previsione con confidence ed event stream datato sui campioni; grammatica di 14 intenti e risposta fisica con momentum (Resonant Field, Tunnel)
+- Resonant Field: modi di una membrana e onde propagate/riflesse, con intensità distinta dalla complessità; budget DSP indipendente dalla qualità grafica
 - 8 mood e 5 modalità Experience; regia **Preset / Hybrid / Free**, fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
-- 6 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**
+- 7 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**
 - Composizione Halo: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
 - Qualità Auto / Low / Medium / High, fullscreen, auto-hide di controlli e cursore
@@ -35,7 +38,7 @@ Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `pre
 |---|---|---|
 | 01 | Idle | Scena, now playing, core chiuso |
 | 02 | Control active | Il core sale e si apre la ruota: Scene, Audio, Palette, Settings, Direction, Fullscreen |
-| 03 | Scene | Anello delle 6 scene |
+| 03 | Scene | Anello delle 7 scene |
 | 04 | Audio | Arco con System Audio e Microphone |
 | 05 | Presets | Arco con le 4 palette |
 | 06 | Direction | Mood, Experience, Rig e Quality (Auto / Low / Medium / High) |
@@ -65,30 +68,38 @@ Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruot
 ## Architettura
 
 ```text
-AudioCaptureProvider
-  ├─ PCM mono → AudioAnalyzer (TS, una volta per frame)
-  │             → AudioFrame → MusicInterpreter → MusicState
-  │                                              ↓
-  └─ feature/eventi Rust → AnalysisDecoder → ClockSync / Timing
-       nativo: worker cpal                 ↓
-       browser: WASM sul main thread       RigController
-                                           ├─ CueScheduler / FlashGuard
-                                           ├─ ShowDirector / GpuBudget
-                                           └─ Dynamics → slot + RigValues
-                                                        ↓
-RenderEngine → Layer (VisualDirector + scena + post-processing)
-             → fino a 4 layer composti / 3 slot con crossfade
-             → cielo, riflesso opzionale, orizzonte → Canvas
+Live capture (system / microphone / test)
+  ├─ PCM mono → AudioAnalyzer TS → AudioFrame + ruoli/voci grafiche
+  └─ PCM stereo → Analyzer Rust (thread di cattura) / WASM (worker browser, hop 256)
+       ├─ 512: transienti; 2048: timbro, ERB, fase, HPSS, stereo
+       └─ 8192: chroma, pitch bins, parziali
+       ├─ contesto: floor per banda, percentili loudness, derivate, downbeat previsto
+            ↓ ogni frame hop datato + record clock per batch, senza folding
+       RecordStage → AnalysisDecoder → ExperienceEngine (frame + onset/beat/sezioni)
+            ├─ memoria multiscala / motivi / narrativa / trajectory / previsione
+            ├─ EventStream ordinato per tempo audio
+            ├─ ExperiencePlanner → VisualIntent / contrasto / entropia
+            └─ ResonantPhysics → modi, momentum, onde
+                     ↓ history limitata sul clock percepito
+       ClockSync / Timing → RigController
+            ├─ CueScheduler / FlashGuard / Dynamics
+            └─ ShowDirector / grafo scene / GpuBudget
+                     ↓
+       Layer: VisualDirector → grammatica specifica + scena + pass
+                     ↓
+       RenderEngine: 3 slot / 4 layer composti → Halo → Canvas
 ```
 
 La [scheda tecnica per gli agenti](docs/technical-overview.md) descrive responsabilità,
-contratti, verifiche dell'audit e miglioramenti prioritari. Le misure storiche del
-motore temporale sono in [docs/experience-engine.md](docs/experience-engine.md).
+contratti, verifiche dell'audit e miglioramenti prioritari. Il rapporto di questo refactor e le misure sono in [docs/refactor-report.md](docs/refactor-report.md).
+Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/realtime-analysis.md),
+[modello acustico](docs/acoustic-model.md), [planner](docs/experience-planner.md),
+[fisica](docs/physics-engine.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
 
 - **I visualizer non conoscono la sorgente audio**: ricevono `AudioFrame`, ruoli diretti, `ModulationState` e i colori della palette.
-- **La sorgente audio non conosce i visualizer**: un provider espone PCM tramite `readSamples()` e, quando disponibili, `drain()` o `readFeatures()` per le feature musicali.
+- **La sorgente audio non conosce i visualizer**: un provider espone PCM grafico tramite `readSamples()` e i record dell'analisi musicale tramite `readFeatures()`; l'analisi gira fuori dal frame loop (thread di cattura nativo o worker browser).
 - **Analisi centralizzata per percorso**: nessun visualizer fa FFT per conto suo. TS e Rust/WASM oggi calcolano alcune misure sovrapposte: la loro unificazione richiede una migrazione verificata, non la rimozione di uno dei due.
 - **Il render engine non conosce l'audio engine** né la UI: riceve una callback `frameSource(dt)`.
 - **Riutilizzo nel percorso continuo**: buffer, eventi e oggetti Three.js persistono fra frame. Mount, cambi di look, IPC/worklet e debug possono allocare; non è una garanzia di zero allocazioni sull’intera pipeline.
@@ -99,8 +110,8 @@ Principi:
 |---|---|---|
 | Desktop shell | **Tauri 2** | Binario leggero, WebView di sistema, backend Rust per il codice nativo |
 | Cattura audio | **Rust + cpal 0.18** | WASAPI loopback su Windows senza workaround; stessa API per il microfono su tutte le piattaforme |
-| Trasporto | Due Tauri `Channel` binari | PCM mono `f32` + record feature/eventi/clock `f64`, little-endian |
-| Feature musicali | Crate Rust `spectrum-analysis`, anche in WASM | Hop 256 campioni, FFT 2048, griglia ritmica, armonia, sezioni |
+| Trasporto | Due Tauri `Channel` binari; nel browser worklet → `SharedArrayBuffer` (o `MessagePort`) → worker | PCM mono `f32` + record feature/eventi/clock `f64`, little-endian; buffer trasferiti e riciclati |
+| Feature musicali | Crate Rust `spectrum-analysis`, anche in WASM | Hop 256; finestre 512/2048/8192; misure fisiche/percettive, ritmo e sezioni |
 | Temporizzazione | `ClockSync`, `Timing`, `Dynamics` in TypeScript | Cue sul clock audio percepito, molle/follower a 240 Hz e inviluppi analitici |
 | Frontend | **TypeScript + Vite**, DOM vanilla | UI piccola: nessun framework necessario |
 | Rendering | **Three.js** (WebGL2) + shader GLSL | Particelle, tunnel, galassia e onde calcolati sulla GPU; bloom e composizione in post-processing |
@@ -160,11 +171,13 @@ src/
     AudioEngine.ts  provider attivo + analizzatore
     capture/        AudioCaptureProvider e implementazioni
     analysis/       AudioAnalyzer, FFT, BeatDetector, smoothing/AGC, misure spettrali
-    features/       decoder binario, layout generato, loader e binario WASM
+    features/       decoder, layout generato, WASM, worker di analisi, ring PCM, staging dei record
     interpretation/ MusicInterpreter (entry point), DynamicsMemory
     visual-response/ ruoli, presenza, memoria sezioni e voci; alias VisualResponse compatibile
   director/         mood, Experience, matrice, VisualDirector, AutoDirection
   timing/           clock capture→host, cue percepiti, gate del ritmo, calibrazione
+  experience/       memoria, narrativa, trajectory, previsione, event stream, planner, intenti, history
+  physics/          modi risonanti, onde causali, primitive esatte (oscillatore, momento, inviluppo)
   dynamics/         molle/follower/inviluppi, scheduler, cronologia hit, FlashGuard
   show/             scelta fixture/effetti, budget GPU, affinità e seed deterministici
   renderer/         RenderEngine (slot, crossfade, loop), Layer, composizione Halo, qualità
@@ -172,7 +185,7 @@ src/
     registry.ts     auto-discovery delle scene
     palettes.ts     i 4 preset di colore
     shared/         BaseVisualizer, dispose, defineVisualizer
-    tunnel/ spectrum/ particle-field/ galaxy/ liquid/ oscilloscope/
+    tunnel/ spectrum/ particle-field/ galaxy/ liquid/ oscilloscope/ resonant-field/
                     index.ts + <Nome>Visualizer.ts + preset.json
   ui/               Dial (core + ruota), NowPlaying, SettingsPanel, icone, tokens.css, halo.css
   stores/           store osservabile, impostazioni persistenti
@@ -231,7 +244,26 @@ Gli array appartengono all'analizzatore e vengono riusati: i visualizer non devo
 
 Le misure fisiche aggiuntive `rms`, `centroidHz`, `rolloffHz` (85% della potenza) e `spreadHz` sono indipendenti dall’AGC dello spettro grafico. Le tre misure spettrali riusano la FFT esistente su 20 Hz–16 kHz.
 
-## Interpretazione musicale nel tempo
+## Experience Engine
+
+La nuova regia consuma tutti gli hop Rust tramite `ExperienceEngine`: separa
+energia da complessità, conserva cinque scale di memoria e 32 motivi, distingue
+trend/narrativa dal mood. Il planner propone intenti causali su 2–8 s e limita
+l'entropia sostenuta. ShowDirector sceglie scene/continuità; VisualDirector
+interpreta la grammatica nelle capacità di ciascuna scena. La risposta fisica
+conserva velocità e onde anche dopo un attacco.
+
+La history di snapshot è presentata al `Timing.heardTime`: il delay Bluetooth
+vale anche per narrativa e fisica. Impulsi luminosi e geometria hanno vie
+separate; Reduce Flashing conserva la deformazione. Gli stati sono indizi
+causali, non riconoscimento di genere o previsione certa della struttura.
+
+Le sei scene precedenti sono migrate tramite l'adattatore del Director;
+Resonant Field consuma direttamente intenti, modi, onde, stereo e fase. Nessuna
+scena esegue DSP. Il benchmark automatico confronta PCM→regia a 30/60/144 fps
+con batch 128/480/2048, oltre alle regressioni su silenzio e warm-up.
+
+## Interpretazione grafica e fallback
 
 `MusicInterpreter` (alias compatibile `VisualResponse`) trasforma `AudioFrame` in ruoli condivisi: bassi → peso, medi → forma/flow, alti → dettaglio, impatti → eventi. Presence e audibilità per regione distinguono il segnale dal noise floor appreso e seguono fade/tagli.
 
@@ -352,7 +384,9 @@ interface Visualizer {
 - **Palette / Mood / Experience** sono indipendenti. I profili iniziali richiedono ulteriore taratura percettiva su registrazioni reali; Auto non classifica generi o struttura completa dei brani.
 - **Fullscreen**: usa la finestra corrente; non c'è ancora la scelta del monitor.
 - Il tracker TS delle scene resta basato sulla cassa; la regia usa gli onset multi-banda Rust con confidence e fallback. Musica senza ritmo affidabile o molto sincopata resta un limite. La calibrazione suggerisce un ritardo, ma non misura end-to-end il display e ogni uscita: verificare *Audio delay* a orecchio.
-- La qualità Auto misura solo il frame rate, non il tempo GPU.
+- La qualità grafica Auto misura RAF, non il tempo GPU; il budget DSP misura separatamente CPU/durata audio.
+- Metro: ipotesi 3/4/5/7 con confidence, non analisi completa delle segnature; frase 4/8 battute euristica. Il corpus sintetico conserva il limite delle sezioni (4/12 entro una battuta).
+- ERB, roughness, armonicità, H/P/R e range di loudness sono approssimazioni live, non strumenti certificati o separazione di sorgenti. La taratura percettiva su un corpus reale resta da eseguire.
 - Test automatici su analisi, presenza, semantica temporale e grammatica delle scene; la cattura reale WASAPI richiede ancora una verifica su Windows.
 
 ## Roadmap
@@ -362,4 +396,4 @@ interface Visualizer {
 - Preset specifici per scena e caricamento di preset esterni
 - Consolidare gradualmente TS e Rust/WASM senza perdere waveform, spettro, voci e fallback; misurare cattura→display su hardware reale
 - Estendere i test alla macchina a stati della UI e ai dispositivi audio reali
-- Profilare CPU/GPU e ripresa dopo tab nascosta; backlog e criteri di verifica nella [scheda tecnica](docs/technical-overview.md)
+- Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; migrare con misure le altre scene alla risposta fisica; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)

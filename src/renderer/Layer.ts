@@ -108,14 +108,16 @@ export class Layer {
       this.clock.time = rig.time;
       this.clock.impact = rig.haloPulse;
       this.clock.snapAt = rig.snapAt;
+      this.clock.releaseLight = rig.experienceLight;
     }
-    const modulation = this.director.update(input.response, settings, dt, rig?.timed ? this.clock : undefined);
+    const modulation = this.director.update(input.response, settings, dt, rig?.timed ? this.clock : undefined, rig?.experience);
     let clock: SceneClock | undefined;
     if (rig?.timed) {
       clock = this.sceneClock ??= { time: 0, hits: rig.hits, hitScale: 1 };
       clock.time = rig.time;
       clock.hits = rig.hits;
       clock.hitScale = this.director.impactScale;
+      clock.experience = rig.experience;
     }
     this.visualizer.update(input.audio, dt, time, this.director.response!, modulation, clock);
     if (this.bloom) this.bloom.strength = this.source.preset.bloom.strength * (0.25 + 1.5 * modulation.bloom);

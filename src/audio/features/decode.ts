@@ -16,8 +16,6 @@ export type BeatEvent = Shape<typeof BEAT_FIELDS>;
 /** A section change (kind: 0 intro, 1 build, 2 drop, 3 break, 4 outro), stamped at its downbeat. */
 export type SectionEvent = Shape<typeof SECTION_FIELDS>;
 export const SECTION_NAMES = ['intro', 'build', 'drop', 'break', 'outro'] as const;
-/** Genre families of `AnalysisFrame.genre` (prior weights). */
-export const GENRE_NAMES = ['four-on-the-floor', 'drum-and-bass', 'hip-hop', 'band', 'ambient', 'acoustic'] as const;
 /** Sent by native hosts with each batch: capture clock (`sample`) and the age (s) of its newest sample. */
 export type ClockRecord = Shape<typeof CLOCK_FIELDS>;
 
@@ -60,12 +58,31 @@ export const newFrame = (): AnalysisFrame => {
   return frame;
 };
 
+/** Copy a measurement into owned storage, retaining every typed-array identity. */
+export function copyFrame(to: AnalysisFrame, from: AnalysisFrame): void {
+  for (const key in FRAME_FIELDS) {
+    const k = key as keyof AnalysisFrame;
+    const value = from[k];
+    if (typeof value === 'number') (to[k] as number) = value;
+    else (to[k] as Float64Array).set(value);
+  }
+}
+
 /**
  * Turns batches of records into the latest frame and the onsets/beats since
  * the previous batch. Allocation-free after construction.
  */
 export class AnalysisDecoder {
   readonly frame = newFrame();
+  /** Synchronous consumers, called in stream order: the borrowed record is valid only during the call. */
+  onFrame?: (frame: AnalysisFrame) => void;
+  onOnset?: (onset: OnsetEvent) => void;
+  onBeat?: (beat: BeatEvent) => void;
+  onSection?: (section: SectionEvent) => void;
+  /** Where events beyond a full per-frame list are decoded for the consumers. */
+  private readonly spareOnset = blank(ONSET_FIELDS);
+  private readonly spareBeat = blank(BEAT_FIELDS);
+  private readonly spareSection = blank(SECTION_FIELDS);
   readonly onsets = new EventList(64, () => blank(ONSET_FIELDS));
   readonly beats = new EventList(32, () => blank(BEAT_FIELDS));
   readonly sections = new EventList(8, () => blank(SECTION_FIELDS));
@@ -96,18 +113,22 @@ export class AnalysisDecoder {
       if (tag === TAG.frame) {
         read(FRAME_FIELDS, this.frame, data, at);
         this.frames++;
+        this.onFrame?.(this.frame);
         at += RECORD.frame;
       } else if (tag === TAG.onset) {
-        const slot = this.onsets.next();
-        if (slot) read(ONSET_FIELDS, slot, data, at);
+        const slot = this.onsets.next() ?? this.spareOnset;
+        read(ONSET_FIELDS, slot, data, at);
+        this.onOnset?.(slot);
         at += RECORD.onset;
       } else if (tag === TAG.beat) {
-        const slot = this.beats.next();
-        if (slot) read(BEAT_FIELDS, slot, data, at);
+        const slot = this.beats.next() ?? this.spareBeat;
+        read(BEAT_FIELDS, slot, data, at);
+        this.onBeat?.(slot);
         at += RECORD.beat;
       } else if (tag === TAG.section) {
-        const slot = this.sections.next();
-        if (slot) read(SECTION_FIELDS, slot, data, at);
+        const slot = this.sections.next() ?? this.spareSection;
+        read(SECTION_FIELDS, slot, data, at);
+        this.onSection?.(slot);
         at += RECORD.section;
       } else if (tag === TAG.clock) {
         read(CLOCK_FIELDS, this.clock, data, at);

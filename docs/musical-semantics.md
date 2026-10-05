@@ -1,3 +1,7 @@
+> Nota, 5 ottobre 2026: questo documento descrive la semantica del percorso
+> grafico storico. La narrativa corrente è in [experience-planner.md](experience-planner.md);
+> la migrazione delle scene è descritta in [visual-director.md](visual-director.md).
+
 # Semantica musicale e grammatica delle scene
 
 > Documento di una fase precedente: misure e scelte sotto riportate appartengono alla data della verifica.

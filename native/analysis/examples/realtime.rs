@@ -9,6 +9,7 @@ use std::time::Instant;
 fn main() {
     let sr = 48_000.0f32;
     let seconds = 60.0;
+    let quality = std::env::args().nth(1).and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
     let tau = std::f32::consts::TAU;
     let mut state = 1u32;
     let samples: Vec<f32> = (0..(seconds * sr) as usize)
@@ -25,17 +26,23 @@ fn main() {
         })
         .collect();
     let mut analyzer = Analyzer::new(sr, 2);
+    analyzer.set_quality(quality);
+    let mut costs = Vec::with_capacity(6000);
     let (mut frames, mut beats) = (0, 0);
     let start = Instant::now();
     for chunk in samples.chunks(2 * 480) {
+        let batch_start = Instant::now();
         analyzer.push(chunk, |event| match event {
             Event::Frame(_) => frames += 1,
             Event::Beat(_) => beats += 1,
             Event::Onset(_) => {}
             Event::Section(_) => {}
         });
+        costs.push(batch_start.elapsed().as_secs_f64() * 1000.0);
     }
     let elapsed = start.elapsed().as_secs_f64();
+    costs.sort_by(f64::total_cmp);
+    println!("quality {quality}: batch p50/p95/p99 {:.3}/{:.3}/{:.3} ms", costs[3000], costs[5700], costs[5940]);
     println!(
         "{seconds} s of stereo audio in {:.3} s: {:.0}x real time ({:.1}% of one core), {frames} frames, {beats} beats",
         elapsed,

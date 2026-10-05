@@ -3,7 +3,8 @@ import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, MusicalState, VisualResponseFrame } from '../../types/audio';
 import type { App } from '../App';
-import { GENRE_NAMES, SECTION_NAMES } from '../../audio/features/decode';
+import { SECTION_NAMES } from '../../audio/features/decode';
+import type { AudioEvent, EventCursor } from '../../experience/EventStream';
 
 /*
  * Development-only audio/visual debug overlay. Shows the analyzer output
@@ -126,7 +127,10 @@ const DYNAMICS_TOP = ANALYSIS_TOP + 6 * ROW + 6;
 /** Room for 20 Dynamics channels (two per row). */
 const DYNAMICS_ROWS = 11;
 const SHOW_TOP = DYNAMICS_TOP + DYNAMICS_ROWS * ROW + 6;
-const HEIGHT = SHOW_TOP + 6 * ROW;
+const EXPERIENCE_TOP = SHOW_TOP + 7 * ROW;
+/** Experience block: text lines, then the ERB row. */
+const EXPERIENCE_LINES = 16;
+const HEIGHT = EXPERIENCE_TOP + (EXPERIENCE_LINES + 1) * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -168,6 +172,14 @@ class DebugOverlay {
   private lastTime = performance.now();
   private frameMs = 16;
   private lastBeat = 0;
+  private readonly eventCursor: EventCursor = { time: -Infinity, seq: 0 };
+  /** The last heard events (copies, oldest first). */
+  private readonly recentEvents: AudioEvent[] = [];
+  private readonly keepEvent = (event: AudioEvent): void => {
+    if (event.type === 'onset' || event.type === 'beat') return;
+    this.recentEvents.push({ ...event });
+    if (this.recentEvents.length > 5) this.recentEvents.shift();
+  };
   private lastCue = 0;
   /** Ring buffers of the history strip. */
   private readonly energy = new Float32Array(HISTORY);
@@ -373,12 +385,11 @@ class DebugOverlay {
       ANALYSIS_TOP + ROW * 3,
     );
     const section = SECTION_NAMES[f.section] ?? '?';
-    const genre = f.genre.indexOf(Math.max(...f.genre));
     const nextPhrase = f.nextPhraseTime > 0 && clock.ready ? `${(clock.toHost(f.nextPhraseTime) - performance.now() / 1000).toFixed(1)} s` : '–';
     ctx.fillStyle = COLORS.mid;
     ctx.fillText(
       `${section.toUpperCase()} #${f.sectionId}${f.sectionReturn >= 0 ? ` (returns #${f.sectionReturn})` : ''} · ${f.sectionBars} bars · bar ${f.barIndex} · phrase ${f.phraseBar + 1}/${f.phraseBars} next in ${nextPhrase} · ` +
-        `novelty ${f.novelty.toFixed(2)} · sim 4/8/16 ${[...f.similarity].map((x) => x.toFixed(2)).join('/')} · drop ${f.dropExpected.toFixed(2)} · ${GENRE_NAMES[genre]} ${f.genre[genre].toFixed(2)} · conf ${f.structureConfidence.toFixed(2)}`,
+        `novelty ${f.novelty.toFixed(2)} · sim 4/8/16 ${[...f.similarity].map((x) => x.toFixed(2)).join('/')} · drop ${f.dropExpected.toFixed(2)} · meter ${f.meter || "?"} (${f.meterConfidence.toFixed(2)}) · conf ${f.structureConfidence.toFixed(2)}`,
       0,
       ANALYSIS_TOP + ROW * 5,
     );
@@ -405,6 +416,40 @@ class DebugOverlay {
     ctx.fillText(`Show ${show.mode} · budget ${show.budget.toFixed(1)} · effect ${show.activeEffect}${show.activeEffect !== show.effect ? ` (${show.effect} needs a grid)` : ''} · ${slots}`, 0, SHOW_TOP);
     ctx.fillStyle = COLORS.dim;
     show.log.slice(-5).forEach((d, i) => ctx.fillText(`${d.time.toFixed(1)} s  ${d.what}  ← ${d.why}`, 0, SHOW_TOP + ROW * (i + 1)));
+    const engine = this.app.audio;
+    const e = engine.experience.presented;
+    const a = e.acoustic, state = e.state, plan = e.plan, physics = e.physics;
+    const rt = engine.realtimeStats;
+    const ahead = (time: number) => (time > 0 ? `+${ms(time - state.time)}` : '–');
+    const q = a.loudnessQuantiles;
+    engine.experience.events.forEachHeard(this.eventCursor, timing.heardTime, this.keepEvent);
+    const recent = this.recentEvents.map((x) => `${x.type}@${x.audioTime.toFixed(2)}${x.band >= 0 ? `/b${x.band}` : ''} ${x.strength.toFixed(2)}·${x.confidence.toFixed(2)}`).join('  ');
+    const lines = [
+      rt
+        ? `Realtime ${rt.mode} · DSP ${(rt.load * 100).toFixed(1)}% core q${rt.quality} · DSP age ${ms(rt.dspAge)} · transfer ${ms(rt.transfer)} · ring backlog ${rt.backlog} · staged ${rt.pending} dropped ${rt.dropped} · lost ${rt.lost} filled ${rt.filled} · ${rt.batches} batches`
+        : `Realtime native capture thread · attack→frame ${ms(timing.onsetDelay)}`,
+      `Experience · heard snapshot ${state.time.toFixed(2)} s · ${state.narrative} (${state.narrativeConfidence.toFixed(2)}) / ${state.trajectory} (${state.trajectoryConfidence.toFixed(2)})`,
+      `Physical RMS ${a.rms.toFixed(3)} peak ${a.peak.toFixed(3)} crest ${a.crest.toFixed(2)} entropy ${a.entropy.toFixed(2)} complexity ${a.complexity.toFixed(2)}`,
+      `Tonal H ${a.harmonicity.toFixed(2)} inH ${a.inharmonicity.toFixed(2)} rough ${a.roughness.toFixed(2)} phase ${a.phaseCoherence.toFixed(2)} · H/P/R ${a.harmonicShare.toFixed(2)}/${a.percussiveShare.toFixed(2)}/${a.residualShare.toFixed(2)}`,
+      `Perceptual M ${a.loudnessMomentary.toFixed(1)} S ${a.loudnessShort.toFixed(1)} range~ ${a.loudnessRange.toFixed(1)} LU · bright ${a.perceivedBrightness.toFixed(2)} DSP ${a.dspQuality}`,
+      `Context P10/50/90/95 ${q[0].toFixed(1)}/${q[1].toFixed(1)}/${q[2].toFixed(1)}/${q[3].toFixed(1)} pos ${a.loudnessPosition.toFixed(2)} · band above floor ${[...a.bandLevel].map((x) => x.toFixed(1)).join(' ')}`,
+      `Spatial width ${a.width.toFixed(2)} corr ${a.correlation.toFixed(2)} mid/side ${a.midEnergy.toFixed(4)}/${a.sideEnergy.toFixed(4)} pan ${a.balance.toFixed(2)}`,
+      `Music BPM ${a.beatBpm.toFixed(1)} meter ${a.meter || '?'} conf ${a.meterConfidence.toFixed(2)} bar ${state.barPhase.toFixed(2)} phrase ${state.phrasePhase.toFixed(2)} novelty ${state.novelty.toFixed(2)}`,
+      `Forecast beat ${ahead(state.nextBeatTime)} (${state.nextBeatConfidence.toFixed(2)}) downbeat ${ahead(state.nextDownbeatTime)} (${state.nextDownbeatConfidence.toFixed(2)}) phrase ${ahead(state.nextPhraseTime)} (${state.nextPhraseConfidence.toFixed(2)}) · horizon ${state.predictionHorizon.toFixed(1)} s`,
+      `Likely continue ${state.likelyContinuation.toFixed(2)} build ${state.likelyBuild.toFixed(2)} release ${state.likelyRelease.toFixed(2)} boundary ${state.likelyBoundary.toFixed(2)} · conf ${state.predictionConfidence.toFixed(2)}`,
+      `Anticipation ${state.anticipation.toFixed(2)} (${state.anticipationConfidence.toFixed(2)}) stored ${state.releasePotential.toFixed(2)} release ${state.release.toFixed(2)} · motif ${state.motif}/${state.recurrence} · dE ${state.energyVelocity.toFixed(2)}/s`,
+      `Entropy ${state.visualEntropy.toFixed(2)} fatigue ${state.fatigue.toFixed(2)} energy/complexity ${state.energy.toFixed(2)}/${state.complexity.toFixed(2)} rel loud ${state.relativeLoudness.toFixed(2)}`,
+      `Plan ${plan.currentIntent} → ${plan.nextIntent} ${plan.horizon.toFixed(1)} s · window ${ahead(plan.transitionStart)}…${ahead(plan.transitionEnd)} (${plan.transitionConfidence.toFixed(2)}) · confidence ${plan.confidence.toFixed(2)} continuity ${plan.sceneContinuity.toFixed(2)}`,
+      `Intents ${e.intents.filter((i) => i.strength * i.confidence > 0.05).map((i) => `${i.kind} ${(i.strength * i.confidence).toFixed(2)}`).join(' · ') || '–'}`,
+      `Physics ${physics.activeResonators} modes · E ${physics.energy.toFixed(3)} damping ${physics.damping.toFixed(2)} waves ${physics.waveActivity.toFixed(2)} · silence ${state.silenceKind} ${state.silenceDuration.toFixed(1)} s`,
+      `Events ${recent || '–'}`,
+    ];
+    ctx.fillStyle = COLORS.level;
+    lines.forEach((line, i) => ctx.fillText(line, 0, EXPERIENCE_TOP + i * ROW));
+    ctx.fillStyle = COLORS.high;
+    ctx.fillText('ERB', 0, EXPERIENCE_TOP + EXPERIENCE_LINES * ROW);
+    for (let b = 0; b < 24; b++) ctx.fillRect(40 + b * 12, EXPERIENCE_TOP + EXPERIENCE_LINES * ROW - 10, 8, a.erb[b] * 10);
+
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(
       `Latency: attack→frame ${ms(timing.onsetDelay)} + render ${ms(timing.renderLatency)} = ${ms(timing.onsetDelay + timing.renderLatency)} · ` +

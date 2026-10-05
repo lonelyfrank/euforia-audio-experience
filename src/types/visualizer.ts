@@ -1,3 +1,4 @@
+import type { ExperienceSnapshot } from '../experience/types';
 import type { ModulationState, SceneDirection } from '../director/types';
 import type { Camera, Color, Scene, WebGLRenderer } from 'three';
 import type { Pass } from 'three/addons/postprocessing/Pass.js';
@@ -71,6 +72,9 @@ export interface SceneInput {
 
 /** Fixture parameters driven by the Dynamics layer (migrated one at a time). */
 export interface RigValues {
+  experience?: ExperienceSnapshot;
+  /** Guarded brightness response; geometric excitation remains independent. */
+  experienceLight?: number;
   /** Audio clock (s) heard when this frame is seen: the Dynamics clock. */
   time: number;
   /** Whether `time` is valid (the clock is synchronized). */
@@ -89,6 +93,7 @@ export interface RigValues {
  * frame rate.
  */
 export interface SceneClock {
+  experience?: ExperienceSnapshot;
   /** Audio time (s) heard when this frame is seen. */
   time: number;
   hits: HitLog;

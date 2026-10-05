@@ -1,4 +1,67 @@
-# Music Intelligence e Visual Director
+# Visual Director e grammatica dell’esperienza
+
+## Contratto corrente — 5 ottobre 2026
+
+`ExperienceEngine` interpreta ogni hop acustico e conserva snapshot propri.
+`RigController` seleziona quello già udito, applica il FlashGuard condiviso e
+passa esperienza e luce ammessa allo show e ai Layer. Ogni `VisualDirector`
+traduce gli intenti nel carattere Mood × Experience della sua scena. Nessuna
+scena ricalcola FFT, loudness, ricorrenza o narrativa.
+
+Il quinto parametro opzionale di `VisualDirector.update` è un
+`ExperienceSnapshot`. `ModulationState.experienceState` e `SceneClock.experience`
+lo rendono disponibile ai visualizer; è di sola lettura per il consumer e non
+va conservato oltre l'update. Il fallback senza esperienza mantiene il contratto
+grafico precedente. Stato e buffer restituiti dal Director restano stabili.
+
+Il planner produce quattordici intenti, letti per nome (`INTENT.expand`, …) e pesati
+`strength × confidence`: expand, contract, flow, impact, cohere, fragment, suspend,
+dissolve, breathe, rotate, pulse, accelerate, decelerate, reveal. Espansione/
+contrazione/rotazione entrano nei target delle molle; accelerate/decelerate scalano
+rotazione e camera; reveal aggiunge profondità; pulse sostituisce la pulsazione
+calcolata localmente dal beat phase. Sospensione riduce camera e bloom; flow/ordine/
+caos/rilascio entrano nei ruoli diretti. Complessità ed entropia desiderata
+limitano deformazione, turbolenza ed emissione; energia governa l'intensità.
+Il tetto del planner riduce brightness/bloom e i supporti dello show.
+
+La fisica condivisa aggiunge displacement a scala ed espansione. Gli impulsi
+conservano il timestamp audio, non vengono rilevati nuovamente dalle scene.
+La luce dei rilasci passa il FlashGuard di beat/strobe; onde e momentum non
+vengono rimossi da Reduce Flashing. Questo non certifica l'assenza di ogni
+variazione luminosa prodotta da shader e geometrie.
+
+| Scena | Traduzione effettiva |
+|---|---|
+| Galaxy | Ruoli diretti e modulatori comuni: bracci/core, orbite, emissione, camera |
+| Tunnel | Apertura, deformazione pareti, turbolenza, camera/FOV |
+| Particle Field | Pressione/dispersione, emissione, rotazione e profondità |
+| Liquid | Flusso, deformazione delle voci, correnti e persistenza |
+| Spectrum | Scala radiale, deformazione, rotazione ed echi |
+| Oscilloscope | Ampiezza/separazione delle voci e memoria del fosforo |
+| Resonant Field | Dodici modi precomputati eccitati dal DSP, otto onde causali con prime riflessioni; apertura stereo e coerenza di fase |
+
+La migrazione delle prime sei scene passa dall'adattatore comune: mantiene
+geometrie e mapping grafici locali. Non equivale a sei nuove simulazioni fisiche
+indipendenti. Resonant Field consuma direttamente modi, onde e intenti e dimostra
+il nuovo contratto senza analisi locale. Il percorso grafico TS resta necessario
+per waveform e voci: [motivazione e limiti](refactor-audit.md).
+
+ShowDirector usa un grafo deterministico tra sette scene e memoria dei motivi,
+con finestre musicali conservative. Preset mantiene la scena manuale;
+Hybrid/Free governano variazione e supporti. Palette, otto Mood, cinque
+Experience e interazione core/ring restano accessibili come prima.
+
+Il budget DSP riduce solo elaborazioni lente; il budget GPU esistente governa
+risoluzione, densità e pass. Per misure attuali, test a 30/60/144 fps e smoke
+Chromium vedere il [report](refactor-report.md). Per contratti e formule:
+[planner](experience-planner.md), [fisica](physics-engine.md), [acustica](acoustic-model.md).
+
+## Riferimento storico del Director precedente
+
+Il testo seguente documenta il percorso grafico ancora usato come adattatore,
+con risultati riferiti alle date riportate. I vecchi elenchi di file e test
+non sono il riepilogo del refactor corrente.
+
 
 > Documento di una fase precedente: misure e scelte sotto riportate appartengono alla data della verifica.
 > Per la pipeline attuale (Rust/WASM, Timing, ShowDirector, Rig e moduli estratti) leggere

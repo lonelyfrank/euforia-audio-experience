@@ -237,7 +237,7 @@ export class RenderEngine {
 
     const input = this.frameSource(dt);
     const { audio: frame, response } = input;
-    const direction = this.autoDirection.update(response, this.direction, this.paused ? 0 : dt, frame.time);
+    const direction = this.autoDirection.update(response, this.direction, this.paused ? 0 : dt, frame.time, input.rig?.experience);
     const current = this.current;
     if (!current) return;
     if (!this.paused) {

@@ -27,6 +27,9 @@ pub struct HpssReading {
     pub percussive_high: f32,
     pub harmonic_db: f32,
     pub percussive_db: f32,
+    pub harmonic_share: f32,
+    pub percussive_share: f32,
+    pub residual_share: f32,
 }
 
 pub struct Hpss {
@@ -61,6 +64,9 @@ impl Hpss {
         self.index = (self.index + 1) % HISTORY;
         self.filled = (self.filled + 1).min(HISTORY);
 
+        let mut residual_total = 0.0f32;
+        let mut clean_h = 0.0f32;
+        let mut clean_p = 0.0f32;
         let mut harmonic_total = 0.0f32;
         let mut percussive_total = 0.0f32;
         let mut region = [(0.0f32, 0.0f32); 3];
@@ -85,9 +91,20 @@ impl Hpss {
                 continue;
             }
             let (hp, pp) = (power[k] * h2 / total, power[k] * p2 / total);
+            // Ambiguous bins go to residual; clean shares + residual conserve power.
+            let residual = 2.0 * hp.min(pp);
+            residual_total += residual;
+            clean_h += hp - residual * 0.5;
+            clean_p += pp - residual * 0.5;
             harmonic_total += hp;
             percussive_total += pp;
-            let r = if k < self.edges[1] { 0 } else if k < self.edges[2] { 1 } else { 2 };
+            let r = if k < self.edges[1] {
+                0
+            } else if k < self.edges[2] {
+                1
+            } else {
+                2
+            };
             region[r].0 += hp;
             region[r].1 += pp;
         }
@@ -97,6 +114,9 @@ impl Hpss {
             percussive_low: self.shares[1].update(share(region[0].0, region[0].1), dt),
             percussive_mid: self.shares[2].update(share(region[1].0, region[1].1), dt),
             percussive_high: self.shares[3].update(share(region[2].0, region[2].1), dt),
+            harmonic_share: clean_h / (harmonic_total + percussive_total).max(1e-12),
+            percussive_share: clean_p / (harmonic_total + percussive_total).max(1e-12),
+            residual_share: residual_total / (harmonic_total + percussive_total).max(1e-12),
             harmonic_db: power_db(harmonic_total),
             percussive_db: power_db(percussive_total),
         }

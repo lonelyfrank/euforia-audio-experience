@@ -1,3 +1,4 @@
+import { relationship } from './relationships';
 import { FIXTURES, fixtureById } from './fixtures';
 import { Rng, seedOf } from './rng';
 import { SECTION_NAMES, type Decision, type EffectId, type RigMode, type SectionName, type ShowInput, type ShowSettings, type ShowSink, type SlotPlan } from './types';
@@ -62,7 +63,7 @@ const EFFECT_IDS: readonly EffectId[] = ['none', 'pulse', 'chase', 'sweep', 'fan
  * - no more fixtures than the GPU budget allows.
  *
  * Every choice is seeded from quantized features (section, tempo, key,
- * genre), so the same input gives the same decisions, each logged with why.
+ * motif), so the same input gives the same decisions, each logged with why.
  * Pure logic: no rendering, no DOM; commands go out through a ShowSink.
  */
 export class ShowDirector {
@@ -87,6 +88,8 @@ export class ShowDirector {
   private readonly weights = new Float64Array(FIXTURES.length);
   /** The last look chosen for each kind of section (reused when that kind comes back). */
   private readonly looks = new Map<SectionName, Look>();
+  private readonly motifs = new Map<number, Look>();
+  private input: ShowInput | undefined;
 
   /** New capture clock: forget predictions and looks from the previous source. */
   reset(): void {
@@ -98,6 +101,7 @@ export class ShowDirector {
     this.breathAt = -1;
     this.effect = this.activeEffect = 'none';
     this.looks.clear();
+    this.motifs.clear();
     this.log.length = 0;
   }
 
@@ -107,6 +111,7 @@ export class ShowDirector {
   }
 
   update(input: ShowInput, settings: ShowSettings, sink: ShowSink): void {
+    this.input = input;
     if (!this.started || settings.mode !== this.mode || (settings.scene !== this.scene && settings.mode !== 'free')) {
       this.started = true;
       this.looks.clear();
@@ -122,7 +127,8 @@ export class ShowDirector {
       this.section = SECTION_NAMES[input.section] ?? 'intro';
       if (!first) {
         sink.snap(input.time);
-        const look = this.mode !== 'preset' ? this.looks.get(this.section) : undefined;
+        const e = input.experience?.state;
+        const look = this.mode === 'preset' ? undefined : e ? (e.recurrence > 0 ? this.motifs.get(e.motif) : undefined) : this.looks.get(this.section);
         if (look) this.applyLook(input, sink, look, `section → ${this.section}, returns with its look`);
         else this.decideLook(input, sink, `section → ${this.section}`);
       }
@@ -131,7 +137,7 @@ export class ShowDirector {
     if (input.barIndex !== this.lastBar) {
       this.lastBar = input.barIndex;
       const phrase = input.phraseBar === 0 && this.mode !== 'preset' && input.structureConfidence >= PHRASE_CONFIDENCE;
-      if (phrase && input.barIndex - this.lastChangeBar >= HOLD_BARS) {
+      if (phrase && input.barIndex - this.lastChangeBar >= HOLD_BARS && (!input.experience || input.time >= input.experience.plan.transitionStart)) {
         this.decideLook(input, sink, `phrase boundary after ${input.barIndex - this.lastChangeBar} bars`);
       } else if (phrase && input.barIndex !== this.lastChangeBar) {
         this.tintPhrase(input, sink);
@@ -163,14 +169,18 @@ export class ShowDirector {
 
   /** Section-level choice: fixtures, hue, effect, symmetry and brightness. */
   private decideLook(input: ShowInput, sink: ShowSink, why: string): void {
-    const genreTop = topIndex(input.genre);
-    const rng = new Rng(seedOf(input.sectionId, Math.round(input.beatBpm / 2), input.key, genreTop, input.barIndex, MODE_INDEX[this.mode]));
+    const motif = input.experience?.state.motif ?? -1;
+    const rng = new Rng(seedOf(input.sectionId, Math.round(input.beatBpm / 2), input.key, motif, input.barIndex, MODE_INDEX[this.mode]));
     const section = this.section;
     // Fixtures within the mode's slots and the GPU budget.
     const lead = this.mode === 'free' ? this.pickFixture(rng, section, []) : this.scene;
     const chosen = [lead];
     let cost = fixtureById(lead)?.cost ?? 1;
-    const wantSupports = this.mode === 'free' ? (section === 'drop' ? 2 : section === 'build' ? 1 : rng.next() < 0.4 ? 1 : 0) : section === 'drop' ? 1 : 0;
+    let wantSupports = this.mode === 'free' ? (section === 'drop' ? 2 : section === 'build' ? 1 : rng.next() < 0.4 ? 1 : 0) : section === 'drop' ? 1 : 0;
+    if (input.experience) {
+      const entropy = input.experience.plan.desiredEntropy;
+      wantSupports = Math.min(wantSupports, entropy > 0.65 ? 2 : entropy > 0.35 ? 1 : 0);
+    }
     for (let i = 0; i < wantSupports && chosen.length < MODE_SLOTS[this.mode]; i++) {
       const id = this.pickFixture(rng, section, chosen);
       const c = fixtureById(id)?.cost ?? 1;
@@ -187,13 +197,14 @@ export class ShowDirector {
     const effect = preset ? 'none' : (EFFECT_IDS[rng.pick(EFFECT_IDS.map((e) => (asymmetric && e === 'mirror' ? 0 : EFFECTS[section][e] ?? 0)))] ?? 'none');
     const look: Look = { fixtures: chosen, hue, effect, asymmetric };
     this.looks.set(section, look);
+    if (motif >= 0) this.motifs.set(motif, look);
     this.applyLook(input, sink, look, `${why}; cost ${cost.toFixed(1)}/${this.budget.toFixed(1)}`);
   }
 
   /** Puts a look on the slots: fixtures, hue, symmetry, brightness, effect. */
   private applyLook(input: ShowInput, sink: ShowSink, look: Look, why: string): void {
     const { fixtures: chosen, hue, effect, asymmetric } = look;
-    const ceiling = this.mode === 'preset' ? 1 : CEILING[this.section];
+    const ceiling = this.mode === 'preset' ? 1 : Math.min(CEILING[this.section], input.experience?.plan.maxIntensity ?? 1);
     for (let s = 0; s < this.slots.length; s++) {
       const slot = this.slots[s];
       slot.fixture = chosen[s] ?? null;
@@ -233,7 +244,11 @@ export class ShowDirector {
   private pickFixture(rng: Rng, section: SectionName, taken: readonly string[]): string {
     for (let i = 0; i < FIXTURES.length; i++) {
       const f = FIXTURES[i];
-      this.weights[i] = taken.includes(f.id) ? 0 : f.affinity[section] ** 2;
+      const e = this.input?.experience;
+      const relation = relationship(this.slots[0].fixture, f.id);
+      const continuity = e?.plan.sceneContinuity ?? 0.5;
+      const affinity = e ? relation * continuity + (1 - relation) * e.plan.contrastTarget + 0.2 : 1;
+      this.weights[i] = taken.includes(f.id) ? 0 : f.affinity[section] ** 2 * affinity;
     }
     const i = rng.pick(this.weights);
     return FIXTURES[i < 0 ? 0 : i].id;
@@ -241,7 +256,8 @@ export class ShowDirector {
 
   /** The last beat before an expected drop: a breath, then the drop lands on the boundary. */
   private breathe(input: ShowInput, sink: ShowSink): void {
-    if (this.mode === 'preset' || this.section !== 'build' || input.dropExpected < DROP_EXPECTED || input.nextPhraseTime <= 0 || input.beatBpm <= 0) return;
+    if (input.experience && input.experience.plan.nextIntent !== 'expand') return;
+    if ((input.meter !== undefined && input.meter === 0) || this.mode === 'preset' || this.section !== 'build' || input.dropExpected < DROP_EXPECTED || input.nextPhraseTime <= 0 || input.beatBpm <= 0) return;
     if (input.phraseBar !== input.phraseBars - 1 || this.breathAt === input.nextPhraseTime) return;
     const period = 60 / input.beatBpm;
     this.breathAt = input.nextPhraseTime;
@@ -262,8 +278,9 @@ export class ShowDirector {
     if (input.nextBeatTime <= this.lastBeat + period / 2) return;
     this.lastBeat = input.nextBeatTime;
     const at = input.nextBeatTime;
-    const position = (Math.floor(input.barPhase * 4) + 1) % 4;
-    const downbeat = position === 0;
+    const meter = input.meter === undefined ? 4 : input.meter;
+    const position = meter > 0 ? (Math.floor(input.barPhase * meter) + 1) % meter : 0;
+    const downbeat = meter > 0 && (input.meterConfidence ?? 1) > 0.2 && position === 0;
     const weight = input.gridWeight;
     let active = 0;
     for (const slot of this.slots) if (slot.fixture) active++;
@@ -306,9 +323,3 @@ interface Look {
 }
 
 const MODE_INDEX: Readonly<Record<RigMode, number>> = { preset: 0, hybrid: 1, free: 2 };
-
-function topIndex(values: ArrayLike<number>): number {
-  let best = 0;
-  for (let i = 1; i < values.length; i++) if (values[i] > values[best]) best = i;
-  return best;
-}

@@ -51,3 +51,44 @@ describe('WebAssembly analysis', { timeout: 30000 }, () => {
     expect(frame.key).toBe(-1);
   });
 });
+
+it('preserves side-only stereo through analysis and the experience visibility contract', async () => {
+  const { ExperienceEngine } = await import('../../experience/ExperienceEngine');
+  const analysis = await WasmAnalysis.create(SR,2);
+  const engine = new ExperienceEngine();
+  analysis.decoder.onFrame = a => engine.ingest(a);
+  const generator = new SignalGenerator('phaseInversion',SR), chunk = new Float32Array(960);
+  for(let n=0;n<300;n++){generator.fillStereo(chunk,480);analysis.push(chunk);}
+  const a = analysis.decoder.frame;
+  expect(a.width).toBeGreaterThan(0.99);
+  expect(a.sideEnergy).toBeGreaterThan(0.01);
+  expect(a.rms).toBeGreaterThan(0.15);
+  expect(engine.state.energy).toBeGreaterThan(0.5);
+  expect(engine.physics.frame.energy).toBeGreaterThan(0.001);
+  analysis.dispose();
+});
+
+it('finds a 3/4 meter and forecasts its downbeats; equal accents abstain instead of assuming 4/4', { timeout: 60000 }, async () => {
+  const { SignalGenerator } = await import('../capture/testSignals');
+  const run = async (signal: 'waltz' | 'beat124') => {
+    const analysis = await WasmAnalysis.create(SR, 2);
+    const generator = new SignalGenerator(signal, SR), buffer = new Float32Array(960 * 2);
+    const downbeats: number[] = [], forecasts: number[] = [];
+    analysis.decoder.onBeat = (b) => { if (b.downbeat && b.time > 15) downbeats.push(b.time); };
+    // Before a meter is published the forecast follows the fallback grouping, at low confidence.
+    analysis.decoder.onFrame = (f) => { if (f.time > 15 && f.time < 25 && f.meter > 0 && f.nextDownbeatTime > 0) forecasts.push(f.nextDownbeatTime); };
+    for (let i = 0; i < 1500; i++) { generator.fillStereo(buffer, 960); analysis.push(buffer); }
+    const last = { ...analysis.decoder.frame };
+    analysis.dispose();
+    return { last, downbeats, forecasts };
+  };
+  const waltz = await run('waltz');
+  expect(waltz.last.meter).toBe(3);
+  expect(waltz.last.meterConfidence).toBeGreaterThan(0.4);
+  // 150 BPM in 3: bars of 1.2 s.
+  for (const t of waltz.downbeats) expect(Math.abs(t - Math.round(t / 1.2) * 1.2)).toBeLessThan(0.03);
+  expect(waltz.forecasts.length).toBeGreaterThan(500);
+  for (const t of waltz.forecasts) expect(Math.min(...waltz.downbeats.map((d) => Math.abs(d - t)))).toBeLessThan(0.03);
+  const even = await run('beat124');
+  expect(even.last.meter).toBe(0);
+});

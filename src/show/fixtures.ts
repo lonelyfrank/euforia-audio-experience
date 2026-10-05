@@ -6,6 +6,7 @@ import type { FixtureSpec } from './types';
  * and where each fits in a song.
  */
 export const FIXTURES: readonly FixtureSpec[] = [
+  { id: 'resonant-field', cost: 1, affinity: { intro: 0.8, build: 0.7, drop: 0.6, break: 0.9, outro: 0.9 } },
   { id: 'liquid', cost: 1.2, affinity: { intro: 0.8, build: 0.5, drop: 0.4, break: 0.9, outro: 0.9 } },
   { id: 'galaxy', cost: 1, affinity: { intro: 0.7, build: 0.6, drop: 0.7, break: 0.8, outro: 0.8 } },
   { id: 'tunnel', cost: 1, affinity: { intro: 0.4, build: 0.9, drop: 1, break: 0.3, outro: 0.4 } },

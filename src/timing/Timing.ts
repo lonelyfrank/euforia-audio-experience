@@ -12,6 +12,8 @@ export interface TimingInput {
   /** Position in the bar (0..1) at `time`. */
   barPhase: number;
   presence: number;
+  meter?: number;
+  meterConfidence?: number;
 }
 
 export interface OnsetInput {
@@ -148,6 +150,8 @@ export class Timing {
       this.bpm = 0;
       return;
     }
+    const meter = input.meter === undefined ? BEATS_PER_BAR : input.meter;
+    const beatsPerBar = Math.max(1, meter);
     const period = 60 / input.beatBpm;
     this.bpm = input.beatBpm;
     // Beats from the one before the analysis' next beat to the heard moment.
@@ -156,21 +160,21 @@ export class Timing {
     const beatStart = previous + steps * period;
     this.beatPhase = (heard - beatStart) / period;
     // Bar position: the analysis' current beat, advanced by the beats between it and the heard moment.
-    const analysisPosition = Math.floor(input.barPhase * BEATS_PER_BAR) % BEATS_PER_BAR;
-    const position = (((analysisPosition + steps) % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR;
-    this.barPhase = (position + this.beatPhase) / BEATS_PER_BAR;
+    const analysisPosition = Math.floor(input.barPhase * beatsPerBar) % beatsPerBar;
+    const position = (((analysisPosition + steps) % beatsPerBar) + beatsPerBar) % beatsPerBar;
+    this.barPhase = meter > 0 ? (position + this.beatPhase) / beatsPerBar : 0;
 
     // A beat is shown in the frame seen closest to it: the latest beat at or before heard + half a frame.
     const half = frame / 2;
     const nearest = beatStart + (this.beatPhase * period > period - half ? period : 0);
-    const nearestPosition = nearest > beatStart ? (position + 1) % BEATS_PER_BAR : position;
+    const nearestPosition = nearest > beatStart ? (position + 1) % beatsPerBar : position;
     if (nearest <= heard + half && nearest > this.lastBeatAt + period / 2) {
       this.lastBeatAt = nearest;
       if (weight > 0.02) {
         const cue = this.beatCue;
         cue.index = this.beatIndex++;
         cue.barPosition = nearestPosition;
-        cue.downbeat = nearestPosition === 0;
+        cue.downbeat = meter > 0 && (input.meterConfidence ?? 1) > 0.2 && nearestPosition === 0;
         cue.weight = weight;
         this.beat = cue;
       }

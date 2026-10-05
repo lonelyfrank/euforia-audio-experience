@@ -11,7 +11,7 @@
 //!   position, so an accent on the one is not mistaken for novelty), and
 //!   stamped at the downbeat: a drop is reported one beat after it lands,
 //!   not a bar after.
-//! - Phrases (4/8/16 bars, from the genre prior) restart at every section
+//! - Phrases (4/8/16 bars, confidence-weighted horizon) restart at every section
 //!   change; the next phrase boundary is predicted on the grid.
 //! - Without a trusted grid, "free" beats every 0.5 s keep the structure
 //!   going at low confidence (honest fallback).
@@ -30,7 +30,7 @@ const ODF: usize = DIMS - 1;
 /// The low end is present when the sub band is within this of the level (dB / 20 units: 16 dB).
 const BASS_PRESENT: f32 = -0.8;
 /// Beats kept (feature vectors), enough for 16 bars back plus the current one.
-const BEAT_HISTORY: usize = BEATS_PER_BAR * 20;
+const BEAT_HISTORY: usize = 7 * 20;
 /// Bars a section must last before another change (a build may end sooner into a drop).
 const MIN_SECTION_BARS: u32 = 4;
 const MIN_BUILD_BARS: u32 = 2;
@@ -56,7 +56,6 @@ const REALIGN_UP: f32 = 6.0;
 const REALIGN_BASS: f32 = 0.5;
 const REALIGN_DOWN: f32 = -8.0;
 /// Genre memory (bars).
-const GENRE_BARS: f32 = 16.0;
 
 /// Section kinds, as numbers on the wire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,9 +67,6 @@ pub enum SectionKind {
     Break = 3,
     Outro = 4,
 }
-
-/// Coarse genre families the priors are kept for.
-pub const GENRES: [&str; 6] = ["four-on-the-floor", "drum-and-bass", "hip-hop", "band", "ambient", "acoustic"];
 
 /// A section change, stamped at the downbeat it starts on.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -108,8 +104,6 @@ pub struct StructureReading {
     /// 0..1: in a build, how close the phrase end (the likely drop) is.
     pub drop_expected: f32,
     pub confidence: f32,
-    /// Prior weight of each of `GENRES` (sums to 1).
-    pub genre: [f32; 6],
 }
 
 struct SectionPrint {
@@ -129,6 +123,7 @@ pub struct Structure {
     beats: Vec<[f32; DIMS]>,
     beat_loudness: Vec<f32>,
     beat_index: u64,
+    meter: usize,
     // Grid.
     last_beat_time: f64,
     period: f64,
@@ -158,7 +153,6 @@ pub struct Structure {
     shift: u8,
     previous_time: f64,
     previous_sample: u64,
-    genre: [f32; 6],
     reading: StructureReading,
 }
 
@@ -172,6 +166,7 @@ impl Default for Structure {
             beats: vec![[0.0; DIMS]; BEAT_HISTORY],
             beat_loudness: vec![0.0; BEAT_HISTORY],
             beat_index: 0,
+            meter: BEATS_PER_BAR,
             last_beat_time: 0.0,
             period: 0.0,
             free_next: 0.0,
@@ -197,8 +192,7 @@ impl Default for Structure {
             shift: 0,
             previous_time: 0.0,
             previous_sample: 0,
-            genre: [1.0 / 6.0; 6],
-            reading: StructureReading { genre: [1.0 / 6.0; 6], phrase_bars: 8, section_return: -1, ..Default::default() },
+            reading: StructureReading { phrase_bars: 8, section_return: -1, ..Default::default() },
         }
     }
 }
@@ -221,7 +215,7 @@ impl Structure {
         // Without a trusted grid, free beats keep the structure moving (at low confidence).
         if self.grid_confidence < 0.3 && f.time >= self.free_next {
             self.free_next = f.time + FREE_BEAT;
-            let position = ((self.bar_position as usize + 1) % BEATS_PER_BAR) as u8;
+            let position = ((self.bar_position as usize + 1) % self.meter) as u8;
             let beat = BeatEvent {
                 sample: f.sample,
                 time: f.time,
@@ -239,6 +233,12 @@ impl Structure {
 
     /// A beat of the grid (or a free beat). Returns a section change, if this beat decides one.
     pub fn beat(&mut self, b: &BeatEvent, f: &FeatureFrame, sample_rate: f32, free: bool) -> Option<SectionEvent> {
+        if !free && f.meter >= 3 && f.meter as usize != self.meter {
+            self.meter = f.meter as usize;
+            self.shift = 0;
+            self.sound_bars = 0;
+            self.bars_seen = 0;
+        }
         if !free {
             self.grid_confidence = b.confidence;
             if self.last_beat_time > 0.0 {
@@ -250,7 +250,9 @@ impl Structure {
             self.grid_confidence *= 0.9;
         }
         self.free = free;
-        let position = ((b.bar_position + self.shift) as usize % BEATS_PER_BAR) as u8;
+        // The tracker may group beats differently until it publishes its meter: fold into this bar.
+        let incoming = b.bar_position as usize % self.meter;
+        let position = ((incoming + self.shift as usize) % self.meter) as u8;
         self.bar_position = position;
         // Close the beat that just ended.
         let slot = (self.beat_index as usize) % BEAT_HISTORY;
@@ -274,7 +276,7 @@ impl Structure {
         let mut event = None;
         if position != 1 && !free && self.sound_bars >= WARMUP_BARS && self.strong_change() {
             // A drop or a cut on a beat that is not the one: the bar actually starts on that beat.
-            self.shift = ((1 + BEATS_PER_BAR - b.bar_position as usize) % BEATS_PER_BAR) as u8;
+            self.shift = ((1 + self.meter - incoming) % self.meter) as u8;
             self.bar_position = 1;
             self.downbeat_time = self.previous_time;
             self.downbeat_sample = self.previous_sample;
@@ -323,7 +325,11 @@ impl Structure {
         self.section_bars += 1;
         let bar = self.bar_vector(0);
         let loudness = bar[0] * 20.0;
-        let sounding = (0..BEATS_PER_BAR).all(|k| (self.beat_index as usize).checked_sub(k + 1).is_some_and(|i| self.beats[i % BEAT_HISTORY][0] * 20.0 > CONTEXT_FLOOR_DB));
+        let sounding = (0..self.meter).all(|k| {
+            (self.beat_index as usize)
+                .checked_sub(k + 1)
+                .is_some_and(|i| self.beats[i % BEAT_HISTORY][0] * 20.0 > CONTEXT_FLOOR_DB)
+        });
         self.sound_bars = if sounding { self.sound_bars + 1 } else { 0 };
         if self.bar_loudness.len() == self.bar_loudness.capacity() {
             self.bar_loudness.remove(0);
@@ -337,9 +343,13 @@ impl Structure {
         self.loud = loudness.max(self.loud - REFERENCE_DRIFT);
         self.quiet = loudness.min(self.quiet + REFERENCE_DRIFT);
         for (i, back) in [4usize, 8, 16].iter().enumerate() {
-            self.reading.similarity[i] = if self.bars_seen > *back as u64 { similarity(&bar, &self.bar_vector(*back), self.novelty_mean) } else { 0.0 };
+            self.reading.similarity[i] = if self.bars_seen > *back as u64 {
+                similarity(&bar, &self.bar_vector(*back), self.novelty_mean)
+            } else {
+                0.0
+            };
         }
-        self.update_genre();
+
         // After a section's second bar: is it a return of an earlier section of the same kind?
         if self.section_bars == 2 {
             let scale = self.novelty_mean;
@@ -357,7 +367,11 @@ impl Structure {
             }
         }
         // A slow fade after enough of the song: outro (never during a build).
-        if self.section != SectionKind::Outro && self.section != SectionKind::Build && self.bars_seen >= 32 && self.section_bars >= MIN_SECTION_BARS {
+        if self.section != SectionKind::Outro
+            && self.section != SectionKind::Build
+            && self.bars_seen >= 32
+            && self.section_bars >= MIN_SECTION_BARS
+        {
             let n = self.bar_loudness.len();
             if n >= 8 {
                 let recent = &self.bar_loudness[n - 8..];
@@ -373,13 +387,13 @@ impl Structure {
     fn bar_vector(&self, back: usize) -> [f32; DIMS] {
         let mut out = [0.0; DIMS];
         let end = self.beat_index as usize;
-        for k in 0..BEATS_PER_BAR {
-            let i = end as isize - 1 - (back * BEATS_PER_BAR + k) as isize;
+        for k in 0..self.meter {
+            let i = end as isize - 1 - (back * self.meter + k) as isize;
             if i < 0 {
                 continue;
             }
             for (o, x) in out.iter_mut().zip(self.beats[i as usize % BEAT_HISTORY]) {
-                *o += x / BEATS_PER_BAR as f32;
+                *o += x / self.meter as f32;
             }
         }
         out
@@ -391,13 +405,17 @@ impl Structure {
         let first = self.beats[current % BEAT_HISTORY];
         let mut context = [0.0; DIMS];
         for back in 1..=4 {
-            let Some(i) = current.checked_sub(back * BEATS_PER_BAR) else { continue };
+            let Some(i) = current.checked_sub(back * self.meter) else { continue };
             for (c, x) in context.iter_mut().zip(self.beats[i % BEAT_HISTORY]) {
                 *c += x / 4.0;
             }
         }
         // The song is only starting (some of the bars before were silence): nothing to compare with yet.
-        let silent_context = (1..=4).any(|back| current.checked_sub(back * BEATS_PER_BAR).is_none_or(|i| self.beats[i % BEAT_HISTORY][0] * 20.0 < CONTEXT_FLOOR_DB));
+        let silent_context = (1..=4).any(|back| {
+            current
+                .checked_sub(back * self.meter)
+                .is_none_or(|i| self.beats[i % BEAT_HISTORY][0] * 20.0 < CONTEXT_FLOOR_DB)
+        });
         if silent_context || first[0] * 20.0 < CONTEXT_FLOOR_DB {
             return None;
         }
@@ -432,7 +450,7 @@ impl Structure {
         let s = self.section;
         let minimum = if s == SectionKind::Build { MIN_BUILD_BARS } else { MIN_SECTION_BARS };
         let long_enough = self.section_bars >= minimum;
-        let electronic = self.genre[0] + self.genre[1];
+        let electronic = self.grid_confidence;
         let next = if self.pending_outro {
             self.pending_outro = false;
             Some(SectionKind::Outro)
@@ -442,25 +460,42 @@ impl Structure {
             match s {
                 // The low end coming back with a jump in energy, after a build or a quiet part: a drop.
                 SectionKind::Intro | SectionKind::Build | SectionKind::Break
-                    if boundary && energy > 0.65 && energy > context_energy + 0.1 && bass > context_bass + 0.2 && bass > BASS_PRESENT =>
+                    if boundary
+                        && energy > 0.65
+                        && energy > context_energy + 0.1
+                        && bass > context_bass + 0.2
+                        && bass > BASS_PRESENT =>
                 {
                     Some(SectionKind::Drop)
                 }
                 // The kick and bass drop out while the attacks keep coming (a snare roll takes over): a build starts.
                 SectionKind::Intro | SectionKind::Break | SectionKind::Drop
-                    if boundary && bass < context_bass - 0.3 && bass < BASS_PRESENT && busy && energy > context_energy - 0.7 =>
+                    if boundary
+                        && bass < context_bass - 0.3
+                        && bass < BASS_PRESENT
+                        && busy
+                        && energy > context_energy - 0.7 =>
                 {
                     Some(SectionKind::Build)
                 }
                 // Energy falls away and the material thins out (or the energy collapses): a break.
-                SectionKind::Drop | SectionKind::Build if boundary && ((energy < context_energy - 0.25 && !busy) || energy < context_energy - 0.5) => {
+                SectionKind::Drop | SectionKind::Build
+                    if boundary && ((energy < context_energy - 0.25 && !busy) || energy < context_energy - 0.5) =>
+                {
                     Some(SectionKind::Break)
                 }
                 // From a quiet part, the energy rises without the low end: a build starts.
-                SectionKind::Intro | SectionKind::Break if boundary && energy > context_energy + 0.15 && bass < context_bass + 0.2 => Some(SectionKind::Build),
+                SectionKind::Intro | SectionKind::Break
+                    if boundary && energy > context_energy + 0.15 && bass < context_bass + 0.2 =>
+                {
+                    Some(SectionKind::Build)
+                }
                 // Rising for two bars with more attacks or more noise: a build (more eagerly in electronic music).
                 SectionKind::Intro | SectionKind::Break | SectionKind::Drop
-                    if !self.free && trend > 1.0 - 0.5 * electronic && (percussion_up || first[11] > context[11] + 0.05) && bass <= context_bass + 0.05 =>
+                    if !self.free
+                        && trend > 1.0 - 0.5 * electronic
+                        && (percussion_up || first[11] > context[11] + 0.05)
+                        && bass <= context_bass + 0.05 =>
                 {
                     Some(SectionKind::Build)
                 }
@@ -487,7 +522,6 @@ impl Structure {
         Some(event)
     }
 
-
     /// Loudness change (LU) between the last two bars and the two before.
     fn loudness_trend(&self) -> f32 {
         let n = self.bar_loudness.len();
@@ -498,37 +532,6 @@ impl Structure {
         (b[n - 1] + b[n - 2] - b[n - 3] - b[n - 4]) / 2.0
     }
 
-    fn update_genre(&mut self) {
-        let n = self.bar_loudness.len();
-        if n == 0 {
-            return;
-        }
-        let bar = self.bar_vector(0);
-        let bpm = if self.period > 0.0 { (60.0 / self.period) as f32 } else { 0.0 };
-        let grid = self.grid_confidence;
-        // Rhythm evidence comes from the grid and the onset density: the harmonic/percussive share is a
-        // share of power, low in any mix with sustained pads or bass, so it says little about the genre.
-        let density = bar[13] * 8.0;
-        let tonal = 1.0 - bar[11];
-        let tri = |x: f32, a: f32, b: f32, c: f32, d: f32| if x <= a || x >= d { 0.0 } else if x < b { (x - a) / (b - a) } else if x <= c { 1.0 } else { (d - x) / (d - c) };
-        let evidence = [
-            grid * tri(bpm, 110.0, 118.0, 135.0, 145.0) * tri(density, 1.5, 3.0, 8.0, 12.0),
-            grid * (tri(bpm, 155.0, 165.0, 180.0, 190.0) + tri(bpm, 78.0, 82.0, 90.0, 95.0) * tri(density, 5.0, 7.0, 15.0, 20.0)).min(1.0),
-            grid * tri(bpm, 65.0, 75.0, 100.0, 108.0) * tri(density, 1.0, 2.0, 6.0, 9.0),
-            grid * tri(bpm, 90.0, 100.0, 160.0, 175.0) * tri(tonal, 0.2, 0.4, 0.9, 1.0),
-            (1.0 - grid) * tri(density, -1.0, 0.0, 1.0, 2.5),
-            (1.0 - grid * 0.8) * tri(tonal, 0.5, 0.7, 1.0, 1.1) * tri(density, -1.0, 0.0, 3.0, 5.0),
-        ];
-        let k = 1.0 - (-1.0 / GENRE_BARS).exp();
-        for (g, e) in self.genre.iter_mut().zip(evidence) {
-            *g += (e + 0.02 - *g) * k;
-        }
-        let total: f32 = self.genre.iter().sum();
-        for (r, g) in self.reading.genre.iter_mut().zip(self.genre) {
-            *r = g / total;
-        }
-    }
-
     fn update_reading(&mut self, f: &FeatureFrame, time: f64, position: u8, free: bool) {
         let r = &mut self.reading;
         r.section = self.section as u8;
@@ -536,19 +539,24 @@ impl Structure {
         r.section_bars = self.section_bars;
         r.bar_index = self.bar_index;
         // Phrase length from the prior: electronic music runs in 8-bar phrases (16 in drops), the rest in 4 or 8.
-        let electronic = r.genre[0] + r.genre[1];
-        r.phrase_bars = if electronic > 0.5 { if self.section == SectionKind::Drop { 16 } else { 8 } } else if r.genre[4] + r.genre[5] > 0.5 { 4 } else { 8 };
+        // Confidence-weighted planning horizon; no genre classification.
+        r.phrase_bars = if self.grid_confidence < 0.3 { 4 } else { 8 };
         let since = (self.bar_index - self.phrase_origin) as u32;
         r.phrase_bar = since % r.phrase_bars;
         let bars_left = r.phrase_bars - r.phrase_bar;
         r.next_phrase_time = if self.period > 0.0 && !free {
             // From this beat to the end of the bar, then whole bars.
-            let beats_left = (BEATS_PER_BAR - 1 - position as usize) as f64 + 1.0 + (bars_left as f64 - 1.0) * BEATS_PER_BAR as f64;
+            let beats_left =
+                (self.meter - 1 - position as usize) as f64 + 1.0 + (bars_left as f64 - 1.0) * self.meter as f64;
             time + beats_left * self.period
         } else {
             0.0
         };
-        r.drop_expected = if self.section == SectionKind::Build { (1.0 - (bars_left as f32 - 1.0) / 4.0).clamp(0.0, 1.0) * self.grid_confidence } else { 0.0 };
+        r.drop_expected = if self.section == SectionKind::Build {
+            (1.0 - (bars_left as f32 - 1.0) / 4.0).clamp(0.0, 1.0) * self.grid_confidence
+        } else {
+            0.0
+        };
         r.confidence = self.grid_confidence * if self.bars_seen >= 4 { 1.0 } else { self.bars_seen as f32 / 4.0 };
         let _ = f;
     }
@@ -590,4 +598,42 @@ fn distance(a: &[f32; DIMS], b: &[f32; DIMS]) -> f32 {
 /// (the song's typical distance between neighbouring bars): self-calibrating.
 fn similarity(a: &[f32; DIMS], b: &[f32; DIMS], scale: f32) -> f32 {
     (-distance(a, b) / scale.max(0.1)).exp()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The tracker may group beats (here in 7) before that meter is published:
+    /// a cut on its 7th beat must realign a 4-beat bar, not underflow.
+    #[test]
+    fn realigns_positions_from_an_unpublished_meter() {
+        let mut s = Structure::default();
+        let loud = FeatureFrame { sounding: true, band_db: [-20.0; BANDS], ..FeatureFrame::default() };
+        let quiet = FeatureFrame { band_db: [-120.0; BANDS], ..FeatureFrame::default() };
+        let mut realigned = false;
+        for i in 0..70u64 {
+            let time = 1.0 + i as f64 * 0.5;
+            let f = if i >= 62 { quiet } else { loud };
+            for h in 0..4 {
+                s.hop(&FeatureFrame { time: time - 0.5 + h as f64 * 0.125, ..f }, 48_000.0);
+            }
+            let beat = BeatEvent {
+                sample: (time * 48_000.0) as u64,
+                time,
+                index: i,
+                bar_position: (i % 7) as u8,
+                downbeat: i % 7 == 0,
+                bpm: 120.0,
+                confidence: 0.9,
+                downbeat_confidence: 0.5,
+            };
+            s.beat(&beat, &f, 48_000.0, false);
+            realigned |= i == 62 && s.shift != 0;
+            assert!(usize::from(s.bar_position) < s.meter);
+            assert!(s.reading().phrase_bar < s.reading().phrase_bars);
+        }
+        assert_eq!(s.meter, 4);
+        assert!(realigned, "the cut on a beat past the bar did not realign it");
+    }
 }

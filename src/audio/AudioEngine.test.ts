@@ -2,10 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import { createCaptureProvider } from './capture/createCaptureProvider';
 import type { AudioCaptureProvider } from './capture/AudioCaptureProvider';
-import { WasmAnalysis } from './features/WasmAnalysis';
 
 vi.mock('./capture/createCaptureProvider', () => ({ createCaptureProvider: vi.fn() }));
-vi.mock('./features/WasmAnalysis', () => ({ WasmAnalysis: { create: vi.fn() } }));
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -55,24 +53,26 @@ describe('AudioEngine source ownership', () => {
     await engine.stop();
   });
 
-  it('does not publish a stale running state after WASM initialization', async () => {
-    const creating = deferred();
-    const module = deferred<WasmAnalysis>();
-    const old = provider();
-    old.drain = () => 0;
-    const analysis = { dispose: vi.fn() } as unknown as WasmAnalysis;
-    vi.mocked(WasmAnalysis.create).mockImplementation(() => { creating.resolve(); return module.promise; });
-    vi.mocked(createCaptureProvider).mockReturnValueOnce(old).mockReturnValueOnce(provider());
+  it('restarts everything on the capture clock when the provider analysis starts a new epoch', async () => {
+    let epoch = 0;
+    const source = provider();
+    Object.defineProperty(source, 'epoch', { get: () => epoch });
+    source.readFeatures = vi.fn();
+    vi.mocked(createCaptureProvider).mockReturnValue(source);
     const engine = new AudioEngine();
-    const states: string[] = [];
-    engine.subscribe((s) => states.push(`${s.source}:${s.status}`));
-    const first = engine.setSource('fake');
-    await creating.promise;
-    const second = engine.setSource('microphone');
-    module.resolve(analysis);
-    await Promise.all([first, second]);
-    expect(states).not.toContain('fake:running');
-    expect(analysis.dispose).toHaveBeenCalledOnce();
+    await engine.setSource('fake');
+    engine.update(1 / 60);
+    engine.clock.observe(10, 1);
+    const session = engine.session;
+    engine.update(1 / 60);
+    expect(engine.session).toBe(session);
+    expect(engine.clock.ready).toBe(true);
+    epoch = 1;
+    engine.update(1 / 60);
+    expect(engine.session).toBe(session + 1);
+    // The old clock mapping is gone before the new epoch's records are read.
+    expect(engine.clock.ready).toBe(false);
+    expect(vi.mocked(source.readFeatures!).mock.invocationCallOrder.length).toBe(3);
     await engine.stop();
   });
 

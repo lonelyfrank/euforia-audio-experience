@@ -6,10 +6,23 @@
  */
 
 export const TEST_SIGNALS = [
+  { id: 'impulses', label: 'Isolated impulses' },
+  { id: 'harmonicSeries', label: 'Harmonic partials' },
+  { id: 'inharmonic', label: 'Inharmonic partials' },
+  { id: 'whiteNoise', label: 'White noise' },
+  { id: 'syncopation', label: 'Syncopated rhythm' },
+  { id: 'polyrhythm', label: '3 against 4' },
+  { id: 'stereoWidth', label: 'Stereo expansion and motion' },
+  { id: 'phaseInversion', label: 'Opposite-phase stereo' },
+  { id: 'midOnly', label: 'Mid only' },
+  { id: 'sideHeavy', label: 'Side-heavy stereo' },
   { id: 'beat124', label: 'Beat 124 BPM' },
   { id: 'beat90', label: 'Beat 90 BPM' },
   { id: 'beat174', label: 'Beat 174 BPM' },
   { id: 'tempoRamp', label: 'Tempo ramp 100 ↔ 140' },
+  { id: 'tempoDrift', label: 'Tempo drift 120 ± 2% (live band)' },
+  { id: 'waltz', label: 'Waltz 3/4, 150 BPM (accented one)' },
+  { id: 'kicks', label: 'Kick-like transients only' },
   { id: 'startStop', label: 'Silence → beat → silence → restart' },
   { id: 'breakdown', label: 'Dense → breakdown → rebuild → drop' },
   { id: 'noiseMusic', label: 'Noise floor → music over hiss → noise only' },
@@ -87,9 +100,41 @@ export class SignalGenerator {
     for (let i = 0; i < count; i++) out[offset + i] = this.next();
   }
 
+  /** Stereo test sources share the same sample clock; mono tests remain bit-for-bit unchanged. */
+  fillStereo(out: Float32Array, frames: number): void {
+    for (let i = 0; i < frames; i++) {
+      const t = this.clock / this.sampleRate;
+      const mono = this.next();
+      let left = mono, right = mono;
+      if (this.signal === 'phaseInversion') right = -mono;
+      else if (this.signal === 'sideHeavy') right = -mono * 0.85;
+      else if (this.signal === 'stereoWidth') {
+        const width = 0.5 - 0.5 * Math.cos(TWO_PI * t / 12);
+        const side = Math.sin(TWO_PI * 443 * t) * 0.25 * width;
+        const pan = Math.sin(TWO_PI * t / 9) * 0.4;
+        left = (mono + side) * (1 - pan); right = (mono - side) * (1 + pan);
+      }
+      out[i * 2] = left; out[i * 2 + 1] = right;
+    }
+  }
+
   next(): number {
     const t = this.clock++ / this.sampleRate;
     switch (this.signal) {
+      case 'impulses': return this.clock % this.sampleRate === 1 ? 0.9 : 0;
+      case 'harmonicSeries':
+      case 'inharmonic': {
+        let sum = 0;
+        for (let n = 1; n <= 8; n++) {
+          const ratio = this.signal === 'inharmonic' ? n ** 1.17 : n;
+          sum += Math.sin(TWO_PI * 110 * ratio * t) / n;
+        }
+        return sum * 0.18;
+      }
+      case 'whiteNoise': return this.white() * 0.25;
+      case 'syncopation': return this.beat(t,120) * 0.5 + Math.sin(TWO_PI * 190 * t) * Math.exp(-((t+0.1875)%0.5)*55)*0.4;
+      case 'polyrhythm': return Math.sin(TWO_PI * 80 * t)*Math.exp(-(t%(2/3))*40)*0.45 + Math.sin(TWO_PI * 240 * t)*Math.exp(-(t%0.5)*50)*0.35;
+      case 'stereoWidth': case 'phaseInversion': case 'midOnly': case 'sideHeavy': return Math.sin(TWO_PI * 440 * t) * 0.25;
       case 'beat124':
         return this.beat(t, 124);
       case 'beat90':
@@ -102,6 +147,23 @@ export class SignalGenerator {
         this.beats += bpm / 60 / this.sampleRate;
         return this.groove(this.beats, bpm, t, 1, 0);
       }
+      case 'tempoDrift': {
+        // Slow ±2% wander over 30 s, as a drummer without a click would.
+        const bpm = 120 * (1 + 0.02 * Math.sin(TWO_PI * t / 30));
+        this.beats += bpm / 60 / this.sampleRate;
+        return this.groove(this.beats, bpm, t, 1, 0.6);
+      }
+      case 'waltz': {
+        const beats = (t * 150) / 60;
+        const pos = (beats - Math.floor(beats)) * 0.4;
+        // A low accent on the one, lighter hits on two and three; bass on the one only.
+        const one = Math.floor(beats) % 3 === 0;
+        const kick = this.kick(pos) * (one ? 0.6 : 0.18);
+        const root = ROOTS[Math.floor(beats / 3) % 4];
+        return kick + this.hatAt(pos) * (one ? 0.05 : 0.2) + Math.sin(TWO_PI * root * t) * (one ? Math.exp(-pos * 3) : 0.2) * 0.2 + this.pad(t, root) * 0.04;
+      }
+      case 'kicks':
+        return this.kick(t % 0.5) * 0.7;
       case 'startStop': {
         const c = t % 24;
         return c < 4 || (c >= 12 && c < 16) ? 0 : this.beat(t, 124);
@@ -237,6 +299,11 @@ export class SignalGenerator {
       return this.pad(t, 55) * 0.1 + roll + hats + riser;
     }
     return this.groove((c * bpm) / 60, bpm, t, 1.1, 1);
+  }
+
+  /** Kick `pos` seconds after its hit: pitch sweep 150 → 45 Hz with a fast decay. */
+  private kick(pos: number): number {
+    return Math.sin(TWO_PI * (45 + 105 * Math.exp(-pos * 30)) * pos) * Math.exp(-pos * 18);
   }
 
   /** Snare `pos` seconds after its hit: a short 190 Hz body and low-passed noise. */

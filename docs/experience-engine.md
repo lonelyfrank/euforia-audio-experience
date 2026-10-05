@@ -1,5 +1,56 @@
 # Experience engine: decisions and measurements
 
+## Analisi realtime, seconda fase — 5 ottobre 2026
+
+Il WASM browser esce dal frame loop: `AnalysisHost` gira in `analysis.worker.ts`
+(ring condiviso dal worklet, porta o generatore di test), i record tornano con lo
+stesso staging del percorso nativo. Il contesto Rust aggiunge noise floor per banda,
+percentili di loudness, derivate dei descrittori lenti e downbeat previsto.
+L'ExperienceEngine pubblica un event stream ordinato per tempo audio, derivate,
+trajectory multiscala, narrativa probabilistica con isteresi, silenzio classificato e
+previsione con confidence; il planner allinea la finestra al confine previsto; il
+Tunnel risponde a forze. Dettagli e misure in [realtime-analysis](realtime-analysis.md).
+
+Regressioni emerse: dopo un drop l'anticipazione restava al massimo per circa 10 s,
+perché il plateau dopo un gradino teneva positivo il trend 2 s/10 s. Ora il rilascio
+scarica l'anticipazione e un build richiede anche velocità corrente positiva. La
+previsione del downbeat prima della pubblicazione del metro segue il raggruppamento di
+fallback (sbagliato per un 3/4, a confidence 0,1–0,2): viene pesata, non nascosta.
+
+## Nuova generazione — 5 ottobre 2026
+
+La pipeline corrente è documentata nel [README](../README.md), nel
+[modello acustico](acoustic-model.md), nel [planner](experience-planner.md)
+e nella [fisica](physics-engine.md). Il [report](refactor-report.md) confronta
+baseline, implementazione, misure e lavoro ancora necessario.
+
+Decisioni implementate: FFT breve 512 aggiunta alle viste 2048/8192; proiezioni
+ERB e pitch riusano spettri; stereo fino al DSP anche nel browser; eliminazione
+dei prior di genere e del folding dei frame; consumer deterministico per hop;
+memoria e narrativa indipendenti dal RAF; planner 2–8 s; dieci intenti (ora quattordici,
+vedi [realtime-analysis](realtime-analysis.md)) e dodici
+modi fisici; Resonant Field e adattamento delle sei scene precedenti.
+
+Regressioni emerse e corrette durante le prove: il warm-up della loudness
+poteva inventare un build all'avvio di un groove; il potenziale di rilascio
+poteva accumularsi su evidenze troppo deboli; una finestra di transizione
+ricalcolata continuamente non veniva mai raggiunta; il downmix mono nascondeva
+segnali in opposizione di fase alla regia grafica. I test ora coprono questi
+casi, insieme a reset, ritardo, momentum, ricorrenza e invarianza dei batch.
+
+La nuova confidence del metro è distinta dalla confidence dell'accento al suo
+interno: un downbeat forte non rende automaticamente affidabile il raggruppamento.
+Il planner usa la prima come gate. L'euristica di struttura resta un limite:
+il corpus sintetico individua solo 4 dei 12 cambi annotati, mentre timing e
+beat restano entro le soglie. Nessuna accuratezza su repertorio reale è dichiarata.
+
+## Diario storico delle fasi precedenti
+
+Le sezioni seguenti conservano decisioni e misure datate, **non il contratto
+corrente**. Riferimenti a genre priors, folding o numero di scene descrivono la
+versione allora misurata. Per avvio, ABI e responsabilità seguire i link sopra.
+
+
 Working notes of the live "lighting director" engine (analysis → timing →
 structure → dynamics → director → renderer). Each phase adds its decisions
 and what was measured; what could not be verified is said explicitly.

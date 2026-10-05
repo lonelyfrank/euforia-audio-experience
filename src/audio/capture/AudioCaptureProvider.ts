@@ -1,5 +1,6 @@
 import type { AudioSourceId } from '../../types/audio';
 import type { AnalysisDecoder } from '../features/decode';
+import type { RealtimeStats } from '../features/BrowserAnalysis';
 import type { ClockSync } from '../../timing/ClockSync';
 
 /**
@@ -28,19 +29,18 @@ export interface AudioCaptureProvider {
   readSamples(out: Float32Array, delay: number): void;
 
   /**
-   * Browser sources only: copies the mono samples captured since the previous
-   * call into `out` (oldest first) and returns how many; call again while it
-   * fills `out`. They feed the WebAssembly analysis. Native sources omit it:
-   * their analysis runs in Rust on the capture thread.
-   */
-  drain?(out: Float32Array): number;
-
-  /**
-   * Native sources only: decodes the analysis records received from the
-   * capture thread since the previous call into `decoder`, and gives `clock`
-   * one observation per batch (its arrival time and capture clock).
+   * Decodes the analysis records received since the previous call into
+   * `decoder`, and gives `clock` one observation per batch (its arrival time
+   * and capture clock). The analysis runs off the frame loop: in Rust on the
+   * native capture thread, or as WebAssembly in the browser analysis worker.
    */
   readFeatures?(decoder: AnalysisDecoder, clock: ClockSync): void;
+
+  /** Changes when the analysis restarted after losing audio (its capture clock starts over). */
+  readonly epoch?: number;
+
+  /** Browser sources: where the DSP runs and what it costs (debug). */
+  readonly analysis?: { readonly stats: RealtimeStats } | null;
 
   /** Registers a callback for asynchronous failures (device lost, ...). */
   onError(listener: (message: string) => void): void;

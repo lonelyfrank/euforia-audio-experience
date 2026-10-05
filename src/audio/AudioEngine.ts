@@ -3,13 +3,11 @@ import { AudioAnalyzer, FFT_SIZE, VOICE_WINDOW, type AnalyzerSettings } from './
 import type { AudioCaptureProvider } from './capture/AudioCaptureProvider';
 import { createCaptureProvider, type SourceOptions } from './capture/createCaptureProvider';
 import { AnalysisDecoder } from './features/decode';
-import { WasmAnalysis } from './features/WasmAnalysis';
+import type { RealtimeStats } from './features/BrowserAnalysis';
 import { MusicInterpreter } from './interpretation/MusicInterpreter';
 import { ClockSync } from '../timing/ClockSync';
+import { ExperienceEngine } from '../experience/ExperienceEngine';
 import { Timing } from '../timing/Timing';
-
-/** Mono samples drained per step into the WebAssembly analysis. */
-const DRAIN_CHUNK = 4096;
 
 export interface AudioEngineState {
   source: AudioSourceId | null;
@@ -25,19 +23,29 @@ export interface AudioEngineState {
  *
  * `features` is the Rust analysis (spectrum-analysis): the latest frame on
  * the capture clock and the onsets/beats since the previous rendered frame.
- * Browser sources run it as WebAssembly here; native capture runs it on the
- * capture thread. The TypeScript AudioAnalyzer still feeds the scenes.
+ * It never runs on the frame loop: native capture runs it on the capture
+ * thread, browser sources in the analysis worker (BrowserAnalysis). Every
+ * provider hands its records over through `readFeatures`. The TypeScript
+ * AudioAnalyzer still feeds the scenes' graphics.
  */
 export class AudioEngine {
   readonly analyzer = new AudioAnalyzer();
   readonly response = new MusicInterpreter();
   readonly features = new AnalysisDecoder();
+  readonly experience = new ExperienceEngine();
+
+  constructor() {
+    const { features, experience } = this;
+    features.onFrame = (frame) => experience.ingest(frame);
+    features.onOnset = (onset) => experience.onset(onset);
+    features.onBeat = (beat) => experience.beat(beat);
+    features.onSection = (section) => experience.section(section);
+  }
   /** Capture clock → host clock, and what to show in the frame being rendered (beat cues, attacks, grid weight). */
   readonly clock = new ClockSync();
   readonly timing = new Timing();
   private frameInterval = 1 / 60;
-  private wasm: WasmAnalysis | null = null;
-  private readonly drained = new Float32Array(DRAIN_CHUNK);
+  private epoch = 0;
   private provider: AudioCaptureProvider | null = null;
   /** Latest samples: the voice window, whose newest FFT_SIZE samples (a fixed view) feed the FFT. */
   private readonly samples = new Float32Array(VOICE_WINDOW);
@@ -58,6 +66,11 @@ export class AudioEngine {
 
   get frame(): AudioFrame {
     return this.analyzer.frame;
+  }
+
+  /** Browser sources: where the DSP runs and what it costs (null for native capture). Debug. */
+  get realtimeStats(): RealtimeStats | null {
+    return this.provider?.analysis?.stats ?? null;
   }
 
   get visual(): MusicState {
@@ -126,11 +139,11 @@ export class AudioEngine {
       return;
     }
     this.provider = provider;
+    this.epoch = provider.epoch ?? 0;
     this.analyzer.reset();
     this.response.reset();
     this.frameInterval = 1 / 60;
-    await this.startFeatures(provider, token);
-    if (token === this.switchToken && this._state.status !== 'error') {
+    if (this._state.status !== 'error') {
       this.setState({ source, status: 'running', deviceName: provider.deviceName, error: null });
     }
   }
@@ -140,20 +153,12 @@ export class AudioEngine {
     this.features.begin();
     if (this.provider) this.provider.readSamples(this.samples, Math.round(this.delay * this.provider.sampleRate));
     else this.samples.fill(0);
-    this.provider?.readFeatures?.(this.features, this.clock);
-    if (this.provider?.drain && this.wasm) {
-      let n: number;
-      let pushed = false;
-      do {
-        n = this.provider.drain(this.drained);
-        if (n > 0) {
-          this.wasm.push(this.drained, n);
-          pushed = true;
-        }
-      } while (n === this.drained.length);
-      // The newest sample was captured at most now (browser sources hand samples over as they come).
-      if (pushed) this.clock.observe(performance.now() / 1000, this.features.frame.time);
+    if (this.provider && (this.provider.epoch ?? 0) !== this.epoch) {
+      // The provider's analysis restarted after losing audio: its capture clock starts over.
+      this.epoch = this.provider.epoch ?? 0;
+      this.restartAnalysis();
     }
+    this.provider?.readFeatures?.(this.features, this.clock);
     this.frameInterval += (Math.min(dt, 0.1) - this.frameInterval) * 0.05;
     const { onsets } = this.features;
     this.timing.update(performance.now() / 1000, this.frameInterval, this.features.frame, onsets.items, onsets.count, this.clock, dt);
@@ -162,32 +167,20 @@ export class AudioEngine {
     return frame;
   }
 
-  /** Browser sources: a WebAssembly analysis at the provider's rate (once the module is compiled). */
-  private async startFeatures(provider: AudioCaptureProvider, token: number): Promise<void> {
-    if (!provider.drain) return;
-    try {
-      const analysis = await WasmAnalysis.create(provider.sampleRate, 1, this.features);
-      if (token !== this.switchToken) {
-        analysis.dispose();
-        return;
-      }
-      this.wasm = analysis;
-    } catch (error) {
-      // The scenes don't depend on it yet: keep running without the extended analysis.
-      console.warn('Analysis module unavailable:', error);
-    }
-  }
-
   private async releaseProvider(): Promise<void> {
-    this.wasm?.dispose();
-    this.wasm = null;
     const provider = this.provider;
     this.provider = null;
+    this.restartAnalysis();
+    if (provider) await provider.stop().catch(() => undefined);
+  }
+
+  /** Session reset of everything that lives on the capture clock. */
+  private restartAnalysis(): void {
     this.features.reset();
+    this.experience.reset();
     this.clock.reset();
     this.timing.reset();
     this.session++;
-    if (provider) await provider.stop().catch(() => undefined);
   }
 
   private setState(state: AudioEngineState): void {

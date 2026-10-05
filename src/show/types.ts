@@ -1,3 +1,4 @@
+import type { ExperienceSnapshot } from '../experience/types';
 /** How freely the show is directed. */
 export type RigMode = 'preset' | 'hybrid' | 'free';
 
@@ -51,8 +52,9 @@ export interface ShowInput {
   dropExpected: number;
   structureConfidence: number;
   key: number;
-  /** Genre prior weights (see GENRES). */
-  genre: ArrayLike<number>;
+  experience?: ExperienceSnapshot;
+  meter?: number;
+  meterConfidence?: number;
   /** 0..1: how much the grid can be trusted (Timing's gate weight). */
   gridWeight: number;
 }

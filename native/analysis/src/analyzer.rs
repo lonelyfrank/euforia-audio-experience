@@ -1,18 +1,22 @@
 //! The live analyzer: interleaved samples in, one `FeatureFrame` per hop out.
 
+use crate::acoustic::Acoustic;
+use crate::beat::BeatTracker;
+use crate::context::{next_downbeat, Context};
 use crate::fft::Fft;
 use crate::follow::{power_db, Follower, Relative};
 use crate::frame::{FeatureFrame, BANDS, BAND_EDGES};
-use crate::loudness::Loudness;
-use crate::presence::Presence;
-use crate::beat::BeatTracker;
 use crate::harmony::{Harmony, CHROMA_EVERY, CHROMA_SIZE};
 use crate::hpss::{Hpss, HpssReading};
+use crate::loudness::Loudness;
+use crate::presence::Presence;
 use crate::resonators::ResonatorBank;
 use crate::rhythm::Rhythm;
 use crate::structure::Structure;
 use crate::Event;
 use crate::SILENCE_DB;
+
+pub const SHORT_SIZE: usize = 512;
 
 /// Samples between two analyses (≈ 5.3 ms at 48 kHz): the time resolution of every event.
 pub const HOP: usize = 256;
@@ -102,6 +106,16 @@ pub struct Analyzer {
     hpss: Hpss,
     split: HpssReading,
 
+    acoustic: Acoustic,
+    context: Context,
+    quality: u8,
+    short_fft: Fft,
+    short_a: Vec<f32>,
+    short_b: Vec<f32>,
+    short_l: Vec<(f32, f32)>,
+    short_r: Vec<(f32, f32)>,
+    short_window: Vec<f32>,
+    short_previous: Vec<f32>,
     frame: FeatureFrame,
 }
 
@@ -114,7 +128,9 @@ impl Analyzer {
     pub fn with_options(sample_rate: f32, channels: usize, options: AnalyzerOptions) -> Self {
         let channels = channels.max(1);
         let bins = FFT_SIZE / 2 + 1;
-        let window: Vec<f32> = (0..FFT_SIZE).map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (FFT_SIZE - 1) as f32).cos()).collect();
+        let window: Vec<f32> = (0..FFT_SIZE)
+            .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (FFT_SIZE - 1) as f32).cos())
+            .collect();
         let window_energy: f32 = window.iter().map(|w| w * w).sum();
         let bin_hz = sample_rate / FFT_SIZE as f32;
         let bin = |hz: f32| ((hz / bin_hz).round() as usize).clamp(1, bins - 1);
@@ -161,8 +177,25 @@ impl Analyzer {
             harmony: Harmony::new(sample_rate),
             hpss: Hpss::new(sample_rate, FFT_SIZE),
             split: HpssReading::default(),
+            acoustic: Acoustic::new(sample_rate, FFT_SIZE),
+            context: Context::default(),
+            quality: 0,
+            short_fft: Fft::new(SHORT_SIZE),
+            short_a: vec![0.0; SHORT_SIZE],
+            short_b: vec![0.0; SHORT_SIZE],
+            short_l: vec![(0.0, 0.0); SHORT_SIZE / 2 + 1],
+            short_r: vec![(0.0, 0.0); SHORT_SIZE / 2 + 1],
+            short_window: (0..SHORT_SIZE)
+                .map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / (SHORT_SIZE - 1) as f32).cos())
+                .collect(),
+            short_previous: vec![0.0; SHORT_SIZE / 2 + 1],
             frame: FeatureFrame { key: -1, ..FeatureFrame::default() },
         }
+    }
+
+    /// Quality changes only slow feature rates; hop, short attacks and beat tracking stay intact.
+    pub fn set_quality(&mut self, quality: u8) {
+        self.quality = quality.min(2);
     }
 
     pub fn sample_rate(&self) -> f32 {
@@ -206,7 +239,13 @@ impl Analyzer {
                 self.since_hop = 0;
                 self.analyze();
                 let f = &self.frame;
-                let (reading, onset) = self.rhythm.hop([f.flux_low, f.flux_mid, f.flux_high], f.silent || !f.sounding, f.sample, self.sample_rate, HOP);
+                let (reading, onset) = self.rhythm.hop(
+                    [f.flux_low, f.flux_mid, f.flux_high],
+                    f.silent || !f.sounding,
+                    f.sample,
+                    self.sample_rate,
+                    HOP,
+                );
                 let (time, sample_rate) = (f.time, self.sample_rate);
                 let quiet = f.silent || !f.sounding;
                 let presence = f.presence;
@@ -241,12 +280,17 @@ impl Analyzer {
                 let s = self.structure.reading();
                 let grid = self.beats.reading();
                 let f = &mut self.frame;
+                f.meter = grid.meter;
+                f.meter_confidence = grid.meter_confidence;
                 f.beat_bpm = grid.bpm;
                 f.beat_phase = grid.beat_phase;
                 f.bar_phase = grid.bar_phase;
                 f.beat_confidence = grid.confidence;
                 f.downbeat_confidence = grid.downbeat_confidence;
                 f.next_beat_time = grid.next_beat;
+                // The grid's grouping: the published meter, or the internal fallback it phases bars with.
+                let grouping = if grid.meter > 0 { grid.meter } else { crate::BEATS_PER_BAR as u8 };
+                f.next_downbeat_time = next_downbeat(grid.next_beat, grid.bpm, grid.bar_phase, grouping);
                 f.section = s.section;
                 f.section_id = s.section_id;
                 f.section_bars = s.section_bars;
@@ -259,7 +303,6 @@ impl Analyzer {
                 f.similarity = s.similarity;
                 f.drop_expected = s.drop_expected;
                 f.structure_confidence = s.confidence;
-                f.genre = s.genre;
                 f.onset_strength = reading.onset_strength;
                 f.onset_density = reading.onset_density;
                 f.tempo_bpm = reading.tempo_bpm;
@@ -269,25 +312,50 @@ impl Analyzer {
         }
     }
 
-    /// Forgets the signal (a new source); the learned noise floor is kept.
+    /// Forgets the signal (a new source); the learned noise floors are kept.
     pub fn reset(&mut self) {
         let floor = self.presence.floor;
+        let mut context = std::mem::take(&mut self.context);
+        context.reset();
         *self = Self::with_options(self.sample_rate, self.channels, self.options);
         self.presence.floor = floor;
+        self.context = context;
     }
 
     fn analyze(&mut self) {
         let dt = HOP as f32 / self.sample_rate;
+        let slow = 1u64 << self.quality;
+        // Short stereo window: no cancellation for opposite-phase material.
+        for i in 0..SHORT_SIZE {
+            let at = (self.write + RING - SHORT_SIZE + i) % RING;
+            self.short_a[i] = self.left[at] * self.short_window[i];
+            self.short_b[i] = self.right[at] * self.short_window[i];
+        }
+        self.short_fft.stereo(&self.short_a, &self.short_b, &mut self.short_l, &mut self.short_r);
+        let (mut rise, mut sum) = (0.0f32, 0.0f32);
+        for k in 1..SHORT_SIZE / 2 + 1 {
+            let (a, b) = self.short_l[k];
+            let (c, d) = self.short_r[k];
+            let mag = (a * a + b * b + c * c + d * d).sqrt();
+            rise += (mag - self.short_previous[k]).max(0.0);
+            sum += mag;
+            self.short_previous[k] = mag;
+        }
+        self.frame.short_transient = if self.hops > 1 && sum > 1e-4 { (rise / sum).min(1.0) } else { 0.0 };
         // The newest FFT_SIZE samples, oldest first: at most two contiguous runs of the ring.
         let start = (self.write + RING - FFT_SIZE) % RING;
         let first = (RING - start).min(FFT_SIZE);
         let mut peak = 0.0f32;
+        let mut square = 0.0f32;
         for (run, (from, len)) in [(start, first), (0, FFT_SIZE - first)].into_iter().enumerate() {
             let at = if run == 0 { 0 } else { first };
             let (left, right) = (&self.left[from..from + len], &self.right[from..from + len]);
             let window = &self.window[at..at + len];
-            for ((((a, b), l), r), w) in self.a[at..at + len].iter_mut().zip(&mut self.b[at..at + len]).zip(left).zip(right).zip(window) {
+            for ((((a, b), l), r), w) in
+                self.a[at..at + len].iter_mut().zip(&mut self.b[at..at + len]).zip(left).zip(right).zip(window)
+            {
                 peak = peak.max(l.abs()).max(r.abs());
+                square += 0.5 * (l * l + r * r);
                 *a = l * w;
                 *b = r * w;
             }
@@ -303,6 +371,10 @@ impl Analyzer {
         f.sample = self.sample;
         f.time = self.sample as f64 / f64::from(self.sample_rate);
         f.silent = peak < SILENCE_PEAK;
+        f.peak = peak;
+        f.rms = (square / FFT_SIZE as f32).sqrt();
+        f.crest = if f.rms > 1e-6 { peak / f.rms } else { 0.0 };
+        f.dsp_quality = self.quality;
 
         // Quality: presence against the noise floor, clipping.
         let total: f32 = self.power[self.shape_bins.0..self.shape_bins.1].iter().sum();
@@ -359,12 +431,13 @@ impl Analyzer {
             lin_sum += p;
         }
         let n = (to - from) as f32;
-        f.flatness = if f.silent { 0.0 } else { ((log_sum / n).exp() / (lin_sum / n) / NOISE_FLATNESS).clamp(0.0, 1.0) };
+        f.flatness =
+            if f.silent { 0.0 } else { ((log_sum / n).exp() / (lin_sum / n) / NOISE_FLATNESS).clamp(0.0, 1.0) };
         self.measure_flux(dt);
         self.hops += 1;
         // The split feeds slow readings only: every few hops is enough.
-        if self.hops % HPSS_EVERY == 0 {
-            self.split = self.hpss.hop(&self.power, HPSS_EVERY as f32 * dt);
+        if self.hops % (HPSS_EVERY * slow) == 0 {
+            self.split = self.hpss.hop(&self.power, (HPSS_EVERY * slow) as f32 * dt);
         }
         let split = self.split;
         let f = &mut self.frame;
@@ -374,19 +447,27 @@ impl Analyzer {
         f.percussive_low = if quiet { 0.0 } else { split.percussive_low };
         f.percussive_mid = if quiet { 0.0 } else { split.percussive_mid };
         f.percussive_high = if quiet { 0.0 } else { split.percussive_high };
+        f.harmonic_share = if quiet { 0.0 } else { split.harmonic_share };
+        f.percussive_share = if quiet { 0.0 } else { split.percussive_share };
+        f.residual_share = if quiet { 0.0 } else { split.residual_share };
         f.harmonic_db = split.harmonic_db;
         f.percussive_db = split.percussive_db;
 
         // Harmony, every few hops on the longer window.
-        if self.hops % CHROMA_EVERY as u64 == 0 {
+        if self.hops % (CHROMA_EVERY as u64 * slow) == 0 {
             let tonal = if f.silent { 0.0 } else { f.presence * (1.0 - f.flatness) };
             let (left, right, write) = (&self.left, &self.right, self.write);
             let at = |i: usize| {
                 let j = (write + i) % RING;
                 (left[j], right[j])
             };
-            let h = self.harmony.analyze(at, tonal, dt * CHROMA_EVERY as f32);
+            let h = self.harmony.analyze(at, tonal, dt * (CHROMA_EVERY as u64 * slow) as f32);
             let f = &mut self.frame;
+            f.pitch_bins = h.pitch_bins;
+            f.harmonicity = h.harmonicity * tonal;
+            f.inharmonicity = h.inharmonicity * tonal;
+            f.pitch_salience = h.pitch_salience * tonal;
+            f.roughness = h.roughness * f.presence;
             f.chroma = h.chroma;
             f.chroma_confidence = h.chroma_confidence;
             f.key = h.key;
@@ -396,7 +477,7 @@ impl Analyzer {
 
         // Stereo.
         if self.channels > 1 && !f.silent {
-            let (mut el, mut er, mut cross) = (0.0f32, 0.0f32, 0.0f32);
+            let (mut el, mut er, mut cross, mut imaginary) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
             for (i, &(from, to)) in self.band_bins.iter().enumerate() {
                 let (mut bl, mut br) = (0.0f32, 0.0f32);
                 for k in from..to {
@@ -404,6 +485,7 @@ impl Analyzer {
                     bl += lr * lr + li * li;
                     br += rr * rr + ri * ri;
                     cross += lr * rr + li * ri;
+                    imaginary += li * rr - lr * ri;
                 }
                 el += bl;
                 er += br;
@@ -413,17 +495,44 @@ impl Analyzer {
             let correlation = if el * er > TINY * TINY { (cross / (el * er).sqrt()).clamp(-1.0, 1.0) } else { 1.0 };
             let (mid, side) = ((el + er + 2.0 * cross) / 4.0, (el + er - 2.0 * cross) / 4.0);
             let width = if mid + side > TINY { (side / (mid + side)).clamp(0.0, 1.0) } else { 0.0 };
+            f.left_energy = el * self.power_scale;
+            f.right_energy = er * self.power_scale;
+            f.mid_energy = mid.max(0.0) * self.power_scale;
+            f.side_energy = side.max(0.0) * self.power_scale;
+            f.balance = (er - el) / (el + er).max(TINY);
+            f.inter_channel_phase = imaginary.atan2(cross);
+            f.inter_channel_coherence = if el * er > TINY {
+                ((cross * cross + imaginary * imaginary) / (el * er)).sqrt().min(1.0)
+            } else {
+                0.0
+            };
             f.correlation = self.correlation.update(correlation, dt);
             f.width = self.width.update(width, dt);
             f.stereo_confidence = f.presence;
         } else {
             f.stereo_confidence = 0.0;
+            f.left_energy = if f.silent { 0.0 } else { total };
+            f.right_energy = f.left_energy;
+            f.mid_energy = f.left_energy;
+            f.side_energy = 0.0;
+            f.balance = 0.0;
+            f.inter_channel_phase = 0.0;
+            f.inter_channel_coherence = if f.silent { 0.0 } else { 1.0 };
+            if f.silent {
+                f.width = self.width.update(0.0, dt);
+                f.correlation = self.correlation.update(1.0, dt);
+            }
             if self.channels == 1 {
                 f.correlation = 1.0;
                 f.width = 0.0;
                 f.band_pan = [0.0; BANDS];
             }
         }
+        if self.hops % (4 * slow) == 0 {
+            self.acoustic.analyze(&self.power, &self.spec_l, self.bin_hz, dt * (4 * slow) as f32, &mut self.frame);
+        }
+        // Every hop: cheap, and the floors and percentiles must not depend on the DSP quality.
+        self.context.hop(&mut self.frame, dt);
     }
 
     /// Spectral flux: how far each bin rises above its own ~60 ms running level (dB), averaged per region.
@@ -440,7 +549,13 @@ impl Analyzer {
             }
             let rise = (db - self.bin_level[k]).max(0.0);
             self.bin_level[k] += (db - self.bin_level[k]) * k_follow;
-            let region = if k < self.flux_bins[1].0 { 0 } else if k < self.flux_bins[2].0 { 1 } else { 2 };
+            let region = if k < self.flux_bins[1].0 {
+                0
+            } else if k < self.flux_bins[2].0 {
+                1
+            } else {
+                2
+            };
             if db > SILENCE_DB + 1.0 {
                 regions[region] += rise;
             }

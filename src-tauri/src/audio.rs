@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 
 use audio_capture::{Batch, Capture, CaptureSource};
-use spectrum_analysis::wire::{self, FRAME_RECORD, MAX_RECORD};
-use spectrum_analysis::{Analyzer, Event};
 use serde::{Deserialize, Serialize};
+use spectrum_analysis::wire::{self, MAX_RECORD};
+use spectrum_analysis::Analyzer;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
@@ -47,7 +47,7 @@ const MAX_GAP_FILL: f32 = 1.0;
 /// - `on_samples`: mono PCM for the scenes, raw little-endian f32 bytes.
 /// - `on_features`: the analysis event stream (spectrum-analysis, run here on the
 ///   capture thread), raw little-endian f64 records: every onset and beat of the
-///   batch, then its latest frame (see `spectrum_analysis::wire`).
+///   batch, including every hop frame (see `spectrum_analysis::wire`).
 #[tauri::command]
 pub async fn start_audio_capture(
     app: AppHandle,
@@ -101,8 +101,11 @@ struct Analysis {
     analyzer: Option<Analyzer>,
     records: Vec<f64>,
     record: Vec<f64>,
-    frame: Vec<f64>,
     silence: Vec<f32>,
+    cpu_load: f64,
+    hot: f64,
+    cool: f64,
+    quality: u8,
 }
 
 impl Analysis {
@@ -116,19 +119,12 @@ impl Analysis {
         };
         if self.record.is_empty() {
             self.record = vec![0.0; MAX_RECORD];
-            self.frame = vec![0.0; FRAME_RECORD];
         }
-        let Self { records, record, frame, silence, .. } = self;
+        let Self { records, record, silence, .. } = self;
         records.clear();
-        let mut has_frame = false;
-        let mut collect = |event: Event| {
-            if let Event::Frame(_) = event {
-                wire::encode(&event, frame);
-                has_frame = true;
-            } else {
-                let n = wire::encode(&event, record);
-                records.extend_from_slice(&record[..n]);
-            }
+        let mut collect = |event: spectrum_analysis::Event| {
+            let n = wire::encode(&event, record);
+            records.extend_from_slice(&record[..n]);
         };
         // Lost frames: silence keeps the capture clock aligned with time; a long loss restarts the analysis.
         if batch.gap > 0 {
@@ -144,9 +140,25 @@ impl Analysis {
                 analyzer.reset();
             }
         }
+        let started = std::time::Instant::now();
         analyzer.push(batch.samples, &mut collect);
-        if has_frame {
-            records.extend_from_slice(frame);
+        let seconds = batch.samples.len() as f64 / channels as f64 / rate as f64;
+        if seconds > 0.0 {
+            let cost = (started.elapsed().as_secs_f64() / seconds).min(4.0);
+            self.cpu_load += (cost - self.cpu_load) * (1.0 - (-seconds).exp());
+            self.hot = if self.cpu_load > 0.3 { self.hot + seconds } else { 0.0 };
+            self.cool = if self.cpu_load < 0.12 { self.cool + seconds } else { 0.0 };
+            if self.hot > 2.0 && self.quality < 2 {
+                self.quality += 1;
+                self.hot = 0.0;
+                self.cool = 0.0;
+            }
+            if self.cool > 30.0 && self.quality > 0 {
+                self.quality -= 1;
+                self.hot = 0.0;
+                self.cool = 0.0;
+            }
+            analyzer.set_quality(self.quality);
         }
         // Capture clock at the end of the batch and the age of its newest sample now, for the frontend's clock sync.
         let age = std::time::Instant::now().saturating_duration_since(batch.captured_end()).as_secs_f64();

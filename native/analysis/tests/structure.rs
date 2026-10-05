@@ -72,7 +72,10 @@ fn at(frames: &[FeatureFrame], seconds: f32) -> &FeatureFrame {
 fn finds_the_sections_of_a_dance_track() {
     let (sections, _) = run(60.0 * BAR);
     let kinds: Vec<SectionKind> = sections.iter().map(|s| s.kind).collect();
-    assert_eq!(kinds, [SectionKind::Build, SectionKind::Drop, SectionKind::Break, SectionKind::Drop, SectionKind::Outro]);
+    assert_eq!(
+        kinds,
+        [SectionKind::Build, SectionKind::Drop, SectionKind::Break, SectionKind::Drop, SectionKind::Outro]
+    );
     // Boundaries stamped on the downbeat they start on, within half a bar (the criterion is one bar).
     for (s, bar) in sections.iter().zip([8.0f32, 16.0, 32.0, 40.0]) {
         let at_bar = s.time as f32 / BAR;
@@ -103,7 +106,11 @@ fn predicts_phrase_boundaries_and_the_drop() {
     // In the drop, the next phrase boundary is predicted on a downbeat, a whole phrase after the drop started.
     let f = at(&frames, 20.3 * BAR);
     let next = f.next_phrase_time as f32 / BAR;
-    assert!((next - (16.0 + f.phrase_bars as f32)).abs() < 0.05, "next phrase at bar {next:.3} ({} bar phrases)", f.phrase_bars);
+    assert!(
+        (next - (16.0 + f.phrase_bars as f32)).abs() < 0.05,
+        "next phrase at bar {next:.3} ({} bar phrases)",
+        f.phrase_bars
+    );
     assert!(f.structure_confidence > 0.5);
 }
 
@@ -117,10 +124,12 @@ fn same_song_same_sections() {
 #[test]
 fn without_a_beat_the_structure_is_not_trusted() {
     let mut analyzer = Analyzer::new(SR, 1);
-    let samples: Vec<f32> = (0..(30.0 * SR) as usize).map(|i| {
-        let t = i as f32 / SR;
-        [220.0, 277.2, 329.6].iter().map(|f| (TAU * f * t).sin()).sum::<f32>() * 0.1
-    }).collect();
+    let samples: Vec<f32> = (0..(30.0 * SR) as usize)
+        .map(|i| {
+            let t = i as f32 / SR;
+            [220.0, 277.2, 329.6].iter().map(|f| (TAU * f * t).sin()).sum::<f32>() * 0.1
+        })
+        .collect();
     let mut last = FeatureFrame::default();
     let mut sections = 0;
     analyzer.push(&samples, |event| match event {
@@ -153,7 +162,11 @@ fn cycle_song(t: f32) -> f32 {
     let off = (beats + 0.5).fract() * BEAT;
     let snare_pos = ((beats - 1.0) / 2.0).fract() * 2.0 * BEAT;
     let bass = (TAU * 55.0 * t).sin() * 0.3;
-    kick(pos) * if one { 1.0 } else { 0.75 } + bass + noise(t) * (-off * 60.0).exp() * 0.15 + ((TAU * 190.0 * snare_pos).sin() * 0.5 + noise(t + 9.0) * 0.4) * (-snare_pos * 25.0).exp() * 0.5 + pad
+    kick(pos) * if one { 1.0 } else { 0.75 }
+        + bass
+        + noise(t) * (-off * 60.0).exp() * 0.15
+        + ((TAU * 190.0 * snare_pos).sin() * 0.5 + noise(t + 9.0) * 0.4) * (-snare_pos * 25.0).exp() * 0.5
+        + pad
 }
 
 #[test]
@@ -180,13 +193,10 @@ fn short_cycles_after_beatless_ambient() {
 }
 
 #[test]
-fn learns_the_genre_while_listening() {
+fn phrase_horizon_uses_rhythmic_evidence() {
     let (_, frames) = run(30.0 * BAR);
     let f = at(&frames, 29.0 * BAR);
-    // A 128 BPM four-on-the-floor track: that prior leads clearly, and grows with listening.
-    let top = (0..6).max_by(|&a, &b| f.genre[a].total_cmp(&f.genre[b])).unwrap();
-    assert_eq!(spectrum_analysis::GENRES[top], "four-on-the-floor", "{:?}", f.genre);
-    assert!(f.genre[0] > 0.5, "{:?}", f.genre);
-    assert!(at(&frames, 8.0 * BAR).genre[0] < f.genre[0]);
-    assert_eq!(f.phrase_bars, 16, "drops of electronic music run in 16-bar phrases");
+    assert_eq!(f.phrase_bars, 8);
+    assert!(f.phrase_bar < f.phrase_bars);
+    assert!(f.next_phrase_time > f.time);
 }

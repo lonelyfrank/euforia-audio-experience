@@ -40,7 +40,11 @@ fn kick(pos: f32, gain: f32) -> f32 {
 }
 
 fn hat(pos: f32, t: f32) -> f32 {
-    if pos < 0.0 { 0.0 } else { hash_noise(t) * (-pos * 60.0).exp() * 0.2 }
+    if pos < 0.0 {
+        0.0
+    } else {
+        hash_noise(t) * (-pos * 60.0).exp() * 0.2
+    }
 }
 
 fn pad(t: f32) -> f32 {
@@ -95,10 +99,27 @@ fn finds_the_downbeat() {
         let error = b.time - (b.time / 2.0).round() * 2.0;
         assert!(error.abs() < 0.03, "downbeat at {:.3}", b.time);
     }
-    assert!(r.frames.last().unwrap().downbeat_confidence > 0.3);
+    let last = r.frames.last().unwrap();
+    assert!(
+        last.downbeat_confidence > 0.3,
+        "downbeat={}, meter={}/{}, beat={}",
+        last.downbeat_confidence,
+        last.meter,
+        last.meter_confidence,
+        last.beat_confidence
+    );
     // The bar phase runs 0..1 over each bar.
     let f = r.frames.iter().find(|f| f.time > 15.5).unwrap();
     assert!((f.bar_phase - 0.75).abs() < 0.05, "bar phase {} at 15.5 s", f.bar_phase);
+    // The forecast downbeat is the one later reported, a bar ahead at most.
+    let mut checked = 0;
+    for f in r.frames.iter().filter(|f| f.time > 12.0 && f.time < 18.0 && f.next_downbeat_time > 0.0) {
+        assert!(f.next_downbeat_time > f.time - 0.01 && f.next_downbeat_time <= f.time + 2.01, "{} at {}", f.next_downbeat_time, f.time);
+        let reported = r.beats.iter().filter(|b| b.downbeat).map(|b| (b.time - f.next_downbeat_time).abs()).fold(f64::MAX, f64::min);
+        assert!(reported < 0.03, "forecast {:.3} at {:.3} has no reported downbeat", f.next_downbeat_time, f.time);
+        checked += 1;
+    }
+    assert!(checked > 500, "{checked} frames with a forecast");
 }
 
 #[test]
@@ -120,10 +141,15 @@ fn follows_a_real_tempo_change_without_flapping() {
         }
     }
     assert!(crossings <= 1, "{crossings} crossings");
-    let late: Vec<f64> = r.beats.iter().filter(|b| b.time > 22.0).map(|b| {
-        let beats = 24.0 + (b.time - 12.0) * 2.1;
-        (beats - beats.round()) / 2.1
-    }).collect();
+    let late: Vec<f64> = r
+        .beats
+        .iter()
+        .filter(|b| b.time > 22.0)
+        .map(|b| {
+            let beats = 24.0 + (b.time - 12.0) * 2.1;
+            (beats - beats.round()) / 2.1
+        })
+        .collect();
     assert!(mean_abs(&late) < 0.015, "phase after the change {:.4}", mean_abs(&late));
 }
 
@@ -177,10 +203,15 @@ fn moves_off_the_off_beat() {
     };
     let r = run(20.0, groove);
     // Kicks at t = 0.25 + n/2 in the signal's time.
-    let late: Vec<f64> = r.beats.iter().filter(|b| b.time > 12.0).map(|b| {
-        let x = b.time - 0.25;
-        x - (x / 0.5).round() * 0.5
-    }).collect();
+    let late: Vec<f64> = r
+        .beats
+        .iter()
+        .filter(|b| b.time > 12.0)
+        .map(|b| {
+            let x = b.time - 0.25;
+            x - (x / 0.5).round() * 0.5
+        })
+        .collect();
     assert!(late.len() >= 10);
     assert!(mean_abs(&late) < 0.015, "mean distance to the kicks {:.3} s", mean_abs(&late));
 }

@@ -72,9 +72,12 @@ pub struct BeatReading {
     pub downbeat_confidence: f32,
     /// Predicted time (s, capture clock) of the next beat; 0 while not tracking.
     pub next_beat: f64,
+    pub meter: u8,
+    pub meter_confidence: f32,
 }
 
 pub struct BeatTracker {
+    meter: crate::meter::Meter,
     period: f64,
     next: f64,
     index: u64,
@@ -96,6 +99,7 @@ pub struct BeatTracker {
 impl Default for BeatTracker {
     fn default() -> Self {
         Self {
+            meter: crate::meter::Meter::default(),
             period: 0.0,
             next: 0.0,
             index: 0,
@@ -198,7 +202,8 @@ impl BeatTracker {
         self.on_beat = self.on_beat * decay + low_level * (1.0 - decay);
         let weight = f64::from(onset.strength.clamp(0.2, 1.0));
         self.next += PHASE_GAIN * weight * error;
-        self.period = (self.period + PERIOD_GAIN * weight * error).clamp(60.0 / f64::from(MAX_BPM), 60.0 / f64::from(MIN_BPM));
+        self.period =
+            (self.period + PERIOD_GAIN * weight * error).clamp(60.0 / f64::from(MAX_BPM), 60.0 / f64::from(MIN_BPM));
         if !self.matched {
             self.matched = true;
             self.support += (1.0 - self.support) * SUPPORT_GAIN;
@@ -208,6 +213,7 @@ impl BeatTracker {
     }
 
     fn accent(&mut self, beat_index: u64, level: f32) {
+        self.meter.accent(beat_index, level);
         let slot = (beat_index % BEATS_PER_BAR as u64) as usize;
         let decay = (-1.0 / ACCENT_BARS).exp();
         self.accents[slot] = self.accents[slot] * decay + level * (1.0 - decay);
@@ -227,7 +233,9 @@ impl BeatTracker {
                 return None;
             }
             self.update_downbeat();
-            let position = ((self.index + BEATS_PER_BAR as u64 - self.downbeat as u64) % BEATS_PER_BAR as u64) as u8;
+            let n = self.meter.beats.max(4 * usize::from(self.meter.beats == 0)) as u64;
+            let offset = if self.meter.beats > 0 { self.meter.offset } else { self.downbeat } as u64;
+            let position = ((self.index + n - offset) % n) as u8;
             let sample = (self.next * f64::from(sample_rate)).round() as u64;
             event = Some(BeatEvent {
                 sample,
@@ -247,14 +255,18 @@ impl BeatTracker {
         let r = &mut self.reading;
         if self.tracking {
             let phase = (1.0 - (self.next - now) / self.period).clamp(0.0, 1.0) as f32;
-            let position = ((self.index + 2 * BEATS_PER_BAR as u64 - 1 - self.downbeat as u64) % BEATS_PER_BAR as u64) as f32;
+            let n = if self.meter.beats > 0 { self.meter.beats } else { 4 } as u64;
+            let offset = if self.meter.beats > 0 { self.meter.offset } else { self.downbeat } as u64;
+            let position = ((self.index + 2 * n - 1 - offset) % n) as f32;
             r.bpm = (60.0 / self.period) as f32;
             r.beat_phase = phase;
-            r.bar_phase = (position + phase) / BEATS_PER_BAR as f32;
+            r.bar_phase = (position + phase) / n as f32;
             r.next_beat = self.next;
         } else {
             *r = BeatReading::default();
         }
+        r.meter = if self.meter.confidence >= 0.2 { self.meter.beats as u8 } else { 0 };
+        r.meter_confidence = self.meter.confidence * confidence;
         r.confidence = confidence;
         r.downbeat_confidence = downbeat_confidence;
         event
@@ -265,7 +277,11 @@ impl BeatTracker {
     }
 
     fn confidence(&self) -> f32 {
-        if self.tracking { self.support * self.tempo_confidence.clamp(0.0, 1.0) } else { 0.0 }
+        if self.tracking {
+            self.support * self.tempo_confidence.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
     }
 
     fn update_downbeat(&mut self) {
@@ -276,6 +292,9 @@ impl BeatTracker {
     }
 
     fn downbeat_confidence(&self) -> f32 {
+        if self.meter.beats > 0 {
+            return self.meter.accent_confidence * self.confidence();
+        }
         let top = self.accents[self.downbeat];
         if top <= 1e-4 {
             return 0.0;

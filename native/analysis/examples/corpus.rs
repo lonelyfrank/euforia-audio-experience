@@ -58,7 +58,10 @@ fn main() {
         std::process::exit(1);
     }
 
-    println!("{:<28} {:>7} {:>9} {:>9} {:>9} {:>11}", "recording", "beat F1", "phase ms", "down F1", "sections", "extra sect.");
+    println!(
+        "{:<28} {:>7} {:>9} {:>9} {:>9} {:>11}",
+        "recording", "beat F1", "phase ms", "down F1", "sections", "extra sect."
+    );
     let mut totals = Totals::default();
     for wav in &wavs {
         let Some(beats) = read_annotations(&wav.with_extension("beats")) else {
@@ -76,6 +79,24 @@ fn main() {
         let out = analyze(rate, channels, &samples, resonators);
         let score = score(&beats, sections.as_deref(), &out);
         totals.add(&score);
+        let ibis: Vec<f64> = beats.windows(2).map(|w| w[1].0 - w[0].0).filter(|&d| d > 0.0).collect();
+        let reference_tempo = 60.0 / median(&ibis);
+        let tempo_error = (median(&out.tempo) / reference_tempo - 1.0).abs() * 100.0;
+        let delay: Vec<f64> = out.reported.iter().zip(&out.onsets).map(|(r, t)| (r - t) * 1000.0).collect();
+        println!(
+            "  tempo error {tempo_error:.2}% · onset report delay {:.2} ms · novelty candidates {}",
+            median(&delay),
+            out.novelty.len()
+        );
+        if let Some(onsets) = read_annotations(&wav.with_extension("onsets")) {
+            let reference: Vec<f64> = onsets.iter().map(|x| x.0).filter(|&t| t >= SKIP).collect();
+            let detected: Vec<f64> = out.onsets.iter().copied().filter(|&t| t >= SKIP).collect();
+            println!("  annotated onset F1 {:.3}", f_measure(&reference, &detected).0);
+        }
+        if let Some(novelty) = read_annotations(&wav.with_extension("novelty")) {
+            let reference: Vec<f64> = novelty.iter().map(|x| x.0).filter(|&t| t >= SKIP).collect();
+            println!("  annotated novelty F1 (70 ms tolerance) {:.3}", f_measure(&reference, &out.novelty).0);
+        }
         println!(
             "{:<28} {:>7.3} {:>9.1} {:>9} {:>9} {:>11}",
             name(wav),
@@ -87,10 +108,17 @@ fn main() {
         );
         if verbose {
             let times = |xs: &mut dyn Iterator<Item = f64>| xs.map(|t| format!("{t:.1}")).collect::<Vec<_>>().join(" ");
-            println!("    sections annotated: {}", sections.as_deref().map_or(String::new(), |s| times(&mut s.iter().map(|x| x.0))));
+            println!(
+                "    sections annotated: {}",
+                sections.as_deref().map_or(String::new(), |s| times(&mut s.iter().map(|x| x.0)))
+            );
             println!("    sections reported:  {}", out.sections_detail.join(" "));
             let first = out.beats.iter().find(|&&t| t >= SKIP).copied().unwrap_or(f64::NAN);
-            println!("    first beat after {SKIP} s: {first:.2} s; {} beats, {} downbeats reported", out.beats.len(), out.downbeats.len());
+            println!(
+                "    first beat after {SKIP} s: {first:.2} s; {} beats, {} downbeats reported",
+                out.beats.len(),
+                out.downbeats.len()
+            );
         }
     }
     totals.report();
@@ -107,14 +135,27 @@ struct Output {
     sections: Vec<f64>,
     /// "time kind" of each reported section (for --verbose).
     sections_detail: Vec<String>,
+    onsets: Vec<f64>,
+    reported: Vec<f64>,
+    novelty: Vec<f64>,
+    tempo: Vec<f64>,
 }
 
 fn analyze(rate: f32, channels: usize, samples: &[f32], resonators: bool) -> Output {
     let mut analyzer = Analyzer::with_options(rate, channels, AnalyzerOptions { resonators });
-    let mut out = Output { beats: Vec::new(), downbeats: Vec::new(), sections: Vec::new(), sections_detail: Vec::new() };
+    let mut out = Output {
+        beats: Vec::new(),
+        downbeats: Vec::new(),
+        sections: Vec::new(),
+        sections_detail: Vec::new(),
+        onsets: Vec::new(),
+        reported: Vec::new(),
+        novelty: Vec::new(),
+        tempo: Vec::new(),
+    };
     // 10 ms capture batches.
     let batch = ((rate / 100.0) as usize).max(1) * channels;
-    for chunk in samples.chunks(batch) {
+    for (index, chunk) in samples.chunks(batch).enumerate() {
         analyzer.push(chunk, |event| match event {
             Event::Beat(b) => {
                 out.beats.push(b.time);
@@ -126,7 +167,18 @@ fn analyze(rate: f32, channels: usize, samples: &[f32], resonators: bool) -> Out
                 out.sections.push(s.time);
                 out.sections_detail.push(format!("{:.1}:{:?}", s.time, s.kind));
             }
-            Event::Frame(_) | Event::Onset(_) => {}
+            Event::Onset(o) => {
+                out.onsets.push(o.time);
+                out.reported.push(((index + 1) * batch) as f64 / channels as f64 / rate as f64);
+            }
+            Event::Frame(f) => {
+                if f.time > SKIP && f.beat_confidence > 0.3 {
+                    out.tempo.push(f.beat_bpm as f64);
+                }
+                if f.novelty > 0.6 && out.novelty.last().is_none_or(|t| f.time - t > 1.0) {
+                    out.novelty.push(f.time);
+                }
+            }
         });
     }
     out
@@ -161,13 +213,18 @@ fn score(beats: &[(f64, Option<u32>)], sections: Option<&[(f64, Option<u32>)]>, 
         let from = i.saturating_sub(4);
         let to = (i + 4).min(beats.len());
         let ibis: Vec<f64> = beats[from..to].windows(2).map(|w| w[1].0 - w[0].0).collect();
-        4.0 * if ibis.is_empty() { 0.5 } else { median(&ibis) }
+        let meter = beats[from..to].iter().filter_map(|b| b.1).max().unwrap_or(4) as f64;
+        meter * if ibis.is_empty() { 0.5 } else { median(&ibis) }
     };
     let mut extra_sections = 0;
     let sections_found = sections.map(|sections| {
         let boundaries: Vec<f64> = sections.iter().map(|s| s.0).filter(|&t| t >= SKIP).collect();
         let found = boundaries.iter().filter(|&&b| out.sections.iter().any(|&s| (s - b).abs() <= bar_at(b))).count();
-        extra_sections = out.sections.iter().filter(|&&s| s >= SKIP && !boundaries.iter().any(|&b| (s - b).abs() <= bar_at(b))).count();
+        extra_sections = out
+            .sections
+            .iter()
+            .filter(|&&s| s >= SKIP && !boundaries.iter().any(|&b| (s - b).abs() <= bar_at(b)))
+            .count();
         (found, boundaries.len())
     });
     Score { beat_f1, phase_ms, downbeat_f1, sections_found, extra_sections, phases }
@@ -319,8 +376,14 @@ fn read_wav(path: &Path) -> Result<(f32, usize, Vec<f32>), String> {
             let bytes = &data[body..end];
             let samples: Vec<f32> = match (tag, bits) {
                 (1, 16) => bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect(),
-                (1, 24) => bytes.chunks_exact(3).map(|b| (i32::from_le_bytes([0, b[0], b[1], b[2]]) >> 8) as f32 / 8_388_608.0).collect(),
-                (1, 32) => bytes.chunks_exact(4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0).collect(),
+                (1, 24) => bytes
+                    .chunks_exact(3)
+                    .map(|b| (i32::from_le_bytes([0, b[0], b[1], b[2]]) >> 8) as f32 / 8_388_608.0)
+                    .collect(),
+                (1, 32) => bytes
+                    .chunks_exact(4)
+                    .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0)
+                    .collect(),
                 (3, 32) => bytes.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect(),
                 _ => return Err(format!("unsupported format {tag}, {bits} bits")),
             };
@@ -380,8 +443,13 @@ mod synth {
                 _ => pad * 1.5,
             };
         }
-        let beats: Vec<(f32, u32)> = (0..beats_total).map(|b| (seconds_offset + b as f32 * beat, (b % 4) as u32 + 1)).collect();
-        let sections = kinds.iter().enumerate().map(|(k, &kind)| (seconds_offset + (k * bars_per_section * 4) as f32 * beat, kind)).collect();
+        let beats: Vec<(f32, u32)> =
+            (0..beats_total).map(|b| (seconds_offset + b as f32 * beat, (b % 4) as u32 + 1)).collect();
+        let sections = kinds
+            .iter()
+            .enumerate()
+            .map(|(k, &kind)| (seconds_offset + (k * bars_per_section * 4) as f32 * beat, kind))
+            .collect();
         (out, beats, sections)
     }
 

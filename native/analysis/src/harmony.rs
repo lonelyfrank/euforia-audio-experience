@@ -27,14 +27,35 @@ const KEY_CONFIDENCE_TAU: f32 = 2.0;
 const MAJOR: [f32; 12] = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 const MINOR: [f32; 12] = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HarmonyReading {
     /// Pitch classes C, C#, … B; 0..1, the strongest at 1.
     pub chroma: [f32; 12],
+    pub pitch_bins: [f32; 72],
+    pub harmonicity: f32,
+    pub inharmonicity: f32,
+    pub pitch_salience: f32,
+    pub roughness: f32,
     pub chroma_confidence: f32,
     /// 0–11 = C … B major, 12–23 = C … B minor; -1 while unknown.
     pub key: i8,
     pub key_confidence: f32,
+}
+
+impl Default for HarmonyReading {
+    fn default() -> Self {
+        Self {
+            chroma: [0.0; 12],
+            pitch_bins: [0.0; 72],
+            harmonicity: 0.0,
+            inharmonicity: 0.0,
+            pitch_salience: 0.0,
+            roughness: 0.0,
+            chroma_confidence: 0.0,
+            key: -1,
+            key_confidence: 0.0,
+        }
+    }
 }
 
 pub struct Harmony {
@@ -46,6 +67,9 @@ pub struct Harmony {
     spec_b: Vec<(f32, f32)>,
     /// Per bin: lower pitch class and the share going to it (the rest goes to the next class).
     classes: Vec<(u8, f32)>,
+    notes: Vec<(i32, f32)>,
+    amplitudes: Vec<f32>,
+    bin_hz: f32,
     from: usize,
     to: usize,
     raw: [f32; 12],
@@ -75,12 +99,22 @@ impl Harmony {
             .collect();
         Self {
             fft: Fft::new(CHROMA_SIZE),
-            window: (0..CHROMA_SIZE).map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (CHROMA_SIZE - 1) as f32).cos()).collect(),
+            window: (0..CHROMA_SIZE)
+                .map(|i| 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / (CHROMA_SIZE - 1) as f32).cos())
+                .collect(),
             a: vec![0.0; CHROMA_SIZE],
             b: vec![0.0; CHROMA_SIZE],
             spec_a: vec![(0.0, 0.0); bins],
             spec_b: vec![(0.0, 0.0); bins],
             classes,
+            notes: (0..bins)
+                .map(|k| {
+                    let midi = 69.0 + 12.0 * (k.max(1) as f32 * bin_hz / 440.0).log2();
+                    (midi.floor() as i32 - 36, midi.fract())
+                })
+                .collect(),
+            amplitudes: vec![0.0; bins],
+            bin_hz,
             from: ((FROM_HZ / bin_hz).ceil() as usize).max(1),
             to: ((TO_HZ / bin_hz).floor() as usize).min(bins - 1),
             raw: [0.0; 12],
@@ -103,12 +137,26 @@ impl Harmony {
         }
         self.fft.stereo(&self.a, &self.b, &mut self.spec_a, &mut self.spec_b);
         self.raw = [0.0; 12];
+        self.reading.pitch_bins.fill(0.0);
         for k in self.from..=self.to {
             let ((ar, ai), (br, bi)) = (self.spec_a[k], self.spec_b[k]);
             let amplitude = (0.5 * (ar * ar + ai * ai + br * br + bi * bi)).sqrt();
+            self.amplitudes[k] = amplitude;
+            let (note, fraction) = self.notes[k];
+            if (0..72).contains(&note) {
+                self.reading.pitch_bins[note as usize] += amplitude * (1.0 - fraction);
+            }
+            if (0..72).contains(&(note + 1)) {
+                self.reading.pitch_bins[(note + 1) as usize] += amplitude * fraction;
+            }
             let (class, share) = self.classes[k];
             self.raw[class as usize] += amplitude * share;
             self.raw[(class as usize + 1) % 12] += amplitude * (1.0 - share);
+        }
+        self.character();
+        let note_top = self.reading.pitch_bins.iter().copied().fold(0.0f32, f32::max);
+        for p in &mut self.reading.pitch_bins {
+            *p = if note_top > 1e-9 && tonal > 0.01 { *p / note_top } else { 0.0 };
         }
         let top = self.raw.iter().cloned().fold(0.0f32, f32::max);
         let r = &mut self.reading;
@@ -126,6 +174,72 @@ impl Harmony {
         r.chroma_confidence = tonal * (1.0 - mean).clamp(0.0, 1.0);
         self.estimate_key(dt);
         self.reading
+    }
+
+    /// Bounded peak analysis: harmonic-series fit and critical-band pair roughness.
+    /// Evidence for source character, not a transcription or a dissonance judgement.
+    fn character(&mut self) {
+        let mut peaks = [(0.0f32, 0.0f32); 12];
+        let top = self.amplitudes[self.from..=self.to].iter().copied().fold(0.0f32, f32::max);
+        for k in self.from + 1..self.to {
+            let a = self.amplitudes[k];
+            if a < top * 0.06 || a <= self.amplitudes[k - 1] || a <= self.amplitudes[k + 1] {
+                continue;
+            }
+            // Quadratic interpolation in log magnitude improves low-bin frequency estimates.
+            let l = self.amplitudes[k - 1].max(1e-12).ln();
+            let c = a.max(1e-12).ln();
+            let r = self.amplitudes[k + 1].max(1e-12).ln();
+            let offset = (0.5 * (l - r) / (l - 2.0 * c + r).min(-1e-9)).clamp(-0.5, 0.5);
+            let hz = (k as f32 + offset) * self.bin_hz;
+            for i in 0..12 {
+                if a > peaks[i].1 {
+                    for j in (i + 1..12).rev() {
+                        peaks[j] = peaks[j - 1];
+                    }
+                    peaks[i] = (hz, a);
+                    break;
+                }
+            }
+        }
+        let total: f32 = peaks.iter().map(|p| p.1).sum();
+        if total < 1e-6 {
+            self.reading.harmonicity = 0.0;
+            self.reading.inharmonicity = 0.0;
+            self.reading.pitch_salience = 0.0;
+            self.reading.roughness = 0.0;
+            return;
+        }
+        let mut fit = 0.0f32;
+        for &(fundamental, a) in &peaks {
+            if a < top * 0.1 || fundamental < 55.0 {
+                continue;
+            }
+            let mut score = 0.0;
+            for &(hz, amp) in &peaks {
+                let ratio = hz / fundamental;
+                let harmonic = ratio.round().max(1.0);
+                let cents = 1200.0 * (ratio.max(1e-6) / harmonic).log2().abs();
+                score += amp * (1.0 - cents / 55.0).clamp(0.0, 1.0);
+            }
+            fit = fit.max(score / total);
+        }
+        let mut rough = 0.0;
+        let mut pairs = 0.0;
+        for i in 0..12 {
+            for j in i + 1..12 {
+                let (f1, a1) = peaks[i];
+                let (f2, a2) = peaks[j];
+                let d = (f1 - f2).abs() * 0.24 / (0.021 * f1.min(f2) + 19.0);
+                let weight = a1 * a2;
+                rough += weight * ((-3.5 * d).exp() - (-5.75 * d).exp());
+                pairs += weight;
+            }
+        }
+        self.reading.harmonicity = fit;
+        self.reading.inharmonicity = 1.0 - fit;
+        self.reading.pitch_salience = (peaks[0].1 / total).sqrt();
+        self.reading.roughness = (rough / pairs.max(1e-12) * 5.6).clamp(0.0, 1.0);
     }
 
     fn estimate_key(&mut self, dt: f32) {
@@ -179,5 +293,9 @@ fn correlation(chroma: &[f32; 12], profile: impl Fn(usize) -> f32) -> f32 {
         sxx += x * x;
         syy += y * y;
     }
-    if sxx * syy > 0.0 { sxy / (sxx * syy).sqrt() } else { 0.0 }
+    if sxx * syy > 0.0 {
+        sxy / (sxx * syy).sqrt()
+    } else {
+        0.0
+    }
 }

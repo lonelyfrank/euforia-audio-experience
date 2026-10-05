@@ -21,14 +21,17 @@
 //! assert_eq!(frames, 4);
 //! ```
 
+mod acoustic;
 mod analyzer;
 mod beat;
+mod context;
 mod fft;
 mod follow;
 mod frame;
 mod harmony;
 mod hpss;
 mod loudness;
+mod meter;
 mod presence;
 mod resonators;
 mod rhythm;
@@ -37,10 +40,11 @@ pub mod wire;
 
 pub use analyzer::{Analyzer, AnalyzerOptions, FFT_SIZE, HOP};
 pub use beat::{BeatEvent, BEATS_PER_BAR};
+pub use context::QUANTILES;
 pub use frame::{FeatureFrame, Field, BANDS, BAND_EDGES};
 pub use loudness::SILENT_LUFS;
 pub use rhythm::{OnsetEvent, MAX_BPM, MIN_BPM};
-pub use structure::{SectionEvent, SectionKind, GENRES};
+pub use structure::{SectionEvent, SectionKind};
 
 /// What the analyzer reports, in time order.
 #[derive(Clone, Copy, Debug)]

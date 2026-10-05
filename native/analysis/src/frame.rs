@@ -10,7 +10,7 @@ pub const BAND_EDGES: [f32; BANDS + 1] = [20.0, 60.0, 250.0, 500.0, 2000.0, 4000
 /// (≈ dBFS of the band's mean square) or LUFS; `*_rel` values are 0..1
 /// relative to the recent history of the same measure; every group carries a
 /// 0..1 confidence (0 = do not use, e.g. in silence or before warm-up).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FeatureFrame {
     /// Capture clock: index of the sample right after the newest one analysed.
     pub sample: u64,
@@ -93,7 +93,7 @@ pub struct FeatureFrame {
     /// Id of an earlier section the current one repeats (same kind, similar second bar), or -1.
     pub section_return: i32,
     pub bar_index: u64,
-    /// Bar within the phrase and phrase length (bars, from the genre prior).
+    /// Bar within the phrase and phrase length (bars, confidence-weighted horizon).
     pub phrase_bar: u32,
     pub phrase_bars: u32,
     /// Predicted capture time (s) of the next phrase boundary; 0 while unknown.
@@ -105,8 +105,6 @@ pub struct FeatureFrame {
     /// 0..1: in a build, how close the end of the phrase (the likely drop) is.
     pub drop_expected: f32,
     pub structure_confidence: f32,
-    /// Prior weights of the genre families (see `GENRES`), learned while listening.
-    pub genre: [f32; 6],
 
     // Harmony.
     /// Pitch classes C, C#, … B (0..1, the strongest at 1).
@@ -123,7 +121,193 @@ pub struct FeatureFrame {
     pub correlation: f32,
     /// Per band: -1 left … 1 right.
     pub band_pan: [f32; BANDS],
+    // Physical/perceptual model. Normalized descriptors are evidence, not probabilities.
+    pub rms: f32,
+    pub peak: f32,
+    pub crest: f32,
+    pub entropy: f32,
+    pub complexity: f32,
+    pub spectral_crest: f32,
+    pub spread_hz: f32,
+    pub erb: [f32; 24],
+    pub perceived_brightness: f32,
+    pub low_weight: f32,
+    pub sharpness: f32,
+    pub phase_coherence: f32,
+    pub phase_deviation: f32,
+    pub complex_change: f32,
+    pub phase_velocity: f32,
+    pub instantaneous_hz: f32,
+    pub harmonicity: f32,
+    pub inharmonicity: f32,
+    pub pitch_salience: f32,
+    pub roughness: f32,
+    /// Log-frequency projection, MIDI 36..107 (C2..B7), maximum normalized.
+    pub pitch_bins: [f32; 72],
+    pub harmonic_share: f32,
+    pub percussive_share: f32,
+    pub residual_share: f32,
+    pub band_flux: [f32; BANDS],
+    pub band_attack: [f32; BANDS],
+    pub band_decay: [f32; BANDS],
+    pub band_activity: [f32; BANDS],
+    pub band_transient: [f32; BANDS],
+    pub short_transient: f32,
+    /// Relaxing loudness extrema, not standardized EBU LRA.
+    pub loudness_range: f32,
+    pub left_energy: f32,
+    pub right_energy: f32,
+    pub mid_energy: f32,
+    pub side_energy: f32,
+    pub balance: f32,
+    pub spatial_movement: f32,
+    pub expansion_trend: f32,
+    pub inter_channel_phase: f32,
+    pub inter_channel_coherence: f32,
+    /// 0 unknown, otherwise estimated beats per bar; not a time signature denominator.
+    pub meter: u8,
+    pub meter_confidence: f32,
+    /// 0 high, 1 medium, 2 low. Only slow feature rates change.
+    pub dsp_quality: u8,
     pub stereo_confidence: f32,
+    // Context (online normalization 2.0; see `context`).
+    /// Adaptive noise floor per band (dB) and the band's activity above it (0..1).
+    pub band_floor_db: [f32; BANDS],
+    pub band_level: [f32; BANDS],
+    /// Online P10 / P50 / P90 / P95 of the momentary loudness while sounding (LUFS-like).
+    pub loudness_quantiles: [f32; 4],
+    /// Momentary loudness placed between P10 and P95 (0..1): relative, robust to single peaks.
+    pub loudness_position: f32,
+    /// Smoothed first derivatives (per second) of slow descriptors.
+    pub brightness_slope: f32,
+    pub entropy_slope: f32,
+    pub complexity_slope: f32,
+    pub harmonicity_slope: f32,
+    /// Predicted capture time (s) of the next downbeat; 0 while not tracking. A forecast, not an event:
+    /// weigh it by `downbeat_confidence` (and `meter_confidence`; with meter 0 the grid's fallback grouping is used).
+    pub next_downbeat_time: f64,
+}
+
+impl Default for FeatureFrame {
+    fn default() -> Self {
+        // All members are numeric scalars, bools or arrays of floats; zero is valid.
+        Self {
+            sample: 0,
+            time: 0.0,
+            presence: 0.0,
+            sounding: false,
+            silent: false,
+            noise_floor_db: 0.0,
+            clipping: 0.0,
+            band_db: [0.0; BANDS],
+            band_rel: [0.0; BANDS],
+            energy_confidence: 0.0,
+            loudness_momentary: 0.0,
+            loudness_short: 0.0,
+            loudness_long: 0.0,
+            loudness_slope: 0.0,
+            loudness_curvature: 0.0,
+            loudness_rel: 0.0,
+            centroid_hz: 0.0,
+            rolloff_hz: 0.0,
+            flatness: 0.0,
+            flux: 0.0,
+            flux_low: 0.0,
+            flux_mid: 0.0,
+            flux_high: 0.0,
+            timbre_confidence: 0.0,
+            percussive: 0.0,
+            percussive_low: 0.0,
+            percussive_mid: 0.0,
+            percussive_high: 0.0,
+            harmonic_db: 0.0,
+            percussive_db: 0.0,
+            onset_strength: 0.0,
+            onset_density: 0.0,
+            tempo_bpm: 0.0,
+            tempo_confidence: 0.0,
+            resonator_bpm: 0.0,
+            resonator_confidence: 0.0,
+            beat_bpm: 0.0,
+            beat_phase: 0.0,
+            bar_phase: 0.0,
+            beat_confidence: 0.0,
+            downbeat_confidence: 0.0,
+            next_beat_time: 0.0,
+            section: 0,
+            section_id: 0,
+            section_bars: 0,
+            section_return: 0,
+            bar_index: 0,
+            phrase_bar: 0,
+            phrase_bars: 0,
+            next_phrase_time: 0.0,
+            novelty: 0.0,
+            similarity: [0.0; 3],
+            drop_expected: 0.0,
+            structure_confidence: 0.0,
+            chroma: [0.0; 12],
+            chroma_confidence: 0.0,
+            key: 0,
+            key_confidence: 0.0,
+            width: 0.0,
+            correlation: 0.0,
+            band_pan: [0.0; BANDS],
+            rms: 0.0,
+            peak: 0.0,
+            crest: 0.0,
+            entropy: 0.0,
+            complexity: 0.0,
+            spectral_crest: 0.0,
+            spread_hz: 0.0,
+            erb: [0.0; 24],
+            perceived_brightness: 0.0,
+            low_weight: 0.0,
+            sharpness: 0.0,
+            phase_coherence: 0.0,
+            phase_deviation: 0.0,
+            complex_change: 0.0,
+            phase_velocity: 0.0,
+            instantaneous_hz: 0.0,
+            harmonicity: 0.0,
+            inharmonicity: 0.0,
+            pitch_salience: 0.0,
+            roughness: 0.0,
+            pitch_bins: [0.0; 72],
+            harmonic_share: 0.0,
+            percussive_share: 0.0,
+            residual_share: 0.0,
+            band_flux: [0.0; BANDS],
+            band_attack: [0.0; BANDS],
+            band_decay: [0.0; BANDS],
+            band_activity: [0.0; BANDS],
+            band_transient: [0.0; BANDS],
+            short_transient: 0.0,
+            loudness_range: 0.0,
+            left_energy: 0.0,
+            right_energy: 0.0,
+            mid_energy: 0.0,
+            side_energy: 0.0,
+            balance: 0.0,
+            spatial_movement: 0.0,
+            expansion_trend: 0.0,
+            inter_channel_phase: 0.0,
+            inter_channel_coherence: 0.0,
+            meter: 0,
+            meter_confidence: 0.0,
+            dsp_quality: 0,
+            stereo_confidence: 0.0,
+            band_floor_db: [0.0; BANDS],
+            band_level: [0.0; BANDS],
+            loudness_quantiles: [0.0; 4],
+            loudness_position: 0.0,
+            brightness_slope: 0.0,
+            entropy_slope: 0.0,
+            complexity_slope: 0.0,
+            harmonicity_slope: 0.0,
+            next_downbeat_time: 0.0,
+        }
+    }
 }
 
 /// Values that can be written as consecutive f64 slots.
@@ -274,7 +458,6 @@ layout!(FeatureFrame {
     similarity: [f32; 3],
     drop_expected: f32,
     structure_confidence: f32,
-    genre: [f32; 6],
     chroma: [f32; 12],
     chroma_confidence: f32,
     key: i8,
@@ -282,7 +465,59 @@ layout!(FeatureFrame {
     width: f32,
     correlation: f32,
     band_pan: [f32; BANDS],
+    rms: f32,
+    peak: f32,
+    crest: f32,
+    entropy: f32,
+    complexity: f32,
+    spectral_crest: f32,
+    spread_hz: f32,
+    erb: [f32; 24],
+    perceived_brightness: f32,
+    low_weight: f32,
+    sharpness: f32,
+    phase_coherence: f32,
+    phase_deviation: f32,
+    complex_change: f32,
+    phase_velocity: f32,
+    instantaneous_hz: f32,
+    harmonicity: f32,
+    inharmonicity: f32,
+    pitch_salience: f32,
+    roughness: f32,
+    pitch_bins: [f32; 72],
+    harmonic_share: f32,
+    percussive_share: f32,
+    residual_share: f32,
+    band_flux: [f32; BANDS],
+    band_attack: [f32; BANDS],
+    band_decay: [f32; BANDS],
+    band_activity: [f32; BANDS],
+    band_transient: [f32; BANDS],
+    short_transient: f32,
+    loudness_range: f32,
+    left_energy: f32,
+    right_energy: f32,
+    mid_energy: f32,
+    side_energy: f32,
+    balance: f32,
+    spatial_movement: f32,
+    expansion_trend: f32,
+    inter_channel_phase: f32,
+    inter_channel_coherence: f32,
+    meter: u8,
+    meter_confidence: f32,
+    dsp_quality: u8,
     stereo_confidence: f32,
+    band_floor_db: [f32; BANDS],
+    band_level: [f32; BANDS],
+    loudness_quantiles: [f32; 4],
+    loudness_position: f32,
+    brightness_slope: f32,
+    entropy_slope: f32,
+    complexity_slope: f32,
+    harmonicity_slope: f32,
+    next_downbeat_time: f64,
 });
 
 #[cfg(test)]
@@ -291,7 +526,14 @@ mod tests {
 
     #[test]
     fn export_follows_the_layout() {
-        let frame = FeatureFrame { sample: 4096, time: 1.5, presence: 0.25, band_db: [-1.0; BANDS], stereo_confidence: 0.75, ..Default::default() };
+        let frame = FeatureFrame {
+            sample: 4096,
+            time: 1.5,
+            presence: 0.25,
+            band_db: [-1.0; BANDS],
+            stereo_confidence: 0.75,
+            ..Default::default()
+        };
         let mut out = vec![f64::NAN; FeatureFrame::SIZE];
         frame.export(&mut out);
         let at = |name: &str| {
@@ -308,7 +550,7 @@ mod tests {
         assert_eq!(out[at("time")], 1.5);
         assert_eq!(out[at("presence")], 0.25);
         assert_eq!(out[at("band_db") + 7], -1.0);
-        assert_eq!(out[FeatureFrame::SIZE - 1], 0.75);
+        assert_eq!(out[at("stereo_confidence")], 0.75);
         assert!(out.iter().all(|v| v.is_finite()));
     }
 }

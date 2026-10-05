@@ -32,7 +32,7 @@ function inputs(gridWeight = 0.9): ShowInput[] {
       time: t, presence: 1, section: s.kind, sectionId: s.index, barIndex: bar, phraseBar, phraseBars,
       nextPhraseTime: (bar - phraseBar + phraseBars) * BAR, beatBpm: BPM, nextBeatTime: nextBeat, barPhase,
       dropExpected: s.kind === 1 ? Math.max(0, (phraseBar - 4) / 3) : 0, structureConfidence: 0.9, key: 9,
-      genre: [0.7, 0.05, 0.05, 0.1, 0.05, 0.05], gridWeight,
+      gridWeight,
     });
   }
   return out;

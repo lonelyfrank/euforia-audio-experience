@@ -6,40 +6,68 @@ chi modifica il progetto. [experience-engine.md](experience-engine.md) conserva
 le decisioni e misure delle fasi precedenti. Il prodotto usa solo sorgenti live;
 il vecchio supporto file non esiste più.
 
+## Nuova pipeline operativa
+
+Capture stereo → DSP fisico/percettivo/musicale Rust → tutti gli hop del wire →
+ExperienceEngine → memoria/narrativa → ExperiencePlanner → VisualIntent →
+ShowDirector / VisualDirector → fisica condivisa e scene → composizione GPU.
+
+Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-planner.md),
+[fisica](physics-engine.md), [integrazione scene](visual-director.md).
+`meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
+battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
+indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
+frontend, backend e WASM della stessa revisione.
+
 ## Mappa delle responsabilità
 
 | Area | Proprietario e contratto | Esito dell’audit |
 |---|---|---|
 | Bootstrap / UI | `main.ts`, `app/App.ts`, `app/menus.ts`, `ui/` | App coordina UI, impostazioni e lifecycle; menu dichiarativi estratti; dispose di timer, subscriber, audio, renderer e debug |
 | Regia applicativa | `app/RigController.ts` | Connette analisi, cue, Dynamics, ShowDirector e slot senza mescolare menu e frame loop |
-| Cattura browser | `audio/capture/` | Microfono via worklet, fake deterministico; PCM mono in ring buffer e drain per WASM |
+| Cattura browser | `audio/capture/` | Worklet: blocchi al main thread per il ring grafico mono e flusso stereo continuo verso il worker (SAB o porta, silenzio per quanti saltati); fake generato nel worker |
 | Cattura nativa | `native/audio-capture/` | cpal, scelta device per OS, coda limitata callback→worker, buffer riciclati, gap espliciti |
 | Bridge desktop | `src-tauri/src/audio.rs` | Worker: analisi stereo, downmix mono per le scene, due Channel binari; i comandi frontend sono serializzati |
 | Analisi grafica | `audio/analysis/AudioAnalyzer.ts` | FFT 2048, finestra voci 4096, cinque bande, waveform, YIN, tracker bassi; stato riusato |
-| Analisi musicale | `native/analysis/`, `native/analysis-wasm/` | Hop 256, otto bande, loudness, onset, beat, armonia, stereo, struttura; stessa implementazione nativa/WASM |
-| Trasporto feature | `audio/features/` | ABI Rust e decoder riusano frame/eventi; record troncati o sconosciuti interrompono il batch senza scritture parziali |
-| Interpretazione | `audio/interpretation/`, `audio/visual-response/` | Un solo MusicInterpreter, import storico VisualResponse compatibile; ruoli, presenza, memoria e contesto |
+| Analisi musicale | `native/analysis/`, `native/analysis-wasm/` | Hop 256; finestre 512/2048/8192, ERB, fase, H/P/R, loudness, note, stereo e ipotesi metriche; stesso DSP nativo/WASM |
+| Analisi browser | `audio/features/BrowserAnalysis.ts`, `AnalysisHost.ts`, `analysis.worker.ts`, `PcmRing.ts`, `RecordStage.ts` | WASM nel worker, fuori dal RAF; batch con record clock, pool di buffer, epoch dopo perdite lunghe; fallback sul main thread solo senza `Worker` |
+| Trasporto feature | `audio/features/` | ABI Rust ampliata; ogni hop raggiunge ExperienceEngine, senza folding per batch; decoder riusa frame/eventi; record troncati o sconosciuti interrompono il batch senza scritture parziali |
+| Esperienza | `experience/` | Memoria multiscala, ricorrenze, narrativa probabilistica, trajectory, previsione, event stream ordinato e planner sul clock audio; snapshot posseduti presentati al tempo percepito |
+| Fisica | `physics/ResonantPhysics.ts`, `physics/primitives.ts`, `dynamics/` | Dodici modi smorzati e otto impulsi propaganti; primitive esatte (oscillatore, momento, inviluppo) per le scene; riuso della matrice delle molle, separazione luce/geometria |
+| Interpretazione grafica | `audio/interpretation/`, `audio/visual-response/` | Un solo MusicInterpreter, import storico VisualResponse compatibile; ruoli, presenza, memoria e contesto |
 | Tempo / dinamica | `timing/`, `dynamics/` | Capture→host→tempo percepito; molle/follower 240 Hz, impulsi analitici, gate e rate limit condivisi |
-| Scelte dello show | `show/` | Preset/Hybrid/Free, look e affinità deterministici, limiti GPU e ritorni di sezione |
-| Direzione della scena | `director/` | Mood × Experience × capacità; un VisualDirector per Layer, separato da ShowDirector |
+| Scelte dello show | `show/` | Preset/Hybrid/Free, affinità tra sette scene, ritorni di motivo, tetto del planner e limiti GPU |
+| Direzione della scena | `director/` | Intenti e fisica × Mood × Experience × capacità; un VisualDirector per Layer, separato da ShowDirector |
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
-| Scene | `visualizers/` | Sei scene, texture condivise e dispose espliciti; shader Liquid estratti, altri moduli coerenti mantenuti |
+| Scene | `visualizers/` | Sette scene: Resonant Field consuma modi/onde, Tunnel usa `TunnelBody` (forze sul clock udito), le altre cinque l'adattatore del Director; dispose GPU espliciti |
 | Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, notifiche/salvataggi solo se un valore cambia |
-| Build | `package.json`, `vite.config.ts`, Cargo workspace | Nessuna nuova dipendenza; WASM versionato per sviluppare il browser senza toolchain Rust |
+| Build | `package.json`, `vite.config.ts`, Cargo workspace | Nessuna nuova dipendenza; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
 
 ## Contratti da preservare
 
 **Due analisi, due usi.** `AudioFrame` alimenta forma e livelli delle scene;
 `AnalysisFrame` alimenta la regia sul clock di cattura. Non cancellare il DSP TS
 come duplicato: Rust non fornisce ancora l’intero contratto grafico delle voci.
+ExperienceEngine è autorevole per la nuova narrativa; MusicContext resta nel
+percorso grafico/fallback, non è un secondo planner.
 Le finestre PCM grafiche possono essere ritardate; gli eventi mantengono il loro
-timestamp e vengono allineati da `Timing`. In browser il WASM gira oggi sul main
-thread, non in un worker.
+timestamp e vengono allineati da `Timing`. In browser il WASM gira nel worker di
+analisi; il main thread decodifica i record una volta per frame come per il nativo
+([realtime-analysis](realtime-analysis.md)).
+
+**Eventi.** `features.onOnset/onBeat/onSection` sono consumer sincroni come
+`onFrame`; ExperienceEngine li inserisce in `events`, ordinati per tempo audio.
+I consumatori leggono con un `EventCursor` (`forEachHeard`), mai per indice: gli eventi
+in ritardo vengono consegnati una volta, il reset dello stream riallinea i cursori.
+Gli intenti si leggono per nome (`INTENT.x`) e si pesano con la loro confidence.
 
 **Proprietà della memoria.** Frame, array e pool eventi appartengono al produttore.
 Non conservarne copie implicite né modificarli nelle scene. `features.begin()`
 svuota i conteggi per frame, non la memoria dei pool. `SceneInput` e `RigValues`
-sono oggetti stabili. Gli array possono essere sostituiti durante un reset.
+sono oggetti stabili. Gli array possono essere sostituiti durante un reset. `features.onFrame` è
+sincrono: ExperienceEngine copia i dati che conserva nei suoi 256 snapshot.
+Le scene non trattengono né mutano le viste del decoder. `present(heardTime)`
+non espone audio futuro: batch e frequenza RAF non governano la semantica.
 Mount, cambi di look, IPC, worklet e debug non hanno il vincolo di zero allocazioni
 che si cerca invece nel percorso continuo di analisi e aggiornamento.
 
@@ -77,7 +105,7 @@ listener globali, timer, sottoscrizioni, cattura, WASM e GPU. Un’istanza smalt
 si riavvia. Il bootstrap attuale resta una sola app per pagina; dispose è disponibile
 per un host che la smonta, non è un nuovo sistema di navigazione o HMR.
 
-## Interventi dell’audit
+## Audit di manutenzione precedente alla nuova pipeline
 
 - Separati `App` / `RigController` / `menus` e `RenderEngine` / `Layer`; Liquid
   separa GLSL e orchestrazione CPU. DSP, CSS e debug non sono divisi solo per
@@ -101,8 +129,8 @@ per un host che la smonta, non è un nuovo sistema di navigazione o HMR.
   durante `AudioContext.resume()` non riavvia i click; nodi terminati disconnessi,
   valore delay inizializzato, core coerente con il pannello aperto.
 
-Non sono state introdotte nuove dipendenze, cambiati preset estetici, algoritmi DSP
-Rust o formato binario. Le riduzioni di lavoro sopra sono verificabili nel codice
+Questo audit precedente non cambiava DSP e wire. Il nuovo refactor, descritto
+nel [report](refactor-report.md), cambia entrambi e conserva le dipendenze. Le riduzioni di lavoro sopra sono verificabili nel codice
 e nei test; **non rappresentano una misura di incremento FPS o di latenza reale**.
 
 ## Verifica e ambiente
@@ -131,19 +159,28 @@ Versionare layout e WASM aggiornati insieme alle modifiche DSP. `cargo test` sul
 wrapper controlla la build host, non ricompila il binario WASM versionato; i test
 Vitest esercitano quest’ultimo.
 
-Esiti finali dell’audit: vedere la sezione di verifica in fondo a questa scheda.
+Esiti della seconda fase (analisi realtime): **171 test frontend in 30 file**, **56 Rust
++ 1 doctest**, 5 test di benchmark, smoke Chromium (worker, SAB, tre scene) riusciti;
+[analisi realtime](realtime-analysis.md). Fase precedente: 151 test frontend, 53 Rust + 1 doctest,
+quattro benchmark/test e smoke Chromium; [report con confronti e limiti](refactor-report.md).
+Revisione successiva: `Structure` riporta nella battuta pubblicata le posizioni
+del beat tracker anche quando il suo raggruppamento interno (es. 7) non è ancora
+pubblicato come metro; prima un taglio su quei beat andava in underflow (panic nelle
+build debug, `desktop:dev`). Regressione in `structure.rs`, WASM ricostruito.
+La sezione in fondo conserva la baseline precedente.
 I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 
 ## Miglioramenti prioritari successivi
 
 | Priorità | Lavoro | Criterio di completamento |
 |---|---|---|
-| Alta | Prova desktop Windows/WebView2 e Linux reale dopo questi cambi | Cambio rapido system/mic, scollegamento e riconnessione, delay/calibrazione, sei scene senza errori JS/GLSL e senza catture residue |
+| Alta | Prova desktop Windows/WebView2 e Linux reale dopo questi cambi | Cambio rapido system/mic, scollegamento e riconnessione, delay/calibrazione, sette scene senza errori JS/GLSL e senza catture residue |
 | Alta | Benchmark CPU/GPU ripetibile, a qualità e risoluzione fisse | Tempi separati cattura/DSP TS/WASM/Director/pass GPU, p50/p95/p99 e memoria, confronto prima/dopo sullo stesso dispositivo |
-| Alta | Recupero dopo tab nascosta o backlog browser | Politica esplicita per campioni persi e avanzamento del clock, test con stalli 0,5–10 s; oggi il drain può elaborare molto lavoro in un singolo RAF |
-| Media | Unificazione graduale DSP TS/Rust oppure spostamento WASM su worker | Corpus reale e sintetico, stessa waveform/pitch/presenza e latenza misurata; evitare doppia analisi senza spezzare i contratti |
+| Alta | Recupero dopo tab nascosta o backlog browser in WebView reali | La politica esiste (silenzio ≤ 1 s, poi epoch; staging ~3 s): verificarla in WebView2/WebKitGTK con stalli 0,5–10 s e timer dei worker in background |
+| Media | Unificazione graduale DSP TS/Rust | Corpus reale e sintetico, stessa waveform/pitch/presenza e latenza misurata; evitare doppia analisi senza spezzare i contratti |
+| Media | Migrazione fisica delle altre scene | Come per il Tunnel: corpo sul clock udito, confronto misurato contro il mapping diretto e prova visiva |
 | Media | Ring nativo proporzionato al sample rate | Verificare delay 400 ms e finestra voci a 44,1/48/96/192 kHz; il buffer nativo è ancora fisso a 48.000 campioni |
-| Media | Regressioni DOM e GPU in browser | Focus trap, ARIA, fullscreen, idle, chiusura/rimontaggio, snapshot per tutte le scene; i test grafici correnti non compilano shader su GPU reale |
+| Media | Regressioni DOM e GPU in browser | Focus trap, ARIA, fullscreen, idle, chiusura/rimontaggio, snapshot per tutte le scene; lo smoke Chromium corrente compila gli shader, ma non sostituisce test di cattura e WebView desktop |
 | Media | Budget di transizione e memoria GPU | Gestire esplicitamente >4 layer durante cambi simultanei e misurare il picco di target/pass con High e supporti |
 | Media | Persistenza durante slider continui | Misurare il costo di localStorage prima di aggiungere debounce; garantire flush alla chiusura se introdotto |
 | Media | Rate limit luminoso e taratura percettiva | Valutare i contributi continui delle scene oltre ai transienti del rig, insieme a musica reale e tutti i mood |
@@ -154,7 +191,7 @@ o il foglio CSS: sono lunghi ma concentrano algoritmi o componenti coerenti. Pri
 estrarre una responsabilità con un contratto autonomo, poi verificare output e
 costo; evitare wrapper creati soltanto per spostare righe.
 
-## Esito della verifica — 5 ottobre 2026
+## Baseline precedente al refactor — 5 ottobre 2026
 
 - `npm run check`: **140 test in 26 file**, typecheck, ESLint e build di produzione
   riusciti. Il bench del rig a 30/60/144 fps fa parte della suite. Le **16 nuove
