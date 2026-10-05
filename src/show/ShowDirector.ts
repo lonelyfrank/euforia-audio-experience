@@ -4,8 +4,12 @@ import { SECTION_NAMES, type Decision, type EffectId, type RigMode, type Section
 
 /** Fixtures shown at once at most, per mode. */
 const MODE_SLOTS: Readonly<Record<RigMode, number>> = { preset: 1, hybrid: 2, free: 3 };
-/** Bars a look holds before a phrase boundary may vary it. */
-const HOLD_BARS = 8;
+/**
+ * Bars a look holds before a phrase boundary may choose a new one; the
+ * phrases in between vary only its colour (tint), so a section keeps a
+ * recognizable look.
+ */
+const HOLD_BARS = 16;
 /** Below this grid weight no effect is locked to the beat (honest fallback: atmosphere and transients). */
 const GRID_EFFECTS = 0.3;
 /** Structure confidence needed to vary the look at phrase boundaries. */
@@ -19,6 +23,8 @@ const BREATH = 0.1;
 /** A build expects its drop at the phrase end above this. */
 const DROP_EXPECTED = 0.7;
 const LOG_SIZE = 32;
+/** Most a phrase leans a fixture's colours toward its second hue (the lead hue stays dominant). */
+const MAX_TINT = 0.35;
 
 /** Effects that suit each section (weights for the seeded choice). */
 const EFFECTS: Readonly<Record<SectionName, Partial<Record<EffectId, number>>>> = {
@@ -35,7 +41,10 @@ const EFFECT_IDS: readonly EffectId[] = ['none', 'pulse', 'chase', 'sweep', 'fan
  * which hue of the user's palette, and which beat-locked effect runs; never
  * values per frame. It works on three time scales: the section (fixtures,
  * hue, effect), the bar (movement: sweep, fan) and the beat (pulse, chase:
- * impulses scheduled on the predicted beat). Rules of taste:
+ * impulses scheduled on the predicted beat). Colour follows the same three
+ * scales within the user's palette: the section picks each fixture's lead
+ * hue, each phrase leans it a little toward its second hue (tint), and beat
+ * flashes take its accent hue. Rules of taste:
  *
  * - one protagonist at a time; supporting fixtures stay well below it;
  * - a section of a kind already heard comes back with that kind's look
@@ -57,7 +66,7 @@ const EFFECT_IDS: readonly EffectId[] = ['none', 'pulse', 'chase', 'sweep', 'fan
  * Pure logic: no rendering, no DOM; commands go out through a ShowSink.
  */
 export class ShowDirector {
-  readonly slots: SlotPlan[] = [0, 1, 2].map(() => ({ fixture: null, intensity: 0, size: 1, offset: 0, mirror: false, hue: 0 }));
+  readonly slots: SlotPlan[] = [0, 1, 2].map(() => ({ fixture: null, intensity: 0, size: 1, offset: 0, mirror: false, hue: 0, tint: 0 }));
   effect: EffectId = 'none';
   /** The effect actually running (none while the grid is weak). */
   activeEffect: EffectId = 'none';
@@ -108,9 +117,11 @@ export class ShowDirector {
     // Phrase level: hybrid and free vary the look at phrase boundaries, after a hold.
     if (input.barIndex !== this.lastBar) {
       this.lastBar = input.barIndex;
-      const boundary = input.phraseBar === 0 && input.barIndex - this.lastChangeBar >= HOLD_BARS;
-      if (boundary && this.mode !== 'preset' && input.structureConfidence >= PHRASE_CONFIDENCE) {
+      const phrase = input.phraseBar === 0 && this.mode !== 'preset' && input.structureConfidence >= PHRASE_CONFIDENCE;
+      if (phrase && input.barIndex - this.lastChangeBar >= HOLD_BARS) {
         this.decideLook(input, sink, `phrase boundary after ${input.barIndex - this.lastChangeBar} bars`);
+      } else if (phrase && input.barIndex !== this.lastChangeBar) {
+        this.tintPhrase(input, sink);
       }
     }
     this.breathe(input, sink);
@@ -159,6 +170,9 @@ export class ShowDirector {
       slot.mirror = s > 0 && !asymmetric;
       slot.offset = s === 0 ? 0 : asymmetric ? (s === 1 ? 0.18 : -0.08) : s === 1 ? 0.15 : -0.15;
       slot.size = s === 0 ? 1 : 0.8;
+      // A new look starts in its pure hues; phrases lean them later.
+      slot.tint = 0;
+      sink.target(s, 'tint', 0, input.time);
       sink.target(s, 'intensity', slot.intensity, input.time);
       sink.target(s, 'offset', slot.offset, input.time);
       sink.target(s, 'size', slot.size, input.time);
@@ -167,6 +181,20 @@ export class ShowDirector {
     this.lastChangeBar = input.barIndex;
     this.breathAt = -1;
     this.record(input.time, `${chosen.join(' + ')} · hue ${hue} · ${effect}${asymmetric ? ' · asymmetric' : ''} · ceiling ${ceiling}`, why);
+  }
+
+  /** Phrase level: each fixture's colours lean toward its second hue by a seeded amount (the look stays). */
+  private tintPhrase(input: ShowInput, sink: ShowSink): void {
+    const rng = new Rng(seedOf(input.sectionId, input.barIndex, input.key, MODE_INDEX[this.mode], 7));
+    const amounts: string[] = [];
+    for (let s = 0; s < this.slots.length; s++) {
+      const slot = this.slots[s];
+      if (!slot.fixture) continue;
+      slot.tint = Math.round(rng.next() * MAX_TINT * 100) / 100;
+      sink.target(s, 'tint', slot.tint, input.time);
+      amounts.push(slot.tint.toFixed(2));
+    }
+    this.record(input.time, `tint ${amounts.join(' / ')}`, `phrase at bar ${input.barIndex}`);
   }
 
   /** A fixture for the section, weighted by affinity, not already playing. */

@@ -64,6 +64,7 @@ export class App {
     size: this.dynamics.channel(`slot${i}.size`, 'pulse', 1),
     offset: this.dynamics.channel(`slot${i}.offset`, 'swing', 0),
     strobe: this.dynamics.channel(`slot${i}.strobe`, 'flash'),
+    tint: this.dynamics.channel(`slot${i}.tint`, 'glide'),
   }));
   private readonly showSink: ShowSink = {
     target: (slot, param, value, at) => this.dynamics.setTarget(this.slotChannel(slot, param), value, at),
@@ -78,7 +79,7 @@ export class App {
   /** The fixture mounted in each slot, and one source object per scene (stable, so slots can compare). */
   private readonly mounted: (string | null)[] = Array.from({ length: SLOTS }, () => null);
   private readonly sources = new Map<string, SceneSource>();
-  private readonly slotParams: SlotParams = { weight: 1, size: 1, offset: 0, mirror: false, flash: 0 };
+  private readonly slotParams: SlotParams = { weight: 1, size: 1, offset: 0, mirror: false, flash: 0, tint: 0 };
   private readonly sceneInput: SceneInput = { audio: this.audio.frame, response: this.audio.visual, rig: this.rig };
   private readonly stage: HTMLElement;
   private readonly render: RenderEngine;
@@ -205,6 +206,7 @@ export class App {
       p.offset = this.dynamics.value(c.offset);
       p.mirror = plan.mirror;
       p.flash = this.dynamics.value(c.strobe);
+      p.tint = Math.max(0, this.dynamics.value(c.tint));
       this.render.setSlotParams(s, p);
     }
   }

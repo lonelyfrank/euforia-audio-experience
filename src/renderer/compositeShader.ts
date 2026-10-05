@@ -29,8 +29,12 @@ export const CompositeShader = {
     tL3: { value: null },
     /** Per layer: weight, scale, horizontal offset, mirrored pair (0/1). */
     uLayer: { value: [new Vector4(1, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0)] },
-    /** Per layer: strobe flash (extra brightness). */
+    /** Per layer: strobe flash (extra brightness, in the layer's accent hue). */
     uFlash: { value: [0, 0, 0, 0] },
+    /** Per layer: how far its colours lean toward its second hue (the phrase's colour). */
+    uTint: { value: [0, 0, 0, 0] },
+    uTintColor: { value: [new Color(), new Color(), new Color(), new Color()] },
+    uFlashColor: { value: [new Color(1, 1, 1), new Color(1, 1, 1), new Color(1, 1, 1), new Color(1, 1, 1)] },
     uMinimal: { value: 1 },
     uContrast: { value: 0.45 },
     uReflection: { value: 1 },
@@ -63,6 +67,9 @@ export const CompositeShader = {
     uniform sampler2D tL3;
     uniform vec4 uLayer[4];
     uniform float uFlash[4];
+    uniform float uTint[4];
+    uniform vec3 uTintColor[4];
+    uniform vec3 uFlashColor[4];
     uniform float uMinimal;
     uniform float uContrast;
     uniform float uReflection;
@@ -95,19 +102,34 @@ export const CompositeShader = {
       return texture2D(t, q).rgb;
     }
 
-    vec3 layerAt(sampler2D t, vec4 p, float flash, vec2 uv) {
+    float luma(vec3 c) {
+      return dot(c, vec3(0.2126, 0.7152, 0.0722));
+    }
+
+    // A hue scaled to unit luminance: recolouring with it keeps the brightness.
+    vec3 unitHue(vec3 c) {
+      return c / max(luma(c), 0.05);
+    }
+
+    // Colour at three time scales: the section's lead hue is in the fixture's own palette,
+    // the phrase leans it toward its second hue (tint), the beat flashes in its accent hue.
+    vec3 layerAt(sampler2D t, vec4 p, float flash, float tint, vec3 tintColor, vec3 flashColor, vec2 uv) {
       if (p.x <= 0.0) return vec3(0.0);
       vec2 q = uCenter + (uv - uCenter) / p.y;
       vec3 color = sampleLayer(t, vec2(q.x - p.z, q.y));
       // Mirrored pair: the same fixture flipped on the other side of the centre.
       if (p.w > 0.5) color += sampleLayer(t, vec2(2.0 * uCenter.x - q.x - p.z, q.y));
-      return color * p.x * (1.0 + flash);
+      float y = luma(color);
+      color = mix(color, y * unitHue(tintColor), tint);
+      return (color + y * flash * unitHue(flashColor)) * p.x;
     }
 
     // The rig: up to four layers (fixtures and the ones fading out), added together.
     vec3 scene(vec2 uv) {
-      vec3 color = layerAt(tL0, uLayer[0], uFlash[0], uv) + layerAt(tL1, uLayer[1], uFlash[1], uv)
-        + layerAt(tL2, uLayer[2], uFlash[2], uv) + layerAt(tL3, uLayer[3], uFlash[3], uv);
+      vec3 color = layerAt(tL0, uLayer[0], uFlash[0], uTint[0], uTintColor[0], uFlashColor[0], uv)
+        + layerAt(tL1, uLayer[1], uFlash[1], uTint[1], uTintColor[1], uFlashColor[1], uv)
+        + layerAt(tL2, uLayer[2], uFlash[2], uTint[2], uTintColor[2], uFlashColor[2], uv)
+        + layerAt(tL3, uLayer[3], uFlash[3], uTint[3], uTintColor[3], uFlashColor[3], uv);
       return color * uAudible;
     }
 

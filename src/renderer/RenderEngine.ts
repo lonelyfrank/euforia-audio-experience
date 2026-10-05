@@ -163,8 +163,10 @@ export interface SlotParams {
   offset: number;
   /** Draw the mirrored pair too. */
   mirror: boolean;
-  /** Strobe flash (extra brightness, 0..1). */
+  /** Strobe flash (extra brightness in the fixture's accent hue, 0..1). */
   flash: number;
+  /** 0..1: how far the fixture's colours lean toward its second hue (the phrase's colour). */
+  tint: number;
 }
 
 /** A slot of the rig: its fixture (with the previous one while they crossfade) and parameters. */
@@ -173,7 +175,7 @@ class Slot {
   previous: Layer | null = null;
   mix = 1;
   hue = 0;
-  readonly params: SlotParams = { weight: 0, size: 1, offset: 0, mirror: false, flash: 0 };
+  readonly params: SlotParams = { weight: 0, size: 1, offset: 0, mirror: false, flash: 0, tint: 0 };
   /** The palette in this slot's hue order (the lead hue first). */
   readonly palette: [Color, Color, Color] = [new Color(), new Color(), new Color()];
 
@@ -339,6 +341,9 @@ export class RenderEngine {
     u[this.layerTextures[used]].value = layer.texture;
     (u.uLayer.value as Vector4[])[used].set(p.weight * amount, p.size, p.offset, p.mirror ? 1 : 0);
     (u.uFlash.value as number[])[used] = p.flash;
+    (u.uTint.value as number[])[used] = p.tint;
+    (u.uTintColor.value as Color[])[used].copy(slot.palette[1]);
+    (u.uFlashColor.value as Color[])[used].copy(slot.palette[2]);
     return used + 1;
   }
 

@@ -5,9 +5,9 @@ import type { RigMode, ShowInput, ShowSink, SlotParam } from './types';
 const BPM = 128;
 const BEAT = 60 / BPM;
 const BAR = 4 * BEAT;
-/** Sections (start bar, kind): intro, build, drop, break, drop. */
-const SECTIONS: [number, number][] = [[0, 0], [8, 1], [16, 2], [32, 3], [40, 2]];
-const BARS = 48;
+/** Sections (start bar, kind): intro, build, drop, a two-phrase break, drop. */
+const SECTIONS: [number, number][] = [[0, 0], [8, 1], [16, 2], [32, 3], [48, 2]];
+const BARS = 56;
 
 interface Call { kind: 'target' | 'impulse' | 'snap'; slot: number; param: SlotParam | ''; value: number; at: number }
 
@@ -130,6 +130,27 @@ describe('ShowDirector', () => {
     expect(preset.director.log.every((d) => d.what.includes('hue 0') && d.what.includes('none') && !d.what.includes('asymmetric'))).toBe(true);
     expect(preset.calls.filter((c) => c.kind === 'impulse' || c.param === 'dim')).toHaveLength(0);
     const hybrid = run('hybrid', 3);
-    for (const d of hybrid.director.log) if (!d.what.startsWith('breath')) expect(d.what.startsWith('galaxy')).toBe(true);
+    for (const d of hybrid.director.log) if (!d.what.startsWith('breath') && !d.what.startsWith('tint')) expect(d.what.startsWith('galaxy')).toBe(true);
+  });
+
+  it('varies colour at three time scales: hue per look, tint per phrase, flashes on beats', () => {
+    const { calls, director } = run('free');
+    const tints = calls.filter((c) => c.param === 'tint');
+    const leaning = tints.filter((c) => c.value > 0);
+    expect(leaning.length).toBeGreaterThan(0);
+    for (const c of tints) {
+      expect(c.value).toBeLessThanOrEqual(0.35);
+      // Only on a phrase's first downbeat.
+      const bar = Math.round(c.at / BAR);
+      expect(Math.abs(c.at - bar * BAR)).toBeLessThan(1 / 60 + 1e-9);
+      const s = sectionAt(bar);
+      expect((bar - s.start) % (s.kind === 2 ? 16 : 8)).toBe(0);
+    }
+    // A new look starts in its pure hues.
+    for (const d of director.log.filter((x) => x.what.includes(' · hue '))) {
+      expect(tints.some((c) => c.value === 0 && Math.abs(c.at - d.time) < 1e-9)).toBe(true);
+    }
+    // Preset never leans the scene's colours.
+    expect(run('preset').calls.filter((c) => c.param === 'tint' && c.value > 0)).toHaveLength(0);
   });
 });

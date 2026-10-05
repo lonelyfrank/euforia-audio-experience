@@ -29,6 +29,8 @@ export interface SlotPlan {
   mirror: boolean;
   /** Which palette hue leads this fixture (0..2): the palette stays the user's. */
   hue: number;
+  /** 0..1: lean toward the fixture's second hue, varied per phrase. */
+  tint: number;
 }
 
 /** What the show reads each frame (capture-clock times; see the analysis frame). */
@@ -64,9 +66,10 @@ export interface ShowSettings {
 /**
  * Timed commands for the Dynamics layer: slot parameters by name. `dim`
  * multiplies the intensity for quick dips (the breath before a drop), so
- * the intensity itself can glide slowly.
+ * the intensity itself can glide slowly; `tint` leans the fixture's colours
+ * toward its second hue (the phrase's colour).
  */
-export type SlotParam = 'intensity' | 'dim' | 'size' | 'offset' | 'strobe';
+export type SlotParam = 'intensity' | 'dim' | 'size' | 'offset' | 'strobe' | 'tint';
 
 export interface ShowSink {
   /** A parameter's new target at audio time `at`. */
