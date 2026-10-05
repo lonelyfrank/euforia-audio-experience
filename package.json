@@ -15,7 +15,8 @@
     "desktop:build": "tauri build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "wasm": "cargo build -p spectrum-analysis-wasm --release --target wasm32-unknown-unknown && node scripts/copy-wasm.mjs"
+    "wasm": "cargo build -p spectrum-analysis-wasm --release --target wasm32-unknown-unknown && node scripts/copy-wasm.mjs",
+    "bench": "vitest run src/bench"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
