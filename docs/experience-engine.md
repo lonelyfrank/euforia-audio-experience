@@ -150,7 +150,8 @@ Hybrid / Free; a saved Auto setting becomes Hybrid).
 
 - `src/show/ShowDirector.ts` (pure): decides the look (fixtures, lead hue,
   effect, symmetry, brightness ceiling) at section changes, or at phrase
-  boundaries after an 8-bar hold (hybrid/free); movement per bar (sweep,
+  boundaries after a 16-bar hold (hybrid/free; it was 8 — the phrases in
+  between now vary only the colour, see below); movement per bar (sweep,
   fan); impulses on the predicted beat (pulse, chase, mirror accents).
   Returning sections reuse their kind's look. A breath (near blackout via a
   fast `dim` parameter) on the last beat before an expected drop, then a
@@ -175,3 +176,70 @@ change only at sections/phrases; the second drop and break come back with
 their looks. Preset: one scene at full brightness, no effects. Not verified:
 real music, High quality with several fixtures on this iGPU (the budget
 should keep it to one), the look on Windows/WebView2.
+
+### Completing Phase 5
+
+- **Scene envelopes on the audio clock.** Timed hits (predicted beats,
+  kicks) are logged with their audio time (`HitLog`) and handed to scenes
+  with the clock (`SceneClock`, a new optional argument of `update`).
+  Liquid's shock rings take their age from `now − hit time`
+  (`ShockRings`): they start on the hit, not on the frame that noticed a
+  rising envelope, and look the same at any frame rate (test at 30/60/144
+  fps). Particle Field's count eases exactly. The other per-frame state in
+  the scenes is phase integration (`phase += rate·dt`), which is already
+  frame-rate independent; no other edge detection on transients remains.
+- **Colour at three time scales**, within the user's palette: the look
+  picks each fixture's lead hue; each phrase between look changes leans it
+  toward its second hue (`tint`, 0–0.35, a glide); beat flashes take its
+  accent hue (in the composition, at the layer's own luminance). Preset
+  never tints.
+
+## Phase 6 — Safety, bench, measurements
+
+- **Flash guard** (`src/dynamics/FlashGuard.ts`): every light transient of
+  the rig — the halo pulse that drives the scenes' impacts, and fixture
+  strobes — passes one rate limit on its audio timestamp: flashes at least
+  1/3 s apart (≤ 3 per second, WCAG 2.3.1); one too close becomes a
+  shimmer under the 10% threshold; fixtures on the same beat (±20 ms) are
+  one flash. Settings → Reduce flashing: one per second at half strength.
+  Beats up to 180 BPM pass untouched. Not covered: light a scene makes on
+  its own from continuous features (e.g. the drop's glow), which is not a
+  transient of the rig.
+- **Bench** (`npm run bench`, also in `npm test`): grooves at 124 and 174
+  BPM → WASM analysis in 10 ms batches → rhythm gate → cue scheduler with
+  the guard → Dynamics, read at 30/60/144 fps, perfect clock, no output
+  latency.
+
+  | | 30 fps | 60 fps | 144 fps |
+  |---|---|---|---|
+  | scheduled hit − kick (median / max) | 3.0 / 3.6 ms | 2.7 / 3.8 ms | 2.7 / 3.8 ms |
+  | kick → fixture ≥ 50% (median / max), 124 BPM | 18.3 / 34.4 ms | 12.4 / 18.3 ms | 5.4 / 9.2 ms |
+  | same at 174 BPM | 21.8 / 36.8 ms | 12.6 / 20.1 ms | 7.4 / 10.8 ms |
+
+  Every kick has a hit within 10 ms (the agreed analysis-side threshold),
+  and the fixture is on by the first frame after its hit (≤ 1 frame +
+  the hit's error). Across frame rates the values agree to 6·10⁻³ on the
+  instants they share: the Dynamics layer is exact for the same events,
+  but a predicted beat is scheduled from whichever frame first sees it
+  (hit times differ by ≤ 0.8 ms). Preset step responses (1 kHz):
+
+  | type | rise 90% / fall 10% | overshoot | settle 2% |
+  |---|---|---|---|
+  | flash / hit | 0.277 / 0.139 s (fall) | – | 0.469 / 0.234 s |
+  | pulse | 0.123 s | 12.6% | 0.313 s |
+  | swing | 0.262 s | 25.4% | 1.119 s |
+  | glide / drift | 1.036 / 5.164 s | 0 | 1.551 / 7.741 s |
+  | level / sparkle / swell | 0.097 / 0.039 / 0.580 s | 0 | 0.160 / 0.062 / 0.982 s |
+- **Overlay**: followers show rise/fall, envelopes their decay (springs
+  already showed ω, ζ); the flash guard's limits and count; phrase tints.
+- **Corpus tool** (`cargo run -p spectrum-analysis --release --example
+  corpus -- <dir>`): streams annotated WAVs as live and scores beat F1
+  (±70 ms), median phase, downbeat F1 and sections within ±1 bar against
+  the agreed thresholds. No real corpus is available here. On its own
+  synthetic corpus (`--synth`: 100/124/174 BPM, intro–build–drop–break–drop,
+  16 bars each, a drumless break): beat F1 0.854, phase 5.2 ms, downbeat
+  F1 0.775 — and sections only 4/12. Two weaknesses it shows: a drumless
+  break reports no section (the grid is lost and structure counts bars on
+  the grid), and at 100 and 174 BPM the intro→build and build→drop changes
+  of these tracks are missed. Resonators on: beat F1 0.797 (worse), so they
+  stay off.
