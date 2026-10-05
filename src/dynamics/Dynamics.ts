@@ -21,6 +21,9 @@ export interface ChannelState {
   /** Springs: natural angular frequency (rad/s) and the damping ratio in effect (1 while snapped). */
   omega: number;
   zeta: number;
+  /** Followers: rise and fall time constants (s); envelopes: decay (s) in `fall`. 0 otherwise. */
+  rise: number;
+  fall: number;
 }
 
 /**
@@ -219,6 +222,8 @@ export class Dynamics {
       target: this.isSpring[channel] ? this.target[channel] : 0,
       omega: spring ? this.omega[channel] : 0,
       zeta: spring ? (snapped ? 1 : this.zeta[channel]) : 0,
+      rise: this.isFollower[channel] ? -this.step / Math.log(1 - this.rise[channel]) : 0,
+      fall: this.isFollower[channel] ? -this.step / Math.log(1 - this.fall[channel]) : this.isSpring[channel] ? 0 : this.decay[channel],
     };
   }
 

@@ -123,8 +123,8 @@ const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
 const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
 const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
 const DYNAMICS_TOP = ANALYSIS_TOP + 6 * ROW + 6;
-/** Room for 16 Dynamics channels (two per row). */
-const DYNAMICS_ROWS = 9;
+/** Room for 20 Dynamics channels (two per row). */
+const DYNAMICS_ROWS = 11;
 const SHOW_TOP = DYNAMICS_TOP + DYNAMICS_ROWS * ROW + 6;
 const HEIGHT = SHOW_TOP + 6 * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -377,20 +377,26 @@ class DebugOverlay {
       0,
       ANALYSIS_TOP + ROW * 5,
     );
-    // Dynamics: every channel with its type, ω, ζ (1 while snapped), value and velocity.
+    // Dynamics: every channel with its type and coefficients: springs ω, ζ (1 while snapped); followers rise/fall; envelopes decay.
     const dynamics = this.app.dynamics;
     ctx.fillStyle = COLORS.dim;
-    ctx.fillText(`Dynamics (${(1 / dynamics.step).toFixed(0)} Hz, audio clock ${dynamics.time.toFixed(2)} s${dynamics.dropped ? `, ${dynamics.dropped} events dropped` : ''})`, 0, DYNAMICS_TOP);
+    const guard = this.app.flashGuard;
+    ctx.fillText(
+      `Dynamics (${(1 / dynamics.step).toFixed(0)} Hz, audio clock ${dynamics.time.toFixed(2)} s${dynamics.dropped ? `, ${dynamics.dropped} events dropped` : ''}) · ` +
+        `flash guard ≥${ms(guard.limits.gap)} apart, max ${guard.limits.max}, ${guard.limited} limited`,
+      0,
+      DYNAMICS_TOP,
+    );
     for (let c = 0; c < dynamics.channelCount; c++) {
       const s = dynamics.inspect(c);
-      const params = s.omega > 0 ? ` ω${s.omega.toFixed(1)} ζ${s.zeta.toFixed(2)}` : '';
+      const params = s.omega > 0 ? ` ω${s.omega.toFixed(1)} ζ${s.zeta.toFixed(2)}` : s.rise > 0 ? ` ↑${ms(s.rise)} ↓${ms(s.fall)}` : ` τ${ms(s.fall)}`;
       ctx.fillStyle = s.value > 0.02 ? COLORS.hit : COLORS.dim;
       ctx.fillText(`${s.name.padEnd(16)}${s.value.toFixed(2).padStart(6)} ${s.type}${params}`, (c % 2) * (COLUMN + GAP), DYNAMICS_TOP + ROW * (1 + (c >> 1)));
     }
     // Show: the director's mode, budget and effect, the slots, and its last decisions with why.
     const show = this.app.show;
     ctx.fillStyle = COLORS.tempo;
-    const slots = show.slots.map((s, i) => (s.fixture ? `${i === 0 ? '★' : '·'}${s.fixture} ${s.intensity.toFixed(2)} h${s.hue}${s.mirror ? ' ⇋' : ''}` : '–')).join('  ');
+    const slots = show.slots.map((s, i) => (s.fixture ? `${i === 0 ? '★' : '·'}${s.fixture} ${s.intensity.toFixed(2)} h${s.hue}${s.tint > 0 ? `+${s.tint.toFixed(2)}` : ''}${s.mirror ? ' ⇋' : ''}` : '–')).join('  ');
     ctx.fillText(`Show ${show.mode} · budget ${show.budget.toFixed(1)} · effect ${show.activeEffect}${show.activeEffect !== show.effect ? ` (${show.effect} needs a grid)` : ''} · ${slots}`, 0, SHOW_TOP);
     ctx.fillStyle = COLORS.dim;
     show.log.slice(-5).forEach((d, i) => ctx.fillText(`${d.time.toFixed(1)} s  ${d.what}  ← ${d.why}`, 0, SHOW_TOP + ROW * (i + 1)));
