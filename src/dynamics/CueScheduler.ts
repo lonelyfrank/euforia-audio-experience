@@ -1,4 +1,5 @@
 import type { Dynamics } from './Dynamics';
+import { HitLog } from './HitLog';
 
 /** What the scheduler reads from the analysis each frame (capture-clock times). */
 export interface CueInput {
@@ -29,6 +30,8 @@ const SNAP = 0.5;
  * are on the capture clock, which is the Dynamics clock. Pure logic.
  */
 export class CueScheduler {
+  /** Every hit scheduled, for scenes that start something on a hit. */
+  readonly hits = new HitLog();
   private lastBeat = -Infinity;
   private readonly recentBeats = new Float64Array(4);
   private recent = 0;
@@ -49,6 +52,7 @@ export class CueScheduler {
         this.lastBeat = input.nextBeatTime;
         this.recentBeats[this.recent++ % this.recentBeats.length] = input.nextBeatTime;
         dynamics.impulse(channel, gridWeight, input.nextBeatTime);
+        this.hits.record(input.nextBeatTime, gridWeight);
       }
     }
     // Attacks off the grid (or with a weak grid): the fast path.
@@ -56,7 +60,9 @@ export class CueScheduler {
       const onset = onsets[i];
       if (this.lowOnly && onset.region !== 0) continue;
       if (gridWeight > 0.5 && this.nearBeat(onset.time)) continue;
-      dynamics.impulse(channel, onset.strength * (1 - 0.5 * gridWeight), onset.time);
+      const strength = onset.strength * (1 - 0.5 * gridWeight);
+      dynamics.impulse(channel, strength, onset.time);
+      this.hits.record(onset.time, strength);
     }
     for (let i = 0; i < sectionCount; i++) dynamics.snap(sections[i].time, SNAP);
   }
@@ -65,6 +71,7 @@ export class CueScheduler {
     this.lastBeat = -Infinity;
     this.recentBeats.fill(0);
     this.recent = 0;
+    this.hits.clear();
   }
 
   private nearBeat(time: number): boolean {

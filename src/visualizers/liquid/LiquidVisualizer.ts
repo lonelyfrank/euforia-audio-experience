@@ -5,9 +5,11 @@ import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { Envelope } from '../../audio/visual-response/Envelope';
 import { sampleSpectrumRange } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
-import type { PaletteColors, SceneLayout, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
+import type { PaletteColors, SceneClock, SceneLayout, Visualizer, VisualizerContext, VisualizerPreset } from '../../types/visualizer';
 import { HORIZON, SCENE_CENTER } from '../../renderer/compositeShader';
+import { HitLog } from '../../dynamics/HitLog';
 import { disposeObject } from '../shared/dispose';
+import { ShockRings } from '../shared/ShockRings';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { SignalTexture } from '../shared/SignalTexture';
 import { AIR_ROW, BASS_ROW, LEAD_ROW, VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
@@ -45,7 +47,7 @@ const WAVE_POINTS = 128;
 const SHOCKS = 4;
 /** Width of each ribbon's band of the spectrum (positions 0..1). */
 const ZONE_WIDTH = 0.3;
-/** An impact above this, rising, sends a shock ripple. */
+/** A hit this strong (× the scene's take of transients) sends a shock ripple. */
 const SHOCK_THRESHOLD = 0.5;
 const SHOCK_MIN_INTERVAL = 0.15;
 
@@ -219,12 +221,14 @@ export class LiquidVisualizer implements Visualizer {
   private readonly highlight = new Color();
   private readonly scratch = new Color();
   private readonly shocks = vec4s(SHOCKS);
-  private readonly shockAge = new Float32Array(SHOCKS).fill(99);
-  private readonly shockStrength = new Float32Array(SHOCKS);
-  private shockSlot = 0;
-  private sinceShock = 0;
+  private readonly rings = new ShockRings(SHOCKS, SHOCK_THRESHOLD, SHOCK_MIN_INTERVAL);
+  /** Without the audio clock: hits detected from the impact envelope, on the scene's own clock. */
+  private readonly localHits = new HitLog();
+  private localTime = 0;
   private lastImpact = 0;
   private lastDrop = 0;
+  /** Audio time of the drop's release ring (re-armed when the drop falls back). */
+  private releaseAt = -Infinity;
   private readonly presenceEnvelopes: Envelope[] = [];
   private readonly swellPhase = new Float32Array(MAX_RIBBONS);
   private readonly curvePhase = new Float32Array(MAX_RIBBONS);
@@ -306,7 +310,7 @@ export class LiquidVisualizer implements Visualizer {
     (this.material.uniforms.uGlintColor.value as Color).copy(highlight).lerp(this.scratch.setRGB(1, 1, 1), 0.5);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void {
     const p = this.preset.visual;
     const { weight, flow, detail, shimmer, density, music, motion, openness, trace } = response;
     const { variation: vary, drop } = music;
@@ -411,7 +415,7 @@ export class LiquidVisualizer implements Visualizer {
     this.material.uniforms.uDigital.value = this.voices.digital;
     this.updateSpectrum(frame.spectrum);
     this.updateWave(frame.waveform, dt);
-    this.updateShocks(response.impact, drop, dt);
+    this.updateShocks(response.impact, drop, dt, clock);
     this.traces.update(music.tempo, dt);
     this.material.uniforms.uTraceShift.value = this.traces.shift;
 
@@ -471,24 +475,22 @@ export class LiquidVisualizer implements Visualizer {
     this.waveTexture.write(this.wave, true);
   }
 
-  /** A rising impact sends a new ring (oldest slot reused), a drop a big one; rings expand and fade. */
-  private updateShocks(impact: number, drop: number, dt: number): void {
-    this.sinceShock += dt;
-    const hit = impact > SHOCK_THRESHOLD && this.lastImpact <= SHOCK_THRESHOLD && this.sinceShock > SHOCK_MIN_INTERVAL;
-    const release = drop > 0.2 && drop > this.lastDrop;
-    this.lastDrop = drop;
-    if (hit || release) {
-      // Mounting midway through a crossfade still sees the shared release, already travelling.
-      this.shockAge[this.shockSlot] = release ? 1 - drop : 0;
-      this.shockStrength[this.shockSlot] = release ? 1.6 : impact;
-      this.shockSlot = (this.shockSlot + 1) % SHOCKS;
-      this.sinceShock = 0;
-    }
+  /**
+   * Hits send rings (oldest reused), a drop a big one; rings expand and fade.
+   * On the audio clock the rings start at the hits' exact times; without it,
+   * a rising impact envelope is the hit.
+   */
+  private updateShocks(impact: number, drop: number, dt: number, clock?: SceneClock): void {
+    this.localTime += dt;
+    if (!clock && impact > SHOCK_THRESHOLD && this.lastImpact <= SHOCK_THRESHOLD) this.localHits.record(this.localTime, impact);
     this.lastImpact = impact;
-    for (let i = 0; i < SHOCKS; i++) {
-      this.shockAge[i] += dt;
-      this.shocks[i].set(this.shockAge[i], this.shockStrength[i] * Math.exp(-this.shockAge[i] * 2.5), 0, 0);
-    }
+    const now = clock ? clock.time : this.localTime;
+    // Mounting midway through a crossfade still sees the shared release, already travelling.
+    if (drop > 0.2 && this.lastDrop <= 0.2) this.releaseAt = now - (1 - drop);
+    if (drop < 0.1) this.releaseAt = -Infinity;
+    this.lastDrop = drop;
+    this.rings.update(now, clock ? clock.hits : this.localHits, clock ? clock.hitScale : 1, this.releaseAt);
+    for (let i = 0; i < SHOCKS; i++) this.shocks[i].set(this.rings.ages[i], this.rings.heights[i], 0, 0);
   }
 }
 

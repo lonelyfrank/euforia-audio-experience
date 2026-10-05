@@ -1,6 +1,7 @@
 import type { ModulationState, SceneDirection } from '../director/types';
 import type { Camera, Color, Scene, WebGLRenderer } from 'three';
 import type { Pass } from 'three/addons/postprocessing/Pass.js';
+import type { HitLog } from '../dynamics/HitLog';
 import type { AudioFrame, MusicState, VisualResponseFrame } from './audio';
 
 export type QualitySetting = 'auto' | 'low' | 'medium' | 'high';
@@ -78,6 +79,21 @@ export interface RigValues {
   haloPulse: number;
   /** Audio time of a section boundary reported this frame (snap), or -1. */
   snapAt: number;
+  /** Timed hits (predicted beats, kicks) on the same clock. */
+  hits: HitLog;
+}
+
+/**
+ * The audio clock as a scene sees it: things started by a hit are computed
+ * from `time − hit time`, so they start on the hit and look the same at any
+ * frame rate.
+ */
+export interface SceneClock {
+  /** Audio time (s) heard when this frame is seen. */
+  time: number;
+  hits: HitLog;
+  /** How much this scene (and the mood) takes transients: multiplies hit strengths. */
+  hitScale: number;
 }
 
 /** What the engine hands to a visualizer when it is mounted. */
@@ -107,7 +123,8 @@ export interface Visualizer {
   /** Called after init and whenever the preset (palette) changes. Must not allocate. */
   setPalette(colors: PaletteColors): void;
   /** `response` is derived from `frame` (musical roles: weight, flow, detail, impact…); both are read-only and reused. */
-  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame, modulation?: ModulationState): void;
+  /** `clock` is present while the audio clock is synchronized (timed hits). */
+  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void;
   /** Optional: called when the layout changes (reflection toggled, floating without it). Must not allocate. */
   setLayout?(layout: SceneLayout): void;
   resize(width: number, height: number): void;

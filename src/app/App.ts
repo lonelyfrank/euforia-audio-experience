@@ -53,7 +53,7 @@ export class App {
   readonly dynamics = new Dynamics();
   private readonly haloPulse = this.dynamics.channel('halo.pulse', 'flash');
   private readonly cues = new CueScheduler(this.dynamics, this.haloPulse);
-  readonly rig: RigValues = { time: 0, timed: false, haloPulse: 0, snapAt: -1 };
+  readonly rig: RigValues = { time: 0, timed: false, haloPulse: 0, snapAt: -1, hits: this.cues.hits };
   /** The show: which fixtures (scenes) play, how, with which effects (see src/show). */
   readonly show = new ShowDirector();
   private readonly budget = new GpuBudget();

@@ -236,7 +236,8 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
     this.swirlPhase += dt * (modulation?.rotation ?? flow) * 0.03 * p.swirl * moving * (vary[7] < 0.5 ? -1 : 1);
     this.drift += dt * flow * moving;
     // Energy controls emission; openness only controls spatial dispersion.
-    this.density += ((modulation ? 0.05 + 0.8 * modulation.particleEmission : 0.25 + density * 0.6) - this.density) * Math.min(dt * 2, 1);
+    // Emission is already a Dynamics follower on the audio clock; the count only eases (exactly, at any frame rate).
+    this.density += ((modulation ? 0.05 + 0.8 * modulation.particleEmission : 0.25 + density * 0.6) - this.density) * (1 - Math.exp(-dt * 2));
 
     this.traces.record(0, traceValue(frame, response, 1, sampleSpectrumRange(frame.spectrum, 0, LOW_END)));
     this.traces.update(music.tempo / (modulation ? 0.4 + 2 * modulation.persistence : 1), dt);

@@ -92,6 +92,8 @@ export class VisualDirector {
   /** Springs of the migrated parameters, on the audio clock. */
   readonly dynamics = new Dynamics();
   private readonly channels: Partial<Record<ModulationKey, number>> = {};
+  /** How much this scene and mood take transients (scales the rig's hits; 1 without a clock). */
+  impactScale = 1;
   /** Current speed tier of the followers (NORMAL, SLOW, FAST). */
   private tier = NORMAL;
 
@@ -156,7 +158,8 @@ export class VisualDirector {
       }
       if (clock && key === 'impact') {
         // Timed pulse (instant attack on the beat), scaled by how much this scene and mood take transients.
-        this.frame.impact = clamp01(clock.impact * Math.min(1, t.impact / 0.8 + 0.5));
+        this.impactScale = Math.min(1, t.impact / 0.8 + 0.5);
+        this.frame.impact = clamp01(clock.impact * this.impactScale);
         continue;
       }
       const [a, r] = TIMES[key];

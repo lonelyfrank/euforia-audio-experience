@@ -9,7 +9,7 @@ import type { Pass } from 'three/addons/postprocessing/Pass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import type { PaletteColors, QualityProfile, QualitySetting, SceneInput, SceneLayout, Visualizer, VisualizerPreset } from '../types/visualizer';
+import type { PaletteColors, QualityProfile, QualitySetting, SceneClock, SceneInput, SceneLayout, Visualizer, VisualizerPreset } from '../types/visualizer';
 import { CompositeShader, HORIZON, OPEN_CENTER, OPEN_HORIZON, SCENE_CENTER } from './compositeShader';
 import { QualityController } from './quality';
 
@@ -42,6 +42,8 @@ interface LayerSize {
 class Layer {
   /** Reused timed input of the Director. */
   private readonly clock: DirectorClock = { time: 0, impact: 0, snapAt: -1 };
+  /** Reused timed input of the scene (set while the rig is timed). */
+  private sceneClock: SceneClock | null = null;
   readonly director: VisualDirector;
   private bloom: UnrealBloomPass | null = null;
   readonly visualizer: Visualizer;
@@ -124,7 +126,14 @@ class Layer {
       this.clock.snapAt = rig.snapAt;
     }
     const modulation = this.director.update(input.response, settings, dt, rig?.timed ? this.clock : undefined);
-    this.visualizer.update(input.audio, dt, time, this.director.response!, modulation);
+    let clock: SceneClock | undefined;
+    if (rig?.timed) {
+      clock = this.sceneClock ??= { time: 0, hits: rig.hits, hitScale: 1 };
+      clock.time = rig.time;
+      clock.hits = rig.hits;
+      clock.hitScale = this.director.impactScale;
+    }
+    this.visualizer.update(input.audio, dt, time, this.director.response!, modulation, clock);
     if (this.bloom) this.bloom.strength = this.source.preset.bloom.strength * (0.25 + 1.5 * modulation.bloom);
   }
 
