@@ -10,6 +10,7 @@ import { settingsStore, type Settings } from '../stores/settingsStore';
 import type { AudioSourceId } from '../types/audio';
 import type { QualitySetting, RigValues, SceneInput } from '../types/visualizer';
 import { CueScheduler } from '../dynamics/CueScheduler';
+import { FlashGuard, REDUCED_FLASHES, STANDARD_FLASHES } from '../dynamics/FlashGuard';
 import { ShowDirector } from '../show/ShowDirector';
 import { GpuBudget } from '../show/GpuBudget';
 import type { RigMode, ShowInput, ShowSink, SlotParam } from '../show/types';
@@ -52,7 +53,9 @@ export class App {
   /** Dynamics: fixture parameters driven by timed targets and impulses (see src/dynamics). */
   readonly dynamics = new Dynamics();
   private readonly haloPulse = this.dynamics.channel('halo.pulse', 'flash');
-  private readonly cues = new CueScheduler(this.dynamics, this.haloPulse);
+  /** Photosensitivity: one rate limit on every flash of the rig (halo pulse and strobes). */
+  readonly flashGuard = new FlashGuard();
+  private readonly cues = new CueScheduler(this.dynamics, this.haloPulse, true, this.flashGuard);
   readonly rig: RigValues = { time: 0, timed: false, haloPulse: 0, snapAt: -1, hits: this.cues.hits };
   /** The show: which fixtures (scenes) play, how, with which effects (see src/show). */
   readonly show = new ShowDirector();
@@ -68,7 +71,8 @@ export class App {
   }));
   private readonly showSink: ShowSink = {
     target: (slot, param, value, at) => this.dynamics.setTarget(this.slotChannel(slot, param), value, at),
-    impulse: (slot, param, amount, at) => this.dynamics.impulse(this.slotChannel(slot, param), amount, at),
+    impulse: (slot, param, amount, at) =>
+      this.dynamics.impulse(this.slotChannel(slot, param), param === 'strobe' ? this.flashGuard.admit(at, amount) : amount, at),
     snap: (at) => this.dynamics.snap(at, 0.5),
   };
   private readonly showInput: ShowInput = {
@@ -151,6 +155,7 @@ export class App {
     if (timing.heardTime < this.dynamics.time - 1) {
       this.dynamics.restart();
       this.cues.reset();
+      this.flashGuard.reset();
     }
     this.cues.update(features.frame, timing.gridWeight, onsets.items, onsets.count, sections.items, sections.count);
     this.directShow(dt);
@@ -483,6 +488,7 @@ export class App {
       beatResponse: s.beatResponse,
     });
     this.audio.setDelay(s.audioDelay / 1000);
+    this.flashGuard.limits = s.reduceFlashing ? REDUCED_FLASHES : STANDARD_FLASHES;
     this.stage.dataset.track = s.trackInfo;
     this.stage.dataset.cursor = s.hideCursor ? 'hide' : 'show';
 

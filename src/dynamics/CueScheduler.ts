@@ -1,4 +1,5 @@
 import type { Dynamics } from './Dynamics';
+import type { FlashGuard } from './FlashGuard';
 import { HitLog } from './HitLog';
 
 /** What the scheduler reads from the analysis each frame (capture-clock times). */
@@ -41,6 +42,8 @@ export class CueScheduler {
     private readonly channel: number,
     /** Only attacks in the low region (kicks) take the fast path; hats would make it flicker. */
     private readonly lowOnly = true,
+    /** Rate limit on the flashes (photosensitivity), shared with the rest of the rig. */
+    private readonly guard?: FlashGuard,
   ) {}
 
   update(input: CueInput, gridWeight: number, onsets: ArrayLike<OnsetCue>, onsetCount: number, sections: ArrayLike<SectionCue>, sectionCount: number): void {
@@ -51,7 +54,8 @@ export class CueScheduler {
       if (input.nextBeatTime > this.lastBeat + period / 2) {
         this.lastBeat = input.nextBeatTime;
         this.recentBeats[this.recent++ % this.recentBeats.length] = input.nextBeatTime;
-        dynamics.impulse(channel, gridWeight, input.nextBeatTime);
+        dynamics.impulse(channel, this.guard ? this.guard.admit(input.nextBeatTime, gridWeight) : gridWeight, input.nextBeatTime);
+        // Hits keep their strength: what they start (rings, motion) is not a flash.
         this.hits.record(input.nextBeatTime, gridWeight);
       }
     }
@@ -61,7 +65,7 @@ export class CueScheduler {
       if (this.lowOnly && onset.region !== 0) continue;
       if (gridWeight > 0.5 && this.nearBeat(onset.time)) continue;
       const strength = onset.strength * (1 - 0.5 * gridWeight);
-      dynamics.impulse(channel, strength, onset.time);
+      dynamics.impulse(channel, this.guard ? this.guard.admit(onset.time, strength) : strength, onset.time);
       this.hits.record(onset.time, strength);
     }
     for (let i = 0; i < sectionCount; i++) dynamics.snap(sections[i].time, SNAP);

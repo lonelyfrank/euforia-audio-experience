@@ -31,6 +31,8 @@ export interface Settings extends DirectionSettings {
   audioDelay: number;
   /** Reflective water floor below the horizon; off = the scene uses the whole window. */
   reflection: boolean;
+  /** Photosensitivity: at most one flash a second, at half strength (always at most three). */
+  reduceFlashing: boolean;
   /**
    * How freely the show is directed: preset (the chosen scene as designed),
    * hybrid (the chosen scene with variations at phrase boundaries and an
@@ -56,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideCursor: true,
   audioDelay: 0,
   reflection: true,
+  reduceFlashing: false,
   rigMode: 'preset',
 };
 

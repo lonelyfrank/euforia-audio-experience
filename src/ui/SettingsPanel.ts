@@ -3,7 +3,7 @@ import { h, svg } from './dom';
 import { icon } from './icons';
 
 type NumberKey = 'sensitivity' | 'smoothing' | 'audioDelay' | 'moodIntensity';
-type ToggleKey = 'beatResponse' | 'hideCursor' | 'reflection';
+type ToggleKey = 'beatResponse' | 'hideCursor' | 'reflection' | 'reduceFlashing';
 
 const VERSION = `Halo ${__APP_VERSION__}`;
 
@@ -43,6 +43,7 @@ export class SettingsPanel {
       ),
       this.row('Hide cursor when idle', this.toggle('hideCursor', 'Hide cursor when idle')),
       this.row('Water reflection', this.toggle('reflection', 'Water reflection')),
+      this.row('Reduce flashing', this.toggle('reduceFlashing', 'Reduce flashing')),
       this.delayRow(),
       this.row('Sync', h('div', { class: 'halo-seg' }, h('button', { type: 'button', textContent: 'Calibrate…', onclick: () => onCalibrate() }))),
       h('div', { class: 'halo-panel__foot' }, h('span', {}, 'Esc to close'), h('span', {}, VERSION)),
