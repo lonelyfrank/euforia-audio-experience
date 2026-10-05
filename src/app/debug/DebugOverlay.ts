@@ -139,7 +139,7 @@ const STATE_COLORS: Record<MusicalState, string> = {
 const LOW_END = hzToPosition(250);
 const MID_END = hzToPosition(2000);
 
-export function installDebugOverlay(app: App): void {
+export function installDebugOverlay(app: App): () => void {
   let overlay: DebugOverlay | null = null;
   const toggle = () => {
     if (overlay) {
@@ -149,10 +149,15 @@ export function installDebugOverlay(app: App): void {
       overlay = new DebugOverlay(app);
     }
   };
-  window.addEventListener('keydown', (event) => {
+  const onKey = (event: KeyboardEvent) => {
     if (event.code === 'KeyD' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) toggle();
-  });
+  };
+  window.addEventListener('keydown', onKey);
   if (new URLSearchParams(location.search).has('debug')) toggle();
+  return () => {
+    window.removeEventListener('keydown', onKey);
+    overlay?.dispose();
+  };
 }
 
 class DebugOverlay {

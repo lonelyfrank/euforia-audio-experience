@@ -56,6 +56,38 @@ function run(mode: RigMode, budget = 3, gridWeight = 0.9) {
 }
 
 describe('ShowDirector', () => {
+  it('forgets future beats when the capture clock restarts', () => {
+    const { director } = run('free');
+    const sink: ShowSink = { target: () => {}, impulse: () => {}, snap: () => {} };
+    director.reset();
+    const fresh = new ShowDirector();
+    fresh.setBudget(director.budget);
+    const calls = (d: ShowDirector) => {
+      const out: number[] = [];
+      for (const input of inputs().slice(0, 600)) d.update(input, { mode: 'free', scene: 'galaxy' },
+        { ...sink, impulse: (_slot, _param, _value, at) => out.push(at) });
+      return out;
+    };
+    expect(calls(director)).toEqual(calls(fresh));
+    expect(director.log).toEqual(fresh.log);
+  });
+
+  it('releases supports as soon as the budget drops and also constrains returning looks', () => {
+    const director = new ShowDirector();
+    const sink: ShowSink = { target: () => {}, impulse: () => {}, snap: () => {} };
+    const frames = inputs();
+    const drop = frames.find((f) => f.section === 2)!;
+    director.setBudget(3);
+    director.update(drop, { mode: 'free', scene: 'galaxy' }, sink);
+    expect(director.slots.filter((s) => s.fixture)).toHaveLength(3);
+    director.setBudget(1);
+    director.update({ ...drop, time: drop.time + 0.1 }, { mode: 'free', scene: 'galaxy' }, sink);
+    expect(director.slots.filter((s) => s.fixture)).toHaveLength(1);
+    director.update(frames.find((f) => f.section === 3)!, { mode: 'free', scene: 'galaxy' }, sink);
+    director.update(frames.find((f) => f.sectionId === 4)!, { mode: 'free', scene: 'galaxy' }, sink);
+    expect(director.slots.filter((s) => s.fixture)).toHaveLength(1);
+  });
+
   it('makes the same decisions for the same input', () => {
     const a = run('free');
     const b = run('free');

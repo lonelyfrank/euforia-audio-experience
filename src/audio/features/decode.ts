@@ -32,7 +32,10 @@ function read<F extends Record<string, readonly [number, number]>>(fields: F, ta
   for (const name in fields) {
     const [offset, length] = fields[name];
     if (length === 1) out[name] = data[at + offset];
-    else (out[name] as Float64Array).set(data.subarray(at + offset, at + offset + length));
+    else {
+      const values = out[name] as Float64Array;
+      for (let i = 0; i < length; i++) values[i] = data[at + offset + i];
+    }
   }
 }
 
@@ -82,9 +85,14 @@ export class AnalysisDecoder {
 
   /** Decodes `length` values of `data` (whole records). */
   decode(data: Float64Array, length = data.length): void {
+    length = Math.min(length, data.length);
     let at = 0;
     while (at < length) {
       const tag = data[at];
+      // Ignore truncated or unknown records before touching the reusable state.
+      const size = tag === TAG.frame ? RECORD.frame : tag === TAG.onset ? RECORD.onset :
+        tag === TAG.beat ? RECORD.beat : tag === TAG.section ? RECORD.section : tag === TAG.clock ? RECORD.clock : 0;
+      if (size === 0 || at + size > length) return;
       if (tag === TAG.frame) {
         read(FRAME_FIELDS, this.frame, data, at);
         this.frames++;

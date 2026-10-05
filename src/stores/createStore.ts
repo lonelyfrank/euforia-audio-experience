@@ -11,8 +11,10 @@ export function createStore<T extends object>(initial: T, onChange?: (state: T) 
   return {
     get: () => state,
     set(patch) {
+      const changes = typeof patch === 'function' ? patch(state) : patch;
+      if (!(Object.keys(changes) as (keyof T)[]).some((key) => !Object.is(state[key], changes[key]))) return;
       const previous = state;
-      state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
+      state = { ...state, ...changes };
       onChange?.(state);
       for (const listener of listeners) listener(state, previous);
     },

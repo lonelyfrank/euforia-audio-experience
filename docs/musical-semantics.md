@@ -1,5 +1,10 @@
 # Semantica musicale e grammatica delle scene
 
+> Documento di una fase precedente: misure e scelte sotto riportate appartengono alla data della verifica.
+> Per la pipeline attuale (Rust/WASM, Timing, ShowDirector, Rig e moduli estratti) leggere
+> [README](../README.md) e [scheda tecnica](technical-overview.md).
+
+
 ## Audit della pipeline preesistente
 
 La cattura PCM (nativa, browser o sintetica) alimenta un solo `AudioAnalyzer`; `VisualResponse` e il suo `MusicContext` interpretano il risultato. Le scene ricevono entrambi. Nessuna FFT nelle scene, nessuna soglia musicale nei preset.

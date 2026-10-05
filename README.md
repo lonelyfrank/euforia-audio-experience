@@ -5,7 +5,7 @@ Visualizzatore musicale desktop in tempo reale, ispirato ai visualizer di Window
 L'app **non dipende da nessun player**: cattura l'audio che il computer sta riproducendo (Spotify, YouTube, VLC, giochi…) e lo trasforma in una scena a tutto schermo.
 
 ```
-SYSTEM AUDIO → AUDIO CAPTURE → AUDIO ANALYSIS → MUSIC INTERPRETER → VISUAL DIRECTOR → REAL-TIME VISUALIZER
+SYSTEM AUDIO → CAPTURE → ANALYSIS + TIMING → SHOW / VISUAL DIRECTOR → GPU COMPOSITION
 ```
 
 > Il visualizer è l'interfaccia. Oltre alla scena si vedono solo le informazioni sulla sorgente, a sinistra, e un pulsante circolare in basso al centro. Tutto il resto compare quando serve e si richiude da solo.
@@ -18,17 +18,18 @@ La UI implementa il **design system Halo** (token, componenti, le 8 fasi del moc
 
 - Cattura dell'audio di sistema su **Windows** (WASAPI loopback) e **Linux** (monitor PipeWire/PulseAudio); microfono su tutte le piattaforme
 - Solo audio dal vivo: niente file né tracce precaricate; in sviluppo c'è un segnale di test sintetico
-- Analisi centralizzata: FFT, 5 bande, energia spettrale, waveform, onset, beat detection, stima BPM
-- 8 mood e 5 modalità Experience componibili con scena e palette; direzione Auto opzionale con isteresi
+- Due percorsi di analisi condivisi dalle scene: TypeScript per spettro/waveform/voci, Rust nativo o WASM per feature, onset multi-banda, beat, armonia e struttura
+- 8 mood e 5 modalità Experience; regia **Preset / Hybrid / Free**, fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
 - 6 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**
 - Composizione Halo: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
 - Qualità Auto / Low / Medium / High, fullscreen, auto-hide di controlli e cursore
-- Impostazioni persistenti, riconnessione automatica se il dispositivo si scollega
+- Impostazioni persistenti validate al caricamento, riconnessione automatica se il dispositivo si scollega
+- Compensazione audio da −100 a 400 ms, calibrazione guidata, riflesso disattivabile e riduzione dei flash
 
 ## Interfaccia
 
-Tutta la UI dipende da tre valori: quale menu è aperto (`root`, `scene`, `audio`, `presets`, `direction`, `mood`, `experience`, `quality` oppure nessuno), se il pannello Settings è aperto e se l'app è in idle.
+Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `presets`, `direction`, `mood`, `experience`, `rig`, `quality` oppure nessuno), se il pannello Settings o la calibrazione è aperto e se l'app è in idle.
 
 | # | Fase | Cosa si vede |
 |---|---|---|
@@ -37,7 +38,7 @@ Tutta la UI dipende da tre valori: quale menu è aperto (`root`, `scene`, `audio
 | 03 | Scene | Anello delle 6 scene |
 | 04 | Audio | Arco con System Audio e Microphone |
 | 05 | Presets | Arco con le 4 palette |
-| 06 | Direction | Mood, Experience, Auto e Quality (Auto / Low / Medium / High) |
+| 06 | Direction | Mood, Experience, Rig e Quality (Auto / Low / Medium / High) |
 | 07 | Settings | Pannello sopra il core |
 | 08 | Auto-hide | Solo la scena; now playing attenuato, niente cursore |
 
@@ -45,9 +46,9 @@ Tutta la UI dipende da tre valori: quale menu è aperto (`root`, `scene`, `audio
 - **Nei sub-ring** la scelta si applica subito e l'anello resta aperto, così si possono confrontare le opzioni.
 - La ruota si chiude con un secondo click sul core, un click fuori, `Esc` o dopo 6 s di inattività.
 - L'auto-hide scatta dopo 3, 5 o 10 s (impostabile); qualsiasi movimento del mouse o tasto riporta la UI.
-- **Direction**: Mood (Euphoria, Dream, Dark, Pulse, Chaos, Ethereal, Melancholy, Focus), Experience (Ambient, Immersive, Reactive, Cinematic, Minimal), Auto. Una scelta manuale disattiva Auto.
-- **Settings**: Mood intensity (0–1), Sensitivity, Smoothing, Beat response, Track info (Always / Dim / Hidden), Hide controls after, Hide cursor when idle, **Audio delay**.
-- **Audio delay** (0–400 ms) ritarda l'analisi per compensare la latenza dell'uscita: l'audio di sistema viene catturato prima di arrivare alle cuffie, e con cuffie Bluetooth le immagini anticiperebbero il suono di 150–250 ms. Si regola a orecchio finché gli impulsi coincidono con la cassa.
+- **Direction**: Mood (Euphoria, Dream, Dark, Pulse, Chaos, Ethereal, Melancholy, Focus), Experience (Ambient, Immersive, Reactive, Cinematic, Minimal), Rig (Preset, Hybrid, Free). Preset mantiene la scena scelta; Hybrid aggiunge variazioni e supporti; Free sceglie anche le scene. Una scelta manuale di Mood/Experience disattiva il mood automatico mantenendo la modalità Rig.
+- **Settings**: Mood intensity (0–1), Sensitivity, Smoothing, Beat response, Track info (Always / Dim / Hidden), Hide controls after, Hide cursor when idle, Water reflection, Reduce flashing, **Audio delay** e Sync calibration.
+- **Audio delay** (−100–400 ms) ritarda l'analisi per compensare la latenza dell'uscita: l'audio di sistema viene catturato prima di arrivare alle cuffie, e con cuffie Bluetooth le immagini anticiperebbero il suono di 150–250 ms. Si regola a orecchio o con Settings → Calibrate. I valori negativi anticipano i cue per compensare un display lento; il PCM può essere solo ritardato.
 
 ### Tastiera e accessibilità
 
@@ -63,41 +64,34 @@ Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruot
 
 ## Architettura
 
+```text
+AudioCaptureProvider
+  ├─ PCM mono → AudioAnalyzer (TS, una volta per frame)
+  │             → AudioFrame → MusicInterpreter → MusicState
+  │                                              ↓
+  └─ feature/eventi Rust → AnalysisDecoder → ClockSync / Timing
+       nativo: worker cpal                 ↓
+       browser: WASM sul main thread       RigController
+                                           ├─ CueScheduler / FlashGuard
+                                           ├─ ShowDirector / GpuBudget
+                                           └─ Dynamics → slot + RigValues
+                                                        ↓
+RenderEngine → Layer (VisualDirector + scena + post-processing)
+             → fino a 4 layer composti / 3 slot con crossfade
+             → cielo, riflesso opzionale, orizzonte → Canvas
 ```
- Audio Source            (speaker in loopback, microfono, generatore di test)
-      │
-      ▼
- AudioCaptureProvider    NativeAudioCapture · BrowserMicrophoneCapture · FakeAudioProvider
-      │  campioni PCM mono (pull, una volta per frame)
-      ▼
- AudioAnalyzer           FFT 2048 · bande · AGC · smoothing · BeatDetector
-      │
-      ▼
- AudioFrame              misure normalizzate + RMS/Hz/dB, array riusati
-      │
-      ▼
- MusicInterpreter        ruoli + MusicContext + memoria della dinamica
-      │ MusicState
-      ▼
- VisualDirector          mood + Experience + capacità/matrice della scena
-      │ ModulationState
-      ▼
- Visualizer registry     auto-discovery + preset + palette
-      │
-      ▼
- RenderEngine            un layer per scena (post-processing proprio) → crossfade
-      │                  → composizione Halo (cielo, pavimento riflettente, orizzonte)
-      ▼
- Canvas                  sotto la UI Halo (now playing, dock, pannello)
-```
+
+La [scheda tecnica per gli agenti](docs/technical-overview.md) descrive responsabilità,
+contratti, verifiche dell'audit e miglioramenti prioritari. Le misure storiche del
+motore temporale sono in [docs/experience-engine.md](docs/experience-engine.md).
 
 Principi:
 
 - **I visualizer non conoscono la sorgente audio**: ricevono `AudioFrame`, ruoli diretti, `ModulationState` e i colori della palette.
-- **La sorgente audio non conosce i visualizer**: un provider espone solo `readSamples()`.
-- **Un solo analizzatore**: nessun visualizer fa FFT per conto suo.
+- **La sorgente audio non conosce i visualizer**: un provider espone PCM tramite `readSamples()` e, quando disponibili, `drain()` o `readFeatures()` per le feature musicali.
+- **Analisi centralizzata per percorso**: nessun visualizer fa FFT per conto suo. TS e Rust/WASM oggi calcolano alcune misure sovrapposte: la loro unificazione richiede una migrazione verificata, non la rimozione di uno dei due.
 - **Il render engine non conosce l'audio engine** né la UI: riceve una callback `frameSource(dt)`.
-- **Il loop di rendering non alloca**: buffer e oggetti Three.js vengono riusati tra i frame.
+- **Riutilizzo nel percorso continuo**: buffer, eventi e oggetti Three.js persistono fra frame. Mount, cambi di look, IPC/worklet e debug possono allocare; non è una garanzia di zero allocazioni sull’intera pipeline.
 
 ### Stack
 
@@ -105,23 +99,25 @@ Principi:
 |---|---|---|
 | Desktop shell | **Tauri 2** | Binario leggero, WebView di sistema, backend Rust per il codice nativo |
 | Cattura audio | **Rust + cpal 0.18** | WASAPI loopback su Windows senza workaround; stessa API per il microfono su tutte le piattaforme |
-| Trasporto | Tauri `Channel` con payload binario | PCM `f32` little-endian, senza serializzazione JSON |
+| Trasporto | Due Tauri `Channel` binari | PCM mono `f32` + record feature/eventi/clock `f64`, little-endian |
+| Feature musicali | Crate Rust `spectrum-analysis`, anche in WASM | Hop 256 campioni, FFT 2048, griglia ritmica, armonia, sezioni |
+| Temporizzazione | `ClockSync`, `Timing`, `Dynamics` in TypeScript | Cue sul clock audio percepito, molle/follower a 240 Hz e inviluppi analitici |
 | Frontend | **TypeScript + Vite**, DOM vanilla | UI piccola: nessun framework necessario |
 | Rendering | **Three.js** (WebGL2) + shader GLSL | Particelle, tunnel, galassia e onde calcolati sulla GPU; bloom e composizione in post-processing |
 | Font | Geist (via `@fontsource-variable/geist`) | Incluso nel bundle: funziona offline e rispetta la CSP |
 
 ### Composizione del frame
 
-1. Ogni scena disegna nel proprio render target, con il suo bloom.
-2. Durante un cambio scena i due target vengono miscelati linearmente per 0,9 s.
+1. Ogni `Layer` possiede scena, `VisualDirector`, render target e pass; bloom e densità dipendono dalla qualità.
+2. Ciascuno dei tre slot conserva il layer corrente e quello uscente per un crossfade di 0,9 s. Il compositore legge al massimo quattro layer, nell’ordine degli slot (corrente, uscente); i layer oltre il limite o a peso zero aggiornano lo stato CPU ma non vengono renderizzati. Gli slot ricevono peso, scala, offset, specchio, flash e tinta dalla regia.
 3. Il pass finale (`renderer/compositeShader.ts`) aggiunge fondo, alone e stelle sopra l'orizzonte (al 47% dell'altezza), riflette il cielo sotto l'orizzonte con increspature sinusoidali, scurisce verso il basso e disegna la linea d'orizzonte.
-4. La camera di ogni scena viene decentrata con `setViewOffset`, così il centro della scena cade al 52% × 38% della finestra.
+4. La camera viene decentrata con `setViewOffset`: con riflesso il centro è al 52% × 38%; senza riflesso la scena occupa la finestra e fluttua lentamente. Il cambio di layout è interpolato.
 
 ## Avvio
 
 ### Requisiti
 
-- Node.js ≥ 20, npm
+- Node.js 20.19+ oppure 22.12+ (vincolo della versione Vite installata), npm
 - Rust stable (≥ 1.85)
 - Dipendenze di sistema di Tauri: <https://v2.tauri.app/start/prerequisites/>
   - **Windows**: Microsoft C++ Build Tools, WebView2 (già presente su Windows 10/11)
@@ -137,7 +133,9 @@ npm run desktop:dev      # app desktop (Tauri) con hot reload
 npm run desktop:build    # installer / bundle di produzione
 
 npm run dev              # solo frontend nel browser (segnale di test, microfono)
-npm run check            # typecheck + lint + test + build del frontend
+npm run check            # typecheck + lint + test (bench incluso) + build frontend
+cargo test -p spectrum-analysis -p spectrum-analysis-wasm --offline
+npm run wasm             # ricompila il WASM; serve il target wasm32-unknown-unknown
 ```
 
 In modalità browser (`npm run dev`) "System Audio" non è disponibile: la sorgente di default è il segnale di test sintetico. Il microfono passa da `getUserMedia`. È utile per sviluppare le scene senza compilare la parte Rust.
@@ -155,15 +153,21 @@ Elenca i dispositivi e stampa per 5 secondi campioni/s e picco del segnale cattu
 
 ```
 src/
-  app/              App (controller e macchina a stati della UI), scorciatoie da tastiera
+  app/              App (UI/lifecycle), RigController (collegamento regia), menus, shortcuts
+    calibration/    click di prova e regolazione della sincronizzazione
+    debug/          diagnostica caricata solo in sviluppo
   audio/
     AudioEngine.ts  provider attivo + analizzatore
     capture/        AudioCaptureProvider e implementazioni
     analysis/       AudioAnalyzer, FFT, BeatDetector, smoothing/AGC, misure spettrali
+    features/       decoder binario, layout generato, loader e binario WASM
     interpretation/ MusicInterpreter (entry point), DynamicsMemory
     visual-response/ ruoli, presenza, memoria sezioni e voci; alias VisualResponse compatibile
   director/         mood, Experience, matrice, VisualDirector, AutoDirection
-  renderer/         RenderEngine (layer, crossfade, loop), composizione Halo, qualità
+  timing/           clock capture→host, cue percepiti, gate del ritmo, calibrazione
+  dynamics/         molle/follower/inviluppi, scheduler, cronologia hit, FlashGuard
+  show/             scelta fixture/effetti, budget GPU, affinità e seed deterministici
+  renderer/         RenderEngine (slot, crossfade, loop), Layer, composizione Halo, qualità
   visualizers/
     registry.ts     auto-discovery delle scene
     palettes.ts     i 4 preset di colore
@@ -175,10 +179,12 @@ src/
   platform/         differenze desktop/browser (fullscreen, disponibilità delle sorgenti)
   types/            AudioFrame, Visualizer, preset, qualità
 native/
+  analysis/         DSP senza I/O: FFT, loudness, ritmo, armonia, struttura, protocollo wire
+  analysis-wasm/    ABI C sulla memoria WASM; stesso DSP del percorso desktop
   audio-capture/    crate Rust: API di cattura platform-agnostic
     src/platform.rs selezione dei dispositivi per piattaforma (loopback su Windows/macOS, monitor su Linux)
-    src/capture.rs  thread di cattura, downmix, consegna a chunk
-src-tauri/          shell desktop: comandi Tauri, streaming verso il WebView
+    src/capture.rs  callback cpal → coda limitata → worker con batch interleaved
+src-tauri/          comandi Tauri, analisi sul worker, downmix e due stream binari
 public/
 ```
 
@@ -190,7 +196,9 @@ Nota: la proposta iniziale prevedeva due crate separati, `native/windows-audio` 
 
 ## AudioFrame
 
-Prodotto una volta per frame da `AudioAnalyzer` (`src/types/audio.ts`):
+Contratto grafico TS, prodotto una volta per frame da `AudioAnalyzer` (`src/types/audio.ts`). È distinto da `AnalysisFrame`, il contratto feature Rust decodificato in `audio/features/decode.ts`: quest’ultimo include clock, beat predetti, otto bande, armonia, stereo e sezioni. Non scambiare i due clock o i rispettivi campi BPM.
+
+Campi principali di `AudioFrame`:
 
 | Campo | Range | Descrizione |
 |---|---|---|
@@ -295,7 +303,9 @@ Audit precedente, costanti temporali, matrice delle scene, segnali deterministic
    });
    ```
 
-Non serve registrarla altrove: `registry.ts` trova automaticamente ogni `visualizers/*/index.ts` e la scena compare nell'anello Scene. L'anello principale resta a sei elementi; Mood usa otto posizioni. Verificare spaziatura e leggibilità quando si aggiungono altre voci.
+Per comparire nel menu non serve registrarla altrove: `registry.ts` trova automaticamente ogni `visualizers/*/index.ts` e la scena compare nell'anello Scene. L'anello principale resta a sei elementi; Mood usa otto posizioni. Verificare spaziatura e leggibilità quando si aggiungono altre voci.
+
+Per partecipare alla scelta automatica Hybrid/Free aggiungere anche costo e affinità in `src/show/fixtures.ts`. Lo shader può stare in un modulo separato (esempio: `liquid/shaders.ts`).
 
 Il contratto completo è in `src/types/visualizer.ts`:
 
@@ -305,7 +315,7 @@ interface Visualizer {
   readonly camera: Camera;
   init(context: VisualizerContext): void;
   setPalette(colors: PaletteColors): void;
-  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame, modulation?: ModulationState): void;
+  update(frame: AudioFrame, deltaTime: number, time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void;
   resize(width: number, height: number): void;
   dispose(): void;
 }
@@ -341,7 +351,7 @@ interface Visualizer {
 - **Dispositivo audio**: la UI Halo non prevede la scelta del dispositivo, quindi si usa sempre quello predefinito di sistema. Quando il predefinito cambia, cpal lo segue; se la cattura cade, l'app ritenta 5 volte.
 - **Palette / Mood / Experience** sono indipendenti. I profili iniziali richiedono ulteriore taratura percettiva su registrazioni reali; Auto non classifica generi o struttura completa dei brani.
 - **Fullscreen**: usa la finestra corrente; non c'è ancora la scelta del monitor.
-- Il beat tracking si basa sulla cassa: con musica senza percussioni o molto sincopata il tempo può non agganciarsi (restano comunque livelli e onset). La latenza dell'uscita non viene rilevata automaticamente: va impostata con *Audio delay*.
+- Il tracker TS delle scene resta basato sulla cassa; la regia usa gli onset multi-banda Rust con confidence e fallback. Musica senza ritmo affidabile o molto sincopata resta un limite. La calibrazione suggerisce un ritardo, ma non misura end-to-end il display e ogni uscita: verificare *Audio delay* a orecchio.
 - La qualità Auto misura solo il frame rate, non il tempo GPU.
 - Test automatici su analisi, presenza, semantica temporale e grammatica delle scene; la cattura reale WASAPI richiede ancora una verifica su Windows.
 
@@ -350,5 +360,6 @@ interface Visualizer {
 - Metadati del brano (GSMTC su Windows, MPRIS su Linux) e stato "nessun brano"
 - Su Linux, seguire automaticamente il cambio di uscita predefinita; verifica su macOS
 - Preset specifici per scena e caricamento di preset esterni
-- Beat tracking multi-banda (rullante, hi-hat) e stima automatica della latenza dell'uscita
+- Consolidare gradualmente TS e Rust/WASM senza perdere waveform, spettro, voci e fallback; misurare cattura→display su hardware reale
 - Estendere i test alla macchina a stati della UI e ai dispositivi audio reali
+- Profilare CPU/GPU e ripresa dopo tab nascosta; backlog e criteri di verifica nella [scheda tecnica](docs/technical-overview.md)

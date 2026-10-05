@@ -37,6 +37,11 @@ export class NowPlaying {
   private track: Track = { title: '', artist: '', source: '', live: true, duration: 0 };
   private pos = 0;
   private shownSecond = -1;
+  private width = 248;
+  private height = 24;
+  private readonly resizeObserver: ResizeObserver;
+  private gradient: CanvasGradient | null = null;
+  private gradientSplit = -1;
 
   constructor() {
     this.element = h(
@@ -49,10 +54,20 @@ export class NowPlaying {
       h('div', { class: 'halo-np__source' }, h('span', { class: 'halo-np__glyph' }, svg(icon('source'))), this.source),
     );
     this.context = this.wave.getContext('2d')!;
+    this.resizeObserver = new ResizeObserver(([entry]) => {
+      this.width = entry.contentRect.width || 248;
+      this.height = entry.contentRect.height || 24;
+      this.gradient = null;
+    });
+    this.resizeObserver.observe(this.wave);
     for (let i = 0; i < BARS; i++) {
       const u = i / BARS;
       this.envelope[i] = 0.06 + 0.1 * Math.abs(Math.sin(u * 23.1) * Math.sin(u * 7.3 + 1)) + 0.05 * Math.sin(u * 51) ** 2;
     }
+  }
+
+  dispose(): void {
+    this.resizeObserver.disconnect();
   }
 
   set(track: Track): void {
@@ -79,11 +94,12 @@ export class NowPlaying {
   draw(level: number, now: number): void {
     const { context: c, wave } = this;
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    const w = wave.clientWidth || 248;
-    const hgt = wave.clientHeight || 24;
-    if (wave.width !== Math.round(w * ratio)) {
+    const w = this.width;
+    const hgt = this.height;
+    if (wave.width !== Math.round(w * ratio) || wave.height !== Math.round(hgt * ratio)) {
       wave.width = Math.round(w * ratio);
       wave.height = Math.round(hgt * ratio);
+      this.gradient = null;
     }
     c.setTransform(ratio, 0, 0, ratio, 0, 0);
     c.clearRect(0, 0, w, hgt);
@@ -114,12 +130,15 @@ export class NowPlaying {
 
     // Played part in lilac at 78%, the rest white at 16%.
     const split = Math.min(Math.max(live ? 1 : progress, 0.001), 0.999);
-    const gradient = c.createLinearGradient(0, 0, w, 0);
-    gradient.addColorStop(0, 'rgba(206,192,255,.78)');
-    gradient.addColorStop(split, 'rgba(206,192,255,.78)');
-    gradient.addColorStop(Math.min(1, split + 0.001), 'rgba(255,255,255,.16)');
-    gradient.addColorStop(1, 'rgba(255,255,255,.16)');
-    c.fillStyle = gradient;
+    if (!this.gradient || split !== this.gradientSplit) {
+      this.gradientSplit = split;
+      this.gradient = c.createLinearGradient(0, 0, w, 0);
+      this.gradient.addColorStop(0, 'rgba(206,192,255,.78)');
+      this.gradient.addColorStop(split, 'rgba(206,192,255,.78)');
+      this.gradient.addColorStop(Math.min(1, split + 0.001), 'rgba(255,255,255,.16)');
+      this.gradient.addColorStop(1, 'rgba(255,255,255,.16)');
+    }
+    c.fillStyle = this.gradient;
     c.fill();
   }
 }

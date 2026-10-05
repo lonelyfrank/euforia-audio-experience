@@ -1,5 +1,10 @@
 # Music Intelligence e Visual Director
 
+> Documento di una fase precedente: misure e scelte sotto riportate appartengono alla data della verifica.
+> Per la pipeline attuale (Rust/WASM, Timing, ShowDirector, Rig e moduli estratti) leggere
+> [README](../README.md) e [scheda tecnica](technical-overview.md).
+
+
 ## Audit e scelte
 
 La cattura resta in `audio/capture` (provider microfono browser/sintetico e Channel PCM Tauri; i file sono stati rimossi: solo audio dal vivo), `native/audio-capture` (cpal, selezione monitor/loopback) e `src-tauri/src/audio.rs`. `AudioEngine` legge una sola finestra PCM per frame: ultimi 2048 campioni per FFT, 4096 per voci/YIN. `AudioAnalyzer` e `BeatDetector` restano gli unici proprietari dell'analisi.

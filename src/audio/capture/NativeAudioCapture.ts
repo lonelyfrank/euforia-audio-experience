@@ -30,7 +30,7 @@ export class NativeAudioCapture extends BaseCaptureProvider {
   private readonly ring = new SampleRingBuffer(48000);
   private readonly records = new Float64Array(FEATURE_BUFFER);
   private recordCount = 0;
-  /** Clock observations of the staged batches: arrival (s, host), capture clock (s), age (s). */
+  /** Clock observations: arrival (s, host), sample index, age (s). Rate is known after start resolves. */
   private readonly clocks = new Float64Array(3 * 64);
   private clockCount = 0;
   private unlistenError: UnlistenFn | null = null;
@@ -80,7 +80,7 @@ export class NativeAudioCapture extends BaseCaptureProvider {
   }
 
   readFeatures(decoder: AnalysisDecoder, clock: ClockSync): void {
-    for (let i = 0; i < this.clockCount; i++) clock.observe(this.clocks[3 * i], this.clocks[3 * i + 1], this.clocks[3 * i + 2]);
+    for (let i = 0; i < this.clockCount; i++) clock.observe(this.clocks[3 * i], this.clocks[3 * i + 1] / this.sampleRate, this.clocks[3 * i + 2]);
     this.clockCount = 0;
     if (this.recordCount === 0) return;
     decoder.decode(this.records, this.recordCount);
@@ -94,7 +94,7 @@ export class NativeAudioCapture extends BaseCaptureProvider {
     if (at >= 0 && batch[at] === TAG.clock && this.clockCount < this.clocks.length / 3) {
       const c = 3 * this.clockCount++;
       this.clocks[c] = arrival;
-      this.clocks[c + 1] = batch[at + 1] / this.sampleRate;
+      this.clocks[c + 1] = batch[at + 1];
       this.clocks[c + 2] = batch[at + 2];
     }
     if (batch.length > this.records.length) return;

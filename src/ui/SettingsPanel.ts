@@ -14,6 +14,7 @@ const VERSION = `Halo ${__APP_VERSION__}`;
 export class SettingsPanel {
   readonly element: HTMLElement;
   private readonly refreshers: Array<(s: Settings) => void> = [];
+  private readonly unsubscribe: () => void;
 
   constructor(onClose: () => void, onCalibrate: () => void) {
     const close = h('button', { type: 'button', class: 'halo-panel__x', attrs: { 'aria-label': 'Close settings' }, onclick: () => onClose() }, svg(icon('close')));
@@ -49,12 +50,16 @@ export class SettingsPanel {
       h('div', { class: 'halo-panel__foot' }, h('span', {}, 'Esc to close'), h('span', {}, VERSION)),
     );
     this.element.addEventListener('keydown', (e) => this.trapFocus(e));
-    settingsStore.subscribe((s) => this.refreshers.forEach((refresh) => refresh(s)));
+    this.unsubscribe = settingsStore.subscribe((s) => this.refreshers.forEach((refresh) => refresh(s)));
     this.refreshers.forEach((refresh) => refresh(settingsStore.get()));
   }
 
   get isOpen(): boolean {
     return this.element.classList.contains('is-open');
+  }
+
+  dispose(): void {
+    this.unsubscribe();
   }
 
   open(): void {

@@ -88,7 +88,20 @@ export class ShowDirector {
   /** The last look chosen for each kind of section (reused when that kind comes back). */
   private readonly looks = new Map<SectionName, Look>();
 
-  /** Sets the GPU budget (fixture cost units); takes effect at the next decision. */
+  /** New capture clock: forget predictions and looks from the previous source. */
+  reset(): void {
+    this.started = false;
+    this.section = 'intro';
+    this.sectionId = this.lastBar = -1;
+    this.lastChangeBar = this.beats = 0;
+    this.lastBeat = -Infinity;
+    this.breathAt = -1;
+    this.effect = this.activeEffect = 'none';
+    this.looks.clear();
+    this.log.length = 0;
+  }
+
+  /** Cuts supporting fixtures on the next update; extra budget waits for a musical decision. */
   setBudget(units: number): void {
     this.budget = Math.max(1, units);
   }
@@ -124,9 +137,28 @@ export class ShowDirector {
         this.tintPhrase(input, sink);
       }
     }
+    this.constrainBudget(input.time, sink);
     this.breathe(input, sink);
     this.activeEffect = input.gridWeight >= GRID_EFFECTS ? this.effect : 'none';
     this.scheduleBeat(input, sink);
+  }
+
+  /** Returning looks and already mounted supports must respect a reduced GPU budget too. */
+  private constrainBudget(time: number, sink: ShowSink): void {
+    let cost = 0;
+    let full = false;
+    for (let s = 0; s < this.slots.length; s++) {
+      const slot = this.slots[s];
+      if (!slot.fixture) continue;
+      const next = cost + (fixtureById(slot.fixture)?.cost ?? 1);
+      if (s > 0 && (full || next > this.budget)) {
+        full = true;
+        this.record(time, `release ${slot.fixture}`, `GPU budget ${this.budget.toFixed(1)}`);
+        slot.fixture = null;
+        slot.intensity = 0;
+        sink.target(s, 'intensity', 0, time);
+      } else cost = next;
+    }
   }
 
   /** Section-level choice: fixtures, hue, effect, symmetry and brightness. */

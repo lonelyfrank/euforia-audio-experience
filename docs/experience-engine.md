@@ -243,3 +243,16 @@ should keep it to one), the look on Windows/WebView2.
   the grid), and at 100 and 174 BPM the intro→build and build→drop changes
   of these tracks are missed. Resonators on: beat F1 0.797 (worse), so they
   stay off.
+
+## Audit di manutenzione — 5 ottobre 2026
+
+L’integrazione prima contenuta in `App` vive ora in `app/RigController.ts`;
+`renderer/Layer.ts` possiede scena, Director e pass. Il reset della regia segue
+la sessione audio; una riduzione del budget rilascia i supporti al prossimo
+update, anche per i look memorizzati, conservando il crossfade. Solo i layer
+visibili ammessi nei quattro ingressi del compositore consumano pass GPU.
+
+Non sono cambiati algoritmi DSP, preset Dynamics o protocollo wire. Audit,
+contratti, test, misure del decoder e attività successive sono nella
+[scheda tecnica](technical-overview.md). Le misure delle fasi precedenti sopra
+restano riferite alle rispettive sessioni e non sono nuovi benchmark desktop.

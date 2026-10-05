@@ -28,8 +28,14 @@ export class ClickTrack {
   async start(): Promise<void> {
     if (this.context) return;
     const context = new AudioContext({ latencyHint: 'interactive' });
-    await context.resume();
     this.context = context;
+    try {
+      await context.resume();
+    } catch (error) {
+      if (this.context === context) await this.stop();
+      throw error;
+    }
+    if (this.context !== context) return;
     this.next = context.currentTime + 0.2;
     this.timer = window.setInterval(() => this.schedule(), 50);
     this.schedule();
@@ -53,6 +59,7 @@ export class ClickTrack {
       gain.gain.setValueAtTime(0.6, this.next);
       gain.gain.exponentialRampToValueAtTime(0.001, this.next + 0.012);
       osc.connect(gain).connect(context.destination);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
       osc.start(this.next);
       osc.stop(this.next + 0.015);
       if (stamp.contextTime !== undefined && stamp.performanceTime !== undefined) {

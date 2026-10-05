@@ -1,9 +1,9 @@
-import { DEFAULT_DIRECTION, MOODS, EXPERIENCES, clamp01 } from '../director/profiles';
+import { DEFAULT_DIRECTION, MOODS, EXPERIENCES } from '../director/profiles';
 import type { DirectionSettings } from '../director/types';
 import { supportsSystemAudio } from '../platform';
 import type { AudioSourceId } from '../types/audio';
 import type { QualitySetting } from '../types/visualizer';
-import type { PaletteId } from '../visualizers/palettes';
+import { PALETTES, type PaletteId } from '../visualizers/palettes';
 import { createStore } from './createStore';
 import type { RigMode } from '../show/types';
 
@@ -13,7 +13,7 @@ export type TrackInfoMode = 'always' | 'dim' | 'hidden';
 
 /** User settings, persisted locally. Flat so partial updates stay simple. */
 export interface Settings extends DirectionSettings {
-  /** `file` is session-only and never persisted. */
+  /** Live input; legacy file sources are discarded on load. */
   source: AudioSourceId;
   scene: string;
   preset: PaletteId;
@@ -62,23 +62,41 @@ export const DEFAULT_SETTINGS: Settings = {
   rigMode: 'preset',
 };
 
+/** Validate persisted data before it can reach audio math or quality profiles. */
+export function normalizeSettings(value: unknown): Settings {
+  const saved = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const settings = { ...DEFAULT_SETTINGS };
+  const choice = <T>(value: unknown, choices: readonly T[], fallback: T): T =>
+    choices.includes(value as T) ? value as T : fallback;
+  const number = (value: unknown, min: number, max: number, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+
+  settings.source = choice(saved.source, ['system', 'microphone', 'fake'], settings.source);
+  if (settings.source === 'system' && !supportsSystemAudio) settings.source = DEFAULT_SETTINGS.source;
+  if (typeof saved.scene === 'string' && saved.scene.trim()) settings.scene = saved.scene;
+  settings.preset = choice(saved.preset, PALETTES.map((p) => p.id), settings.preset);
+  settings.quality = choice(saved.quality, ['auto', 'low', 'medium', 'high'], settings.quality);
+  settings.mood = choice(saved.mood, MOODS.map((m) => m.id), settings.mood);
+  settings.experience = choice(saved.experience, EXPERIENCES.map((m) => m.id), settings.experience);
+  settings.trackInfo = choice(saved.trackInfo, ['always', 'dim', 'hidden'], settings.trackInfo);
+  settings.hideDelay = choice(saved.hideDelay, [3000, 5000, 10000], settings.hideDelay);
+  settings.moodIntensity = number(saved.moodIntensity, 0, 1, settings.moodIntensity);
+  settings.sensitivity = number(saved.sensitivity, 0.4, 1.8, settings.sensitivity);
+  settings.smoothing = number(saved.smoothing, 0, 0.95, settings.smoothing);
+  settings.audioDelay = number(saved.audioDelay, -100, 400, settings.audioDelay);
+  for (const key of ['beatResponse', 'hideCursor', 'reflection', 'reduceFlashing'] as const) {
+    if (typeof saved[key] === 'boolean') settings[key] = saved[key];
+  }
+  // Older versions had an Auto toggle: it becomes the hybrid mode.
+  settings.rigMode = choice(saved.rigMode, RIG_MODES, saved.autoDirection === true ? 'hybrid' : 'preset');
+  settings.autoDirection = saved.autoDirection === true && settings.rigMode !== 'preset';
+  return settings;
+}
+
 function load(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const saved = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
-    const settings = { ...DEFAULT_SETTINGS, ...saved };
-    // A file cannot be restored across sessions; system audio may be unavailable here.
-    // 'file' was a source in older versions: only live sources remain.
-    if ((settings.source as string) === 'file' || (settings.source === 'system' && !supportsSystemAudio)) {
-      settings.source = DEFAULT_SETTINGS.source;
-    }
-    if (!MOODS.some((m) => m.id === settings.mood)) settings.mood = DEFAULT_DIRECTION.mood;
-    if (!EXPERIENCES.some((m) => m.id === settings.experience)) settings.experience = DEFAULT_DIRECTION.experience;
-    settings.moodIntensity = typeof settings.moodIntensity === 'number' && Number.isFinite(settings.moodIntensity) ? clamp01(settings.moodIntensity) : DEFAULT_DIRECTION.moodIntensity;
-    // Older versions had an Auto toggle: it becomes the hybrid mode.
-    if (!saved.rigMode || !RIG_MODES.includes(saved.rigMode)) settings.rigMode = saved.autoDirection === true ? 'hybrid' : 'preset';
-    settings.autoDirection = settings.autoDirection === true && settings.rigMode !== 'preset';
-    return settings;
+    return normalizeSettings(raw ? JSON.parse(raw) : null);
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

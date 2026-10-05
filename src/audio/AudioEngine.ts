@@ -44,6 +44,10 @@ export class AudioEngine {
   private readonly fftSamples = this.samples.subarray(VOICE_WINDOW - FFT_SIZE);
   private readonly listeners = new Set<(state: AudioEngineState) => void>();
   private switchToken = 0;
+  /** Native providers share one backend capture: starts/stops must never overlap. */
+  private sourceQueue: Promise<void> = Promise.resolve();
+  /** Changes whenever the analysis starts over, even after a very short session. */
+  session = 0;
   /** Seconds the analysis lags the capture, to line up with output latency (e.g. Bluetooth). */
   private delay = 0;
   private _state: AudioEngineState = { source: null, status: 'idle', deviceName: '', error: null };
@@ -82,15 +86,33 @@ export class AudioEngine {
   }
 
   /** Stops the current provider and starts a new one. Last call wins. */
-  async setSource(source: AudioSourceId, options?: SourceOptions): Promise<void> {
+  setSource(source: AudioSourceId, options?: SourceOptions): Promise<void> {
     const token = ++this.switchToken;
-    await this.releaseProvider();
     this.setState({ source, status: 'starting', deviceName: '', error: null });
+    this.sourceQueue = this.sourceQueue.then(() => this.switchSource(token, source, options));
+    return this.sourceQueue;
+  }
+
+  /** Releases capture and WASM, including an in-flight source change. */
+  stop(): Promise<void> {
+    ++this.switchToken;
+    this.sourceQueue = this.sourceQueue.then(async () => {
+      await this.releaseProvider();
+      this.clock.reset();
+      this.setState({ source: null, status: 'idle', deviceName: '', error: null });
+    });
+    return this.sourceQueue;
+  }
+
+  private async switchSource(token: number, source: AudioSourceId, options?: SourceOptions): Promise<void> {
+    if (token !== this.switchToken) return;
+    await this.releaseProvider();
+    if (token !== this.switchToken) return;
     let provider: AudioCaptureProvider | null = null;
     try {
       provider = createCaptureProvider(source, options);
       provider.onError((message) => {
-        if (this.provider === provider) this.setState({ ...this._state, status: 'error', error: message });
+        if (token === this.switchToken && this.provider === provider) this.setState({ ...this._state, status: 'error', error: message });
       });
       await provider.start();
     } catch (error) {
@@ -100,17 +122,17 @@ export class AudioEngine {
     }
     if (token !== this.switchToken) {
       // A newer setSource() superseded this one while starting.
-      await provider.stop();
+      await provider.stop().catch(() => undefined);
       return;
     }
     this.provider = provider;
     this.analyzer.reset();
     this.response.reset();
-    this.features.reset();
-    this.clock.reset();
-    this.timing.reset();
+    this.frameInterval = 1 / 60;
     await this.startFeatures(provider, token);
-    this.setState({ source, status: 'running', deviceName: provider.deviceName, error: null });
+    if (token === this.switchToken && this._state.status !== 'error') {
+      this.setState({ source, status: 'running', deviceName: provider.deviceName, error: null });
+    }
   }
 
   /** Pull + analyse + derive the visual response. Call once per rendered frame. */
@@ -161,6 +183,10 @@ export class AudioEngine {
     this.wasm = null;
     const provider = this.provider;
     this.provider = null;
+    this.features.reset();
+    this.clock.reset();
+    this.timing.reset();
+    this.session++;
     if (provider) await provider.stop().catch(() => undefined);
   }
 

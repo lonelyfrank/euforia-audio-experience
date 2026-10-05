@@ -30,6 +30,7 @@ export class CalibrationView {
   private readonly apply: HTMLButtonElement;
   private flash = 0;
   private suggestion = 0;
+  private readonly unsubscribe: () => void;
 
   constructor(
     private readonly audio: AudioEngine,
@@ -59,7 +60,8 @@ export class CalibrationView {
         this.onClose();
       }
     });
-    settingsStore.subscribe((s) => (this.delay.textContent = `${s.audioDelay} ms`));
+    this.unsubscribe = settingsStore.subscribe((s) => (this.delay.textContent = `${s.audioDelay} ms`));
+    this.delay.textContent = `${settingsStore.get().audioDelay} ms`;
   }
 
   get isOpen(): boolean {
@@ -81,6 +83,11 @@ export class CalibrationView {
   close(): void {
     this.element.classList.remove('is-open');
     void this.clicks.stop();
+  }
+
+  dispose(): void {
+    this.unsubscribe();
+    this.close();
   }
 
   /** Once per rendered frame while open. */
