@@ -1,6 +1,6 @@
 # Euforia-Audio-Experience — scheda tecnica e audit
 
-Aggiornata il **5 ottobre 2026**. Il [README](../README.md) è la fonte di verità per
+Aggiornata il **6 ottobre 2026**. Il [README](../README.md) è la fonte di verità per
 funzionalità, avvio e architettura; questa scheda contiene i dettagli operativi per
 chi modifica il progetto. [experience-engine.md](experience-engine.md) conserva
 le decisioni e misure delle fasi precedenti. Il prodotto usa solo sorgenti live;
@@ -45,7 +45,7 @@ frontend, backend e WASM della stessa revisione.
 | Scene | `visualizers/` | Sette scene interpretano il mondo (`modulation.world`): moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti |
 | Validazione | `validation/replay.ts`, overlay DEV | Replay di WAV locali sul percorso live (`npm run replay`), metriche comportamentali e tracce; Shift+T esporta la traccia di sessione |
 | Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, notifiche/salvataggi solo se un valore cambia |
-| Build | `package.json`, `vite.config.ts`, Cargo workspace | Nessuna nuova dipendenza; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
+| Build | `package.json`, `vite.config.ts`, Cargo workspace, `.github/workflows/ci.yml` | Nessuna nuova dipendenza; CI su check frontend, core Rust, layout e WASM; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
 
 ## Contratti da preservare
 
@@ -168,6 +168,21 @@ npm run wasm                      # richiede wasm32-unknown-unknown
 Versionare layout e WASM aggiornati insieme alle modifiche DSP. `cargo test` sul
 wrapper controlla la build host, non ricompila il binario WASM versionato; i test
 Vitest esercitano quest’ultimo.
+
+**CI** (`.github/workflows/ci.yml`, push e pull request): `npm ci` + `npm run check`;
+test dei due crate con `--locked`; rigenerazione di `layout.ts` e del WASM seguita da
+`git diff --exit-code`. La ricompilazione del WASM è riproducibile byte per byte a
+parità di compilatore (verificato il 6 ottobre 2026: stesso SHA-256 da due percorsi
+diversi con rustc 1.98.1 upstream, uguale al binario versionato; i crate non hanno
+dipendenze e i percorsi incorporati sono relativi). La CI fissa quindi Rust 1.98.1:
+aggiornare `RUST_TOOLCHAIN` insieme al WASM quando si cambia compilatore. Restano
+fuori shell Tauri, `audio-capture`, `cargo fmt --check` (16 file differiscono) e
+clippy `-D warnings` (5 lint in `spectrum-analysis`; correggerli tocca il DSP e
+richiede di ricostruire il WASM).
+
+Se `cargo test` segnala `layout.ts is stale` senza differenze in git, il binario di
+test in `target/` è stato compilato sotto un altro percorso della repo (il percorso è
+incorporato a compile time): ricompilare con `touch native/analysis/tests/wire.rs`.
 
 Esiti della seconda fase (analisi realtime): **171 test frontend in 30 file**, **56 Rust
 + 1 doctest**, 5 test di benchmark, smoke Chromium (worker, SAB, tre scene) riusciti;

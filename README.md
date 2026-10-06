@@ -154,6 +154,19 @@ npm run wasm             # ricompila il WASM; serve il target wasm32-unknown-unk
 EUFORIA_AUDIO_EXPERIENCE_CORPUS=~/euforia-audio-experience-corpus npm run replay   # validazione su registrazioni locali (mai versionate)
 ```
 
+### Integrazione continua
+
+`.github/workflows/ci.yml` gira a ogni push e pull request, in due job:
+
+| Job | Comandi | Cosa protegge |
+|---|---|---|
+| Frontend | `npm ci`, `npm run check` | typecheck, lint, test (bench inclusi), build |
+| Rust core | `cargo test -p spectrum-analysis -p spectrum-analysis-wasm --locked` | DSP e protocollo wire |
+| | `UPDATE_LAYOUT=1 cargo test -p spectrum-analysis --test wire` + `git diff --exit-code` | `layout.ts` allineato al wire |
+| | `npm run wasm` + `git diff --exit-code` | WASM versionato identico, byte per byte, a una ricompilazione dei sorgenti |
+
+Il confronto del WASM vale solo con lo stesso compilatore: la CI fissa Rust **1.98.1** (`RUST_TOOLCHAIN` nel workflow). Chi ricostruisce il WASM con un'altra versione deve aggiornare quella riga nello stesso commit. La CI non compila la shell Tauri né `audio-capture` (servono librerie di sistema e dispositivi reali) e non esegue `cargo fmt`/`clippy`: oggi il codice non li supera senza modifiche (16 file da riformattare, 5 lint nel DSP).
+
 In modalità browser (`npm run dev`) "System Audio" non è disponibile: la sorgente di default è il segnale di test sintetico. Il microfono passa da `getUserMedia`. È utile per sviluppare le scene senza compilare la parte Rust.
 
 ### Diagnostica della cattura nativa

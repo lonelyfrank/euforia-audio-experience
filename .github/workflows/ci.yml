@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The committed WASM is compared byte for byte with a rebuild: that only holds
+  # for the compiler that produced it. Bump together with `npm run wasm`.
+  RUST_TOOLCHAIN: 1.98.1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  frontend:
+    name: Frontend (typecheck, lint, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  rust:
+    name: Rust core (tests, generated layout, versioned WASM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target wasm32-unknown-unknown
+          rustup default "$RUST_TOOLCHAIN"
+      # Only the dependency-free analysis crates: the Tauri shell and the capture
+      # crate need system libraries and real devices.
+      - run: cargo test -p spectrum-analysis -p spectrum-analysis-wasm --locked
+      - name: layout.ts matches the wire protocol
+        run: |
+          UPDATE_LAYOUT=1 cargo test -p spectrum-analysis --test wire --locked
+          git diff --exit-code -- src/audio/features/layout.ts
+      - name: Committed WASM matches the sources
+        run: |
+          npm run wasm
+          git diff --exit-code -- src/audio/features/spectrum_analysis.wasm
