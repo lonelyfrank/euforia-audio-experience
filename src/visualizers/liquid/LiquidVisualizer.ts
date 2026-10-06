@@ -1,4 +1,5 @@
 import type { ModulationState } from '../../director/types';
+import { REST_VIEW } from '../../world/WorldView';
 import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4 } from 'three';
 import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
@@ -96,7 +97,6 @@ export class LiquidVisualizer implements Visualizer {
   private readonly localHits = new HitLog();
   private localTime = 0;
   private lastImpact = 0;
-  private lastDrop = 0;
   /** Audio time of the drop's release ring (re-armed when the drop falls back). */
   private releaseAt = -Infinity;
   private readonly presenceEnvelopes: Envelope[] = [];
@@ -182,16 +182,17 @@ export class LiquidVisualizer implements Visualizer {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, shimmer, density, music, motion, openness, trace } = response;
-    const { variation: vary, drop } = music;
-    // Tension covers build-ups (and noisy, pushing loud parts): the surface narrows and becomes laminar.
-    const build = response.tension;
-    const amplitude = p.amplitude * (modulation ? 0.3 + 1.6 * modulation.distortion : 1);
-    const moving = (0.04 + 1.4 * motion) * response.audible;
-    this.clock += dt * moving;
-    this.barPhase += dt * music.tempo / 60 / 4 * moving;
-    // Build pulls the fluid taut; release restores width and turbulent interference.
-    const freedom = (1 - 0.75 * build + 0.8 * drop) * (modulation ? 0.2 + 2 * modulation.turbulence : 1);
+    const { weight, flow, detail, shimmer, density, music, trace } = response;
+    const { variation: vary } = music;
+    // A surface in the shared world: stored tension pulls it taut and laminar, a release frees it,
+    // turbulence breaks its layers up, coherence (viscosity) keeps them together; it drifts with the world's travel.
+    const world = modulation?.world ?? REST_VIEW;
+    const build = world.tension;
+    const drop = Math.min(1, world.releaseStrength * 2) * Math.exp(-world.releaseAge / 1.2);
+    const amplitude = p.amplitude * (modulation ? 0.3 + 1.6 * modulation.distortion : 1) * (0.7 + 0.6 * world.excitation);
+    this.clock += world.dTravel * 0.9;
+    this.barPhase += dt * music.tempo / 60 / 4 * Math.min(1.5, 4 * world.speed);
+    const freedom = (1 - 0.6 * build + 0.8 * drop) * (0.3 + 1.8 * world.disorder) * (1.2 - 0.4 * world.coherence);
     this.material.uniforms.uWidth.value = 0.85 - 0.24 * build + 0.2 * drop;
     if (this.afterimage) this.afterimage.uniforms.damp.value = Math.min(0.96, modulation ? 0.65 + 0.31 * modulation.persistence : p.phosphor + 0.15 * trace) ** (dt * 60);
     const glints = this.detailQuality > 0.6;
@@ -200,7 +201,7 @@ export class LiquidVisualizer implements Visualizer {
     // curvature, imprint, accent, ripple grain and whether the layers flow together or shear.
     const swellScale = 0.75 + 0.55 * vary[0];
     // MACRO: a full, wide sound opens the stack of layers; a lone voice keeps it low and close.
-    const stackHeight = (0.4 + 0.2 * vary[2]) * (0.65 + 0.65 * openness) * (1 - 0.4 * build + 0.35 * drop);
+    const stackHeight = (0.4 + 0.2 * vary[2]) * (0.7 + 0.5 * world.openness) * Math.max(0.4, 1 + 0.35 * world.pressure);
     const curveRatio = 1.8 + 1.2 * vary[3];
     const imprint = 0.5 + 0.6 * vary[4];
     const accent = 0.25 + 0.35 * vary[5];
@@ -210,9 +211,10 @@ export class LiquidVisualizer implements Visualizer {
     // Like an oscilloscope, nothing moves on its own: every motion is driven by the sound
     // (silence leaves flat, still traces). Motion sets the rate; tempo provides only a small timing nuance.
     const pace = 0.8 + 0.2 * music.pace;
-    const drift = dt * p.speed * pace * 1.2 * moving;
-    // MESO: busy music (many transients) makes the currents travel; a held chord barely moves them.
-    const push = dt * p.speed * pace * 1.2 * flow * moving;
+    const drift = world.dTravel * p.speed * pace * 0.75;
+    // MESO: the currents travel with the world and the mids; its rotation shears them (rotational flow).
+    const push = drift * flow;
+    const swirl = world.dTurn * 0.3;
     // Section and texture: shock rings need a kick pattern, glints need hats, the waveform needs tonal content.
     const shockGate = 0.4 + 0.6 * smoothstep(0.1, 0.4, music.lowPercussion);
     const glintGate = 0.4 + 0.6 * music.highPercussion;
@@ -232,7 +234,7 @@ export class LiquidVisualizer implements Visualizer {
 
       // Phases are integrated (rates may change with the song; phases never jump).
       this.swellPhase[k] += drift * (0.25 + 0.35 * highness) * (1 - lowness) + push * (0.35 + 0.65 * midness) * dir;
-      this.curvePhase[k] -= push * 1.4 * dir;
+      this.curvePhase[k] -= push * 1.4 * dir + swirl * dir;
       this.ripplePhase[k] += drift * 2.6 * dir;
 
       // The voice this ribbon draws: the bass line at the bottom, the lead in the middle, the air on top.
@@ -285,7 +287,7 @@ export class LiquidVisualizer implements Visualizer {
     this.material.uniforms.uDigital.value = this.voices.digital;
     this.updateSpectrum(frame.spectrum);
     this.updateWave(frame.waveform, dt);
-    this.updateShocks(response.impact, drop, dt, clock);
+    this.updateShocks(response.impact, world.releaseStrength > 0.05 ? world.releaseAge : Infinity, dt, clock);
     this.traces.update(music.tempo, dt);
     this.material.uniforms.uTraceShift.value = this.traces.shift;
 
@@ -350,15 +352,13 @@ export class LiquidVisualizer implements Visualizer {
    * On the audio clock the rings start at the hits' exact times; without it,
    * a rising impact envelope is the hit.
    */
-  private updateShocks(impact: number, drop: number, dt: number, clock?: SceneClock): void {
+  private updateShocks(impact: number, releaseAge: number, dt: number, clock?: SceneClock): void {
     this.localTime += dt;
     if (!clock && impact > SHOCK_THRESHOLD && this.lastImpact <= SHOCK_THRESHOLD) this.localHits.record(this.localTime, impact);
     this.lastImpact = impact;
     const now = clock ? clock.time : this.localTime;
-    // Mounting midway through a crossfade still sees the shared release, already travelling.
-    if (drop > 0.2 && this.lastDrop <= 0.2) this.releaseAt = now - (1 - drop);
-    if (drop < 0.1) this.releaseAt = -Infinity;
-    this.lastDrop = drop;
+    // The world's release, at its own time: a scene mounted midway through a crossfade sees it already travelling.
+    this.releaseAt = releaseAge < 4 ? now - releaseAge : -Infinity;
     this.rings.update(now, clock ? clock.hits : this.localHits, clock ? clock.hitScale : 1, this.releaseAt);
     for (let i = 0; i < SHOCKS; i++) this.shocks[i].set(this.rings.ages[i], this.rings.heights[i], 0, 0);
   }

@@ -5,6 +5,7 @@ import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/s
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
 import { audibleGlsl } from '../shared/audibleGlsl';
+import { REST_VIEW } from '../../world/WorldView';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { SignalTexture } from '../shared/SignalTexture';
@@ -54,6 +55,8 @@ const vertexShader = /* glsl */ `
   uniform float uDensity;
   uniform float uSwirl;
   uniform float uFlow;
+  uniform float uDisorder;
+  uniform float uLateral;
   uniform float uDigital;
   uniform float uPixelRatio;
 
@@ -87,7 +90,8 @@ const vertexShader = /* glsl */ `
     float level = texture2D(tSpectrum, vec2(band, 0.5)).r;
 
     // Polar layout around the flight axis, swirling with the mids (twist grows with depth).
-    float turn = aSeed.x + uSwirlPhase + z * 0.0035 * uSwirl * uFlow;
+    // The vortex winds with the world's angular momentum; turbulence scatters each particle locally.
+    float turn = aSeed.x + uSwirlPhase + z * 0.0035 * uSwirl * uFlow + (fract(aSeed.w * 31.3) - 0.5) * uDisorder * 0.08;
     float angle = turn * 6.2831853;
     float radius = (0.08 + band) * uSpread;
     // The cross-section takes the voices' shape: bass line in the core, lead further out.
@@ -98,7 +102,9 @@ const vertexShader = /* glsl */ `
     // Compressed shells release by different distances: explosion, then a gradual reorganisation.
     float burst = sin((1.0 - uRelease) * 3.14159265) * uRelease;
     radius += uSpread * burst * (0.3 + band * 0.6);
-    vec3 position = vec3(cos(angle) * radius, sin(angle) * radius, z);
+    radius *= 1.0 + (fract(aSeed.z * 57.1) - 0.5) * uDisorder * 0.5;
+    // The flow leans towards where the world is pushed from, more with depth.
+    vec3 position = vec3(cos(angle) * radius + uLateral * -z * 0.06, sin(angle) * radius, z);
 
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -199,6 +205,8 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
         uDensity: { value: 0.25 },
         uSwirl: { value: p.swirl },
         uFlow: { value: 0 },
+        uDisorder: { value: 0 },
+        uLateral: { value: 0 },
         uDigital: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
         uAudible: { value: new Vector3() },
@@ -224,19 +232,17 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
     const u = this.material.uniforms;
-    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
+    const { weight, flow, detail, density, music, trace } = response;
     const vary = music.variation;
 
-    // Flow speed follows musical motion, with bass inertia; BPM is only a trace clock.
-    const moving = (0.03 + 1.5 * motion) * response.audible;
-    const advance = dt * 2 * p.beatDistance * moving / (1 + 0.35 * weight);
+    // A flow field in the shared world: the particles travel with the world's momentum (bass inertia
+    // is the world's mass), the field turns with its angular momentum. Emission stays the Director's.
+    const world = modulation?.world ?? REST_VIEW;
+    const advance = world.dTravel * 2 * p.beatDistance;
     this.travel += advance;
-    this.sparkTravel += advance * 2 + dt * detail * music.highPercussion * 12;
-    // MESO: busy music stirs the matter; a held chord lets it hang.
-    this.swirlPhase += dt * (modulation?.rotation ?? flow) * 0.03 * p.swirl * moving * (vary[7] < 0.5 ? -1 : 1);
-    this.drift += dt * flow * moving;
-    // Energy controls emission; openness only controls spatial dispersion.
-    // Emission is already a Dynamics follower on the audio clock; the count only eases (exactly, at any frame rate).
+    this.sparkTravel += advance * 2 + dt * world.shimmer * 12;
+    this.swirlPhase += world.dTurn * 0.05 * (vary[7] < 0.5 ? -1 : 1);
+    this.drift += world.dTravel * 0.5;
     this.density += ((modulation ? 0.05 + 0.8 * modulation.particleEmission : 0.25 + density * 0.6) - this.density) * (1 - Math.exp(-dt * 2));
 
     this.traces.record(0, traceValue(frame, response, 1, sampleSpectrumRange(frame.spectrum, 0, LOW_END)));
@@ -250,16 +256,19 @@ export class ParticleFieldVisualizer extends BaseVisualizer<ParticleFieldParams>
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
     // Openness disperses matter; tension clusters it onto the existing spectrum shells.
-    u.uSpread.value = p.spread * (0.65 + 0.65 * openness) * (1 - 0.3 * tension);
-    u.uTension.value = tension;
-    u.uRelease.value = music.drop;
+    // Pressure disperses matter; stored tension and coherence gather it onto the spectrum shells.
+    u.uSpread.value = p.spread * (0.7 + 0.5 * world.openness) * Math.max(0.5, 1 + 0.35 * world.pressure);
+    u.uTension.value = Math.min(1, world.tension + 0.4 * Math.max(0, world.coherence - 0.5));
+    u.uRelease.value = Math.min(1, world.releaseStrength * 2) * Math.exp(-world.releaseAge / 1.2);
     u.uWeight.value = modulation?.scale ?? weight;
     u.uShape.value = p.shape * (modulation ? 1.7 * modulation.distortion : 0.3 * weight + 0.7 * flow);
     u.uLobes.value = (2 + 4 * vary[0]) * (1 + 0.4 * Math.max(Math.log2(music.bassPitch / 40), 0));
-    u.uRing.value = p.ringTrace * (0.7 + 0.6 * trace);
+    u.uRing.value = p.ringTrace * (0.5 + 0.4 * trace + 0.6 * world.excitation);
     u.uSparks.value = detail * (0.2 + 0.8 * music.highPercussion);
-    u.uFlow.value = modulation?.turbulence ?? flow;
-    u.uEnergy.value = density;
+    u.uFlow.value = world.spin * 3 + world.disorder * 0.5;
+    u.uDisorder.value = world.disorder;
+    u.uLateral.value = world.lateral;
+    u.uEnergy.value = world.light;
     u.uDensity.value = this.density;
     (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
 

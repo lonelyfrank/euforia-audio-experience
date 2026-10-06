@@ -100,7 +100,7 @@ A 48 kHz un hop è 5,33 ms (187,5 Hz); a 44,1 kHz 5,80 ms; a 96 kHz 2,67 ms.
 | Strutturale | per beat / battuta | metro, downbeat, frasi, sezioni, novelty di battuta |
 | Very slow | 2 Hz | fingerprint di ricorrenza (TS, `TemporalMemory`) |
 | Experience | ogni hop; snapshot ≤ 120 Hz | stato, eventi, previsione, plan, fisica modale |
-| Scene | per frame, sul clock udito | `Dynamics` 240 Hz, `TunnelBody` esatto tra due frame |
+| Scene | per frame, sul clock udito | `Dynamics` 240 Hz; mondo (World Engine) per hop, estrapolato esattamente al tempo udito |
 
 La qualità DSP (`DspBudget`, sopra 30% di un core per 2 s scende, sotto 12% per 30 s
 risale) cambia solo le cadenze Medium/Slow. Hop, beat, onset, clock e contesto restano

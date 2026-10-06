@@ -39,28 +39,13 @@ carattere resta nelle route e nella conversione in geometria. Non è stato
 sostituito ogni mapping storico né il loro DSP grafico centralizzato: si tratta
 di una migrazione tramite adattatore, con la scena nuova come riferimento.
 
-## Primitive e Tunnel fisico
+## Primitive e mondo condiviso
 
-`physics/primitives.ts` offre `DampedOscillator` (molla smorzata con la stessa
-`springMatrix`), `Momentum` (massa con attrito lineare, posizione integrata in forma
-chiusa) ed `Envelope`. Ogni passo è la soluzione esatta per una forza costante nel
-passo: lo stesso input dà la stessa traiettoria a 30, 60 o 144 fps; gli impulsi
-cambiano la velocità, mai la posizione. Nessuna allocazione nel loop.
-
-`TunnelBody` sostituisce nel Tunnel il mapping diretto a posizioni obiettivo quando la
-scena riceve il `SceneClock`: la parete è una molla (0,8 Hz, ζ 0,45) attorno
-all'apertura del suono, spinta da `expand − contract` pesati per confidence e calciata
-dagli hit; avanzamento e rotazione hanno momento con attrito (2,5 e 1,2 s⁻¹), e
-`accelerate − decelerate` aggiunge spinta. Si integra sul tempo udito e gli hit del
-`HitLog` sono applicati al loro tempo audio (un hit registrato in ritardo viene
-applicato subito, non perso; un salto del clock > 1 s riparte a riposo). Senza clock
-resta il mapping storico.
-
-Confronto misurato (`TunnelBody.test.ts`, segnale sintetico): l'apertura che passa da
-0,9 a 1,3 fa saltare il mapping diretto di 0,4 in un frame, mentre il corpo non supera
-il 10% di quel salto per frame, arriva entro il 2% in 1,2 s con un overshoot tra 1% e
-10%; un hit apre la parete di oltre 0,05 e torna entro 0,01 in 1,2 s, dove il mapping
-diretto non risponde; nel silenzio la velocità scende sotto l'1% in 2 s; tra 30/60/144
-fps le traiettorie differiscono meno di 0,02 (raggio) e 0,03 (avanzamento). Non è una
-prova percettiva: il beneficio visivo va confermato a occhio sulle scene reali.
-
+`physics/primitives.ts` offre `DampedOscillator`, `Momentum` ed `Envelope` (soluzioni
+esatte per forza costante nel passo). Il corpo del Tunnel (`TunnelBody`, parete-molla e
+momento di avanzamento/roll) è stato assorbito dal **World Engine**: la stessa matematica
+ora governa un mondo condiviso da tutte le scene, avanzato per hop sul clock audio ed
+estrapolato al tempo udito. Contratti, forze, energia e mappe per scena:
+[world-engine](world-engine.md). I test di `TunnelBody` (salto del mapping diretto,
+overshoot, silenzio, 30/60/144 fps) sono sostituiti dalle invarianti di
+`src/world/WorldEngine.test.ts` e `WorldView.test.ts`.

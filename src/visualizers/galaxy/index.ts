@@ -10,13 +10,10 @@ export default defineVisualizer<GalaxyParams>({
   icon: 'galaxy',
   order: 4,
   direction: {
-    capabilities: { particles: true, cameraMotion: true, distortion: true, depth: true, rotation: true },
+    capabilities: { particles: true, cameraMotion: true, distortion: true, depth: true },
     mappings: [
       { source: 'mid', target: 'distortion', amount: 0.75 },
       { source: 'flux', target: 'distortion', amount: 0.25 },
-      { source: 'warmth', target: 'expansion', amount: 0.3 },
-      { source: 'openness', target: 'expansion', amount: 0.4 },
-      { source: 'release', target: 'expansion', amount: 0.4 },
     ],
   },
   preset: preset satisfies VisualizerPreset<GalaxyParams>,

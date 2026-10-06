@@ -10,10 +10,12 @@ il vecchio supporto file non esiste più.
 
 Capture stereo → DSP fisico/percettivo/musicale Rust → tutti gli hop del wire →
 ExperienceEngine → memoria/narrativa → ExperiencePlanner → VisualIntent →
-ShowDirector / VisualDirector → fisica condivisa e scene → composizione GPU.
+**WorldEngine → WorldState persistente** (forze, impulsi, energia; estrapolato al
+tempo udito) → ShowDirector (rappresentazione) / VisualDirector + WorldView (per layer)
+→ scene che interpretano il mondo → composizione GPU.
 
 Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-planner.md),
-[fisica](physics-engine.md), [integrazione scene](visual-director.md).
+[fisica](physics-engine.md), [World Engine](world-engine.md), [integrazione scene](visual-director.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
 indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
@@ -33,13 +35,15 @@ frontend, backend e WASM della stessa revisione.
 | Analisi browser | `audio/features/BrowserAnalysis.ts`, `AnalysisHost.ts`, `analysis.worker.ts`, `PcmRing.ts`, `RecordStage.ts` | WASM nel worker, fuori dal RAF; batch con record clock, pool di buffer, epoch dopo perdite lunghe; fallback sul main thread solo senza `Worker` |
 | Trasporto feature | `audio/features/` | ABI Rust ampliata; ogni hop raggiunge ExperienceEngine, senza folding per batch; decoder riusa frame/eventi; record troncati o sconosciuti interrompono il batch senza scritture parziali |
 | Esperienza | `experience/` | Memoria multiscala, ricorrenze, narrativa probabilistica, trajectory, previsione, event stream ordinato e planner sul clock audio; snapshot posseduti presentati al tempo percepito |
-| Fisica | `physics/ResonantPhysics.ts`, `physics/primitives.ts`, `dynamics/` | Dodici modi smorzati e otto impulsi propaganti; primitive esatte (oscillatore, momento, inviluppo) per le scene; riuso della matrice delle molle, separazione luce/geometria |
+| Mondo | `world/WorldEngine.ts`, `WorldState.ts`, `WorldView.ts`, `WorldTrace.ts` | Stato fisico persistente per sessione (4 corpi, 7 campi, bilancio energetico); avanzato per hop dentro ExperienceEngine, snapshot ed estrapolazione esatta al tempo udito; un `WorldView` per layer (guadagni del mood sulle velocità); nessuna scena lo possiede né lo azzera |
+| Fisica | `physics/ResonantPhysics.ts`, `physics/primitives.ts`, `dynamics/` | Dodici modi smorzati e otto impulsi propaganti (campo modale condiviso); primitive esatte (oscillatore, momento, inviluppo); riuso della matrice delle molle, separazione luce/geometria |
 | Interpretazione grafica | `audio/interpretation/`, `audio/visual-response/` | Un solo MusicInterpreter, import storico VisualResponse compatibile; ruoli, presenza, memoria e contesto |
 | Tempo / dinamica | `timing/`, `dynamics/` | Capture→host→tempo percepito; molle/follower 240 Hz, impulsi analitici, gate e rate limit condivisi |
 | Scelte dello show | `show/` | Preset/Hybrid/Free, affinità tra sette scene, ritorni di motivo, tetto del planner e limiti GPU |
 | Direzione della scena | `director/` | Intenti e fisica × Mood × Experience × capacità; un VisualDirector per Layer, separato da ShowDirector |
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
-| Scene | `visualizers/` | Sette scene: Resonant Field consuma modi/onde, Tunnel usa `TunnelBody` (forze sul clock udito), le altre cinque l'adattatore del Director; dispose GPU espliciti |
+| Scene | `visualizers/` | Sette scene interpretano il mondo (`modulation.world`): moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti |
+| Validazione | `validation/replay.ts`, overlay DEV | Replay di WAV locali sul percorso live (`npm run replay`), metriche comportamentali e tracce; Shift+T esporta la traccia di sessione |
 | Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, notifiche/salvataggi solo se un valore cambia |
 | Build | `package.json`, `vite.config.ts`, Cargo workspace | Nessuna nuova dipendenza; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
 
@@ -94,6 +98,12 @@ non la memoria di picco né garantisce che tutti e sei siano visibili.
 Una riduzione del budget rimuove i supporti al prossimo aggiornamento e li lascia
 sfumare; un aumento aspetta una decisione musicale. Il protagonista resta sempre,
 anche se il suo costo nominale supera il budget minimo.
+
+**Mondo.** Il moto delle scene viene da `WorldState`, mai da integratori locali
+guidati dall'audio né da posizioni obiettivo. Nuove misure entrano come forze in
+`WorldEngine.setForces` o impulsi datati (`impact`, `release`); i guadagni del mood
+scalano velocità, non posizioni. Il mondo si azzera solo col reset di sessione e non
+legge qualità GPU né FlashGuard.
 
 **Palette e timing.** Le palette appartengono all’utente; il rig ne permuta i colori
 e applica una tinta moderata. Il sesto argomento opzionale `SceneClock` trasporta
@@ -178,7 +188,7 @@ I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 | Alta | Benchmark CPU/GPU ripetibile, a qualità e risoluzione fisse | Tempi separati cattura/DSP TS/WASM/Director/pass GPU, p50/p95/p99 e memoria, confronto prima/dopo sullo stesso dispositivo |
 | Alta | Recupero dopo tab nascosta o backlog browser in WebView reali | La politica esiste (silenzio ≤ 1 s, poi epoch; staging ~3 s): verificarla in WebView2/WebKitGTK con stalli 0,5–10 s e timer dei worker in background |
 | Media | Unificazione graduale DSP TS/Rust | Corpus reale e sintetico, stessa waveform/pitch/presenza e latenza misurata; evitare doppia analisi senza spezzare i contratti |
-| Media | Migrazione fisica delle altre scene | Come per il Tunnel: corpo sul clock udito, confronto misurato contro il mapping diretto e prova visiva |
+| Alta | Taratura del World Engine su musica reale | `npm run replay` su un corpus locale vario (casi difficili inclusi), poi prova visiva per scena; nessun priore di genere |
 | Media | Ring nativo proporzionato al sample rate | Verificare delay 400 ms e finestra voci a 44,1/48/96/192 kHz; il buffer nativo è ancora fisso a 48.000 campioni |
 | Media | Regressioni DOM e GPU in browser | Focus trap, ARIA, fullscreen, idle, chiusura/rimontaggio, snapshot per tutte le scene; lo smoke Chromium corrente compila gli shader, ma non sostituisce test di cattura e WebView desktop |
 | Media | Budget di transizione e memoria GPU | Gestire esplicitamente >4 layer durante cambi simultanei e misurare il picco di target/pass con High e supporti |

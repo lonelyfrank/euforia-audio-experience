@@ -1,4 +1,5 @@
 import type { ExperienceSnapshot } from '../experience/types';
+import type { WorldView } from '../world/WorldView';
 export type MoodId = 'euphoria' | 'dream' | 'dark' | 'pulse' | 'chaos' | 'ethereal' | 'melancholy' | 'focus';
 export type ExperienceId = 'ambient' | 'immersive' | 'reactive' | 'cinematic' | 'minimal';
 
@@ -13,11 +14,10 @@ export interface DirectionSettings {
 export interface ModulationState {
   /** Shared grammar and physical memory, read-only and owned by the audio engine. */
   experienceState?: ExperienceSnapshot;
+  /** This layer's view of the shared world (motion, pressure, fields), with the mood's gains. Read-only. */
+  world?: WorldView;
   scale: number;
-  expansion: number;
   distortion: number;
-  turbulence: number;
-  rotation: number;
   cameraMotion: number;
   particleEmission: number;
   brightness: number;
@@ -28,7 +28,7 @@ export interface ModulationState {
   contrast: number;
   visibility: number;
 }
-export type ModulationKey = Exclude<keyof ModulationState, 'experienceState'>;
+export type ModulationKey = Exclude<keyof ModulationState, 'experienceState' | 'world'>;
 export type Feature = 'low' | 'mid' | 'high' | 'transient' | 'pulse' | 'brightness' | 'flux' | 'intensity' | 'openness' | 'tension' | 'release' | 'warmth';
 export interface Mapping { source: Feature; target: ModulationKey; amount: number }
 export interface SceneCapabilities {
@@ -36,7 +36,6 @@ export interface SceneCapabilities {
   cameraMotion?: boolean;
   distortion?: boolean;
   depth?: boolean;
-  rotation?: boolean;
 }
 export interface SceneDirection {
   capabilities: SceneCapabilities;

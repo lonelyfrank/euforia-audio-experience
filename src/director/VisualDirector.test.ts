@@ -1,3 +1,5 @@
+import { createSnapshot } from '../experience/types';
+import { newFrame } from '../audio/features/decode';
 import { describe, expect, it } from 'vitest';
 import { MusicInterpreter } from '../audio/interpretation/MusicInterpreter';
 import { AutoDirection } from './AutoDirection';
@@ -34,14 +36,19 @@ describe('VisualDirector', () => {
       chaos.update(music, { ...DEFAULT_DIRECTION, mood: 'chaos', moodIntensity: 1 }, 1 / 60);
     }
     expect(chaos.frame.distortion).toBeGreaterThan(dream.frame.distortion * 2);
-    expect(chaos.frame.rotation).toBeGreaterThan(dream.frame.rotation * 3);
     expect(dream.frame.persistence).toBeGreaterThan(chaos.frame.persistence);
+    // Motion is the shared world's; the mood only scales how much of it each layer expresses.
+    const experience = createSnapshot(newFrame());
+    experience.world.spin = 1; experience.world.time = 1;
+    dream.update(music, { ...DEFAULT_DIRECTION, mood: 'dream', moodIntensity: 1, experience: 'ambient' }, 1 / 60, undefined, experience);
+    chaos.update(music, { ...DEFAULT_DIRECTION, mood: 'chaos', moodIntensity: 1 }, 1 / 60, undefined, experience);
+    expect(chaos.frame.world!.spin).toBeGreaterThan(dream.frame.world!.spin * 3);
     expect(music).toEqual(snapshot);
     const stable = chaos.frame;
     chaos.update(music, DEFAULT_DIRECTION, 1 / 60);
     expect(chaos.frame).toBe(stable);
-    for (const value of Object.values(stable)) expect(value).toBeGreaterThanOrEqual(0);
-    for (const value of Object.values(stable)) expect(value).toBeLessThanOrEqual(1);
+    for (const value of Object.values(stable)) if (typeof value === 'number') expect(value).toBeGreaterThanOrEqual(0);
+    for (const value of Object.values(stable)) if (typeof value === 'number') expect(value).toBeLessThanOrEqual(1);
   });
   it('honors capabilities and replaces routes per target, preserving other mappings', () => {
     const d = new VisualDirector({ capabilities: { distortion: true }, mappings: [{ source: 'high', target: 'scale', amount: 1 }] });
@@ -83,7 +90,7 @@ describe('VisualDirector on the audio clock', () => {
     expect(camera[camera.length - 1]).toBeGreaterThan(0.1);
     expect(Math.abs(camera[camera.length - 1] - camera[camera.length - 30])).toBeLessThan(0.01);
     const channels = director.dynamics.channelCount;
-    expect(channels).toBe(13);
+    expect(channels).toBe(10);
   });
 
   it('picks slower followers for a fluid mood and faster ones for a reactive one', () => {

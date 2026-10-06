@@ -5,6 +5,7 @@ import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/s
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
 import { audibleGlsl } from '../shared/audibleGlsl';
+import { REST_VIEW } from '../../world/WorldView';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { SignalTexture } from '../shared/SignalTexture';
@@ -52,6 +53,7 @@ const vertexShader = /* glsl */ `
   uniform float uLobes;
   uniform float uRing;
   uniform float uTwinkle;
+  uniform float uScatter;
   uniform float uSeed;
   uniform float uEmission;
   uniform float uDigital;
@@ -74,6 +76,8 @@ const vertexShader = /* glsl */ `
     float angle = aStar.y + uTension * r * 2.4 + uSpin * (0.4 + 1.0 * (1.0 - r));
     // The arms follow the lead's shape along the radius.
     angle += voiceAt(1.0, r * uArmCycles + uArmPhase, uDigital) * uArmWave * r;
+    // Lost coherence scatters the stars off their arms (fragmentation); coupling pulls them back.
+    angle += (fract(aStar.w * 13.7) - 0.5) * uScatter * r;
     // The core breathes with the bass and takes the bass line's shape (whole lobes: no seam).
     float core = 1.0 - smoothstep(0.0, 0.35, r);
     float turn = angle / 6.2831853;
@@ -178,6 +182,7 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
         uLobes: { value: 3 },
         uRing: { value: 0 },
         uTwinkle: { value: 0 },
+        uScatter: { value: 0 },
         uSeed: { value: 0 },
         uEmission: { value: 1 },
         uLevel: { value: 0 },
@@ -199,13 +204,14 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
+    const { weight, detail, music, trace } = response;
     const vary = music.variation;
-    // MESO: busy music turns the galaxy; a held chord leaves it almost still.
-    const turning = (modulation ? 0.02 + 2.4 * modulation.rotation : 0.04 + 1.4 * motion) * response.audible;
-    this.spin += dt * p.spin * flow * music.pace * 1.5 * turning;
-    this.armPhase -= dt * flow * music.pace * 0.3 * turning;
-    this.drift += dt * flow * turning;
+    // An orbital view of the shared world: its angular momentum turns the disc (inner orbits faster),
+    // its travel drifts the arms and the view; the music disturbs an already moving system.
+    const world = modulation?.world ?? REST_VIEW;
+    this.spin += world.dTurn * p.spin * 6;
+    this.armPhase -= world.dTravel * 0.2;
+    this.drift += world.dTravel * 0.4;
     if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) this.twinkleSeed = (this.twinkleSeed + 17.13) % 1000;
     this.lastHighFlux = frame.highFlux;
 
@@ -220,27 +226,30 @@ export class GalaxyVisualizer extends BaseVisualizer<GalaxyParams> {
     u.uDigital.value = this.voices.digital;
     // Bass is mass; trace belongs to the outward travelling memory, not to mass.
     u.uWeight.value = modulation?.scale ?? weight;
-    u.uTension.value = tension;
-    u.uRelease.value = music.drop;
-    // MACRO: a full sound spreads the galaxy out; a lone voice draws it in.
-    u.uRadius.value = p.radius * (0.78 + 0.4 * openness) * (1 - 0.24 * tension);
+    // Stored tension winds the arms tighter; a release front runs out along the radius.
+    u.uTension.value = world.tension;
+    u.uRelease.value = Math.min(1, world.releaseStrength * 2) * Math.exp(-world.releaseAge / 1.2);
+    // MACRO: radial pressure spreads the disc, the slow openness sets its scale.
+    u.uRadius.value = p.radius * (0.8 + 0.35 * world.openness) * Math.max(0.5, 1 + 0.3 * world.pressure);
+    u.uScatter.value = 0.9 * (1 - world.coherence) + 0.6 * world.disorder;
     // The lead shapes the arms independently of their macro compression.
-    u.uArmWave.value = p.armWave * (modulation ? 0.1 + 3 * modulation.distortion : flow) * (0.4 + 0.6 * music.leadVoice);
+    u.uArmWave.value = p.armWave * (modulation ? 0.1 + 3 * modulation.distortion : response.flow) * (0.4 + 0.6 * music.leadVoice) * (0.6 + 0.8 * world.disorder);
     u.uArmCycles.value = (1.5 + 2 * vary[3]) * (1 + 0.4 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uArmPhase.value = this.armPhase;
     u.uCoreShape.value = p.coreShape * (modulation ? 0.2 * weight + modulation.distortion : weight);
     u.uLobes.value = (3 + 3 * vary[0]) * (1 + 0.4 * Math.max(Math.log2(music.bassPitch / 40), 0));
-    u.uRing.value = p.ringTrace * (0.7 + 0.6 * trace) * (modulation ? 0.3 + 2 * modulation.impact : 1);
-    u.uTwinkle.value = modulation ? modulation.particleEmission * (0.3 + modulation.turbulence) : detail * music.highPercussion;
+    u.uRing.value = p.ringTrace * (0.5 + 0.4 * trace + 0.6 * world.excitation) * (modulation ? 0.3 + 2 * modulation.impact : 1);
+    u.uTwinkle.value = (modulation ? modulation.particleEmission : detail * music.highPercussion) * (0.3 + world.shimmer);
     u.uSeed.value = this.twinkleSeed;
     u.uEmission.value = modulation ? 0.25 + 0.85 * modulation.particleEmission : 1;
-    u.uLevel.value = density;
+    u.uLevel.value = world.light;
     (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
 
     const distance = this.preset.camera.distance * (modulation ? 1.12 - 0.25 * modulation.depth : 1);
     const drift = this.preset.camera.drift * (modulation ? 2 * modulation.cameraMotion : 1);
     const tilt = p.tilt + Math.sin(this.drift * 0.06) * 0.06 * drift;
-    const yaw = Math.sin(this.drift * 0.04) * 0.3 * drift;
+    // The view leans towards where the world is pushed from.
+    const yaw = Math.sin(this.drift * 0.04) * 0.3 * drift + world.lateral * 0.2;
     this.camera.position.set(Math.sin(yaw) * Math.cos(tilt) * distance, Math.sin(tilt) * distance, Math.cos(yaw) * Math.cos(tilt) * distance);
     this.camera.lookAt(0, 0, 0);
   }

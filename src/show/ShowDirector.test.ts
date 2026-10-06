@@ -56,6 +56,15 @@ function run(mode: RigMode, budget = 3, gridWeight = 0.9) {
 }
 
 describe('ShowDirector', () => {
+  it('never manufactures geometric motion: size and offset only follow looks and the world', () => {
+    const { calls, director } = run('free');
+    expect(calls.filter((c) => c.kind === 'impulse' && (c.param === 'size' || c.param === 'offset'))).toHaveLength(0);
+    // Without a world (no experience) the movement effects keep the look's framing exactly.
+    const framings = new Set(calls.filter((c) => c.param === 'size' || c.param === 'offset').map((c) => c.value.toFixed(6)));
+    for (const value of framings) expect(['1.000000', '0.800000', '0.000000', '0.150000', '-0.150000', '0.180000', '-0.080000']).toContain(value);
+    expect(director.log.some((entry) => /sweep|fan/.test(entry.what))).toBe(true);
+  });
+
   it('forgets future beats when the capture clock restarts', () => {
     const { director } = run('free');
     const sink: ShowSink = { target: () => {}, impulse: () => {}, snap: () => {} };

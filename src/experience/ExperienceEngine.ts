@@ -1,5 +1,7 @@
 import { copyFrame, newFrame, type AnalysisFrame, type BeatEvent, type OnsetEvent, type SectionEvent } from '../audio/features/decode';
 import { ResonantPhysics } from '../physics/ResonantPhysics';
+import { WorldEngine, WorldIntegrator } from '../world/WorldEngine';
+import { copyWorld } from '../world/WorldState';
 import { EventStream } from './EventStream';
 import { TemporalMemory } from './TemporalMemory';
 import { ExperiencePlanner } from './ExperiencePlanner';
@@ -20,6 +22,10 @@ export class ExperienceEngine {
   readonly memory = new TemporalMemory();
   readonly planner = new ExperiencePlanner();
   readonly physics = new ResonantPhysics();
+  /** The persistent world the music acts on (bodies and fields), advanced per hop on the audio clock. */
+  readonly world = new WorldEngine();
+  /** Extrapolates the presented world from its snapshot to the heard time (same held forces). */
+  private readonly presentation = new WorldIntegrator();
   /** Discrete events (analysis and experience), ordered by capture time. */
   readonly events = new EventStream();
   readonly state = createState();
@@ -78,6 +84,8 @@ export class ExperienceEngine {
     const dt = this.lastTime >= 0 ? a.time - this.lastTime : Math.min(a.time, 256 / 48000);
     if (!(dt > 0) || !Number.isFinite(dt)) return;
     this.lastTime = a.time;
+    // The interval up to this hop runs on the forces held since the previous one.
+    this.world.advance(a.time);
     const s = this.state;
     const quiet = !!a.silent || a.presence < 0.06;
     const presence = quiet ? 0 : a.presence;
@@ -137,10 +145,14 @@ export class ExperienceEngine {
       const power = unit(onset * (0.5 + s.releasePotential) * (0.6 + 0.4 * structural) * s.confidence);
       s.eventId++; s.eventTime = a.time; s.eventStrength = power;
       s.impact = power; this.lastHit = a.time;
-      this.events.push('impact', a.time, power, s.confidence, strongestBand(a), structural);
+      const band = strongestBand(a);
+      this.events.push('impact', a.time, power, s.confidence, band, structural);
+      // Where the hit sits in the stereo image decides where it pushes the world from (mono: centred).
+      this.world.impact(a.time, power, band, (band >= 0 ? a.bandPan[band] : a.balance) * a.stereoConfidence);
       if (release) {
         s.release = unit(s.releasePotential * (0.5 + structural));
         this.events.push('drop', a.time, s.release, s.anticipationConfidence, -1, unit(s.releasePotential + structural * 0.5));
+        this.world.release(a.time, s.release);
         // The release resolves what was anticipated.
         s.releasePotential *= 0.2; s.anticipation *= 0.3; this.lastRelease = a.time; this.memory.drops++;
       }
@@ -152,11 +164,13 @@ export class ExperienceEngine {
     this.predict(a);
     this.planner.update(s, a, dt);
     this.physics.update(a, s, dt);
+    this.world.setForces(a, s, this.planner.intents, presence);
     if (a.time - this.lastSnapshot >= 1 / 120 - 1e-9) {
       const snapshot = this.history[this.written++ % HISTORY];
       Object.assign(snapshot.state, s); Object.assign(snapshot.plan, this.planner.plan);
       for (let i = 0; i < snapshot.intents.length; i++) Object.assign(snapshot.intents[i], this.planner.intents[i]);
       copyPhysics(snapshot.physics, this.physics.frame); copyFrame(snapshot.acoustic, a);
+      copyWorld(snapshot.world, this.world.state);
       this.lastSnapshot = a.time;
     }
   }
@@ -169,14 +183,17 @@ export class ExperienceEngine {
       if (candidate.state.time <= heardTime + 1e-9) {
         // A stalled transport is not sustained sound. Drop stale states without inventing audio events.
         if (heardTime - candidate.state.time > 0.5) { this.ready = false; return undefined; }
-        copySnapshot(this.presented, candidate); this.ready = true; return this.presented;
+        copySnapshot(this.presented, candidate);
+        // A pure function of the snapshot and the heard time: the same at any frame rate.
+        this.presentation.integrate(this.presented.world, heardTime - candidate.state.time);
+        this.ready = true; return this.presented;
       }
     }
     this.ready = false; return undefined;
   }
 
   reset(): void {
-    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.events.reset();
+    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.world.reset(); this.events.reset();
     this.dEnergy.reset(); this.dComplexity.reset(); this.dTension.reset(); this.dOpenness.reset();
     this.shares.fill(0); this.scores.fill(0); this.trajectoryScores.fill(0);
     Object.assign(this.state, createState());
@@ -331,5 +348,5 @@ function copyPhysics(to: ExperienceSnapshot['physics'], from: ExperienceSnapshot
 function copySnapshot(to: ExperienceSnapshot, from: ExperienceSnapshot): void {
   Object.assign(to.state, from.state); Object.assign(to.plan, from.plan);
   for (let i = 0; i < to.intents.length; i++) Object.assign(to.intents[i], from.intents[i]);
-  copyPhysics(to.physics, from.physics); copyFrame(to.acoustic, from.acoustic);
+  copyPhysics(to.physics, from.physics); copyFrame(to.acoustic, from.acoustic); copyWorld(to.world, from.world);
 }

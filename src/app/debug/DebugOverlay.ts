@@ -5,6 +5,8 @@ import type { AudioFrame, MusicalState, VisualResponseFrame } from '../../types/
 import type { App } from '../App';
 import { SECTION_NAMES } from '../../audio/features/decode';
 import type { AudioEvent, EventCursor } from '../../experience/EventStream';
+import { WorldTrace } from '../../world/WorldTrace';
+import type { ExperienceSnapshot } from '../../experience/types';
 
 /*
  * Development-only audio/visual debug overlay. Shows the analyzer output
@@ -12,7 +14,9 @@ import type { AudioEvent, EventCursor } from '../../experience/EventStream';
  * and musical context, to tell whether a problem comes from the analysis, the
  * mapping or the scene. Also switches the synthetic test signals.
  * Open with ?debug or Shift+D. Loaded only when import.meta.env.DEV, so it
- * never ships in production.
+ * never ships in production. While installed it records a session trace
+ * (experience, prediction, intents, world at 20 Hz, last 10 minutes);
+ * Shift+T downloads it as CSV for inspection after playback.
  */
 
 const COLUMN = 310;
@@ -130,7 +134,10 @@ const SHOW_TOP = DYNAMICS_TOP + DYNAMICS_ROWS * ROW + 6;
 const EXPERIENCE_TOP = SHOW_TOP + 7 * ROW;
 /** Experience block: text lines, then the ERB row. */
 const EXPERIENCE_LINES = 16;
-const HEIGHT = EXPERIENCE_TOP + (EXPERIENCE_LINES + 1) * ROW;
+const WORLD_TOP = EXPERIENCE_TOP + (EXPERIENCE_LINES + 1) * ROW + 6;
+/** World block: title, six rows of paired bars, forces, adapter. */
+const WORLD_ROWS = 9;
+const HEIGHT = WORLD_TOP + WORLD_ROWS * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -153,15 +160,35 @@ export function installDebugOverlay(app: App): () => void {
       overlay = new DebugOverlay(app);
     }
   };
+  const trace = new WorldTrace();
+  let traced = -Infinity;
+  const record = window.setInterval(() => {
+    const experience = app.audio.experience;
+    if (!experience.ready || experience.presented.state.time === traced) return;
+    traced = experience.presented.state.time;
+    trace.sample(experience.presented);
+  }, 50);
   const onKey = (event: KeyboardEvent) => {
-    if (event.code === 'KeyD' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) toggle();
+    if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.code === 'KeyD') toggle();
+    if (event.code === 'KeyT') download(`halo-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, trace.toCsv());
   };
   window.addEventListener('keydown', onKey);
   if (new URLSearchParams(location.search).has('debug')) toggle();
   return () => {
+    window.clearInterval(record);
     window.removeEventListener('keydown', onKey);
     overlay?.dispose();
   };
+}
+
+function download(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 class DebugOverlay {
@@ -334,7 +361,7 @@ class DebugOverlay {
     const state = this.app.audio.visual;
     ctx.fillText(`Short energy ${state.shortEnergy.toFixed(2)} · Δ ${state.energyDelta.toFixed(2)} · range ${state.dynamicRange.toFixed(2)} · transient ${state.transient.toFixed(2)}`, 0, DIRECTOR_TOP + ROW * 2);
     if (modulation) {
-      this.bar('Expansion', COLORS.low, modulation.expansion, 0, DIRECTOR_TOP + ROW * 3);
+      this.bar('Scale', COLORS.low, modulation.scale, 0, DIRECTOR_TOP + ROW * 3);
       this.bar('Distortion', COLORS.mid, modulation.distortion, COLUMN + GAP, DIRECTOR_TOP + ROW * 3);
       this.bar('Camera', COLORS.tempo, modulation.cameraMotion, 0, DIRECTOR_TOP + ROW * 4);
       this.bar('Particles', COLORS.high, modulation.particleEmission, COLUMN + GAP, DIRECTOR_TOP + ROW * 4);
@@ -450,6 +477,8 @@ class DebugOverlay {
     ctx.fillText('ERB', 0, EXPERIENCE_TOP + EXPERIENCE_LINES * ROW);
     for (let b = 0; b < 24; b++) ctx.fillRect(40 + b * 12, EXPERIENCE_TOP + EXPERIENCE_LINES * ROW - 10, 8, a.erb[b] * 10);
 
+    this.drawWorld(e);
+
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(
       `Latency: attack→frame ${ms(timing.onsetDelay)} + render ${ms(timing.renderLatency)} = ${ms(timing.onsetDelay + timing.renderLatency)} · ` +
@@ -457,6 +486,33 @@ class DebugOverlay {
       0,
       ANALYSIS_TOP + ROW * 4,
     );
+  }
+
+  /** The persistent world as presented (heard time), its held forces and the protagonist's adapter output. */
+  private drawWorld(e: ExperienceSnapshot): void {
+    const { ctx } = this;
+    const w = e.world, f = w.forces;
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(`World · ${w.time.toFixed(2)} s · E ${w.energy.toFixed(3)} = kinetic ${w.kinetic.toFixed(3)} + elastic ${w.elastic.toFixed(3)} + stored ${w.stored.toFixed(3)} + waves ${w.wave.toFixed(3)} · Shift+T trace`, 0, WORLD_TOP);
+    const rows: [string, string, number][] = [
+      ['±Pressure', COLORS.low, w.radius], ['±Spin', COLORS.mid, w.spin / 3],
+      ['Speed', COLORS.mid, w.speed / 6], ['±Lateral', COLORS.tempo, w.bias],
+      ['Excitation', COLORS.hit, w.excitation], ['Shimmer', COLORS.high, w.shimmer],
+      ['Turbulence', COLORS.hit, w.turbulence], ['Coherence', COLORS.mid, w.coherence],
+      ['Potential', COLORS.tempo, w.potential], ['Illumination', COLORS.level, w.illumination],
+      ['Openness', COLORS.level, w.openness], ['Energy /4', COLORS.level, w.energy / 4],
+    ];
+    rows.forEach(([label, color, value], i) => this.bar(label, color, value, (i % 2) * (COLUMN + GAP), WORLD_TOP + ROW * (1 + (i >> 1))));
+    const age = (t: number) => (Number.isFinite(t) ? `${(w.time - t).toFixed(1)} s ago` : '–');
+    ctx.fillStyle = COLORS.level;
+    ctx.fillText(
+      `Forces rest ${f.radialRest.toFixed(2)} torque ${f.torque.toFixed(2)} (drag ${f.spinDrag.toFixed(2)}) thrust ${f.thrust.toFixed(2)} (drag ${f.travelDrag.toFixed(2)}) ` +
+        `lateral ${f.biasRest.toFixed(2)} charge ${f.charge.toFixed(2)} · impulse ${w.impulseStrength.toFixed(2)} ${age(w.impulseTime)} · release ${w.releaseStrength.toFixed(2)} ${age(w.releaseTime)}`,
+      0,
+      WORLD_TOP + ROW * 7,
+    );
+    const view = this.app.directionDebug.current?.director.world;
+    if (view) ctx.fillText(`Adapter (protagonist) travel ${view.travel.toFixed(1)} turn ${view.turn.toFixed(2)} · per frame ${view.dTravel.toFixed(3)} / ${view.dTurn.toFixed(4)} · disorder ${view.disorder.toFixed(2)}`, 0, WORLD_TOP + ROW * 8);
   }
 
   private trace(values: Float32Array, color: string): void {
@@ -495,7 +551,7 @@ class DebugOverlay {
     ctx.fillStyle = '#1a1e36';
     ctx.fillRect(x + LABEL, y - 4, BAR, 8);
     ctx.fillStyle = color;
-    if (label.endsWith('Trend')) {
+    if (label.endsWith('Trend') || label.startsWith('±')) {
       const width = Math.max(-1, Math.min(value, 1)) * BAR / 2;
       ctx.fillRect(x + LABEL + BAR / 2, y - 4, width, 8);
     } else ctx.fillRect(x + LABEL, y - 4, Math.max(0, Math.min(value, 1)) * BAR, 8);

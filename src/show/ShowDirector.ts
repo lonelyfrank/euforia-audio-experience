@@ -295,12 +295,18 @@ export class ShowDirector {
         sink.impulse(s, 'strobe', (active > 1 || downbeat ? 0.9 : 0.35) * weight, at);
         break;
       }
-      case 'sweep':
-        for (let s = 1; s < active; s++) sink.target(s, 'offset', (s === 1 ? 1 : -1) * 0.18 * Math.sin((Math.PI / 2) * position), at);
+      // Movement effects observe the shared world instead of manufacturing motion on the grid:
+      // the supports lean towards where the world is pushed from, the composition breathes with its pressure.
+      case 'sweep': {
+        const lateral = input.experience?.world.bias ?? 0;
+        for (let s = 1; s < active; s++) sink.target(s, 'offset', this.slots[s].offset + 0.18 * lateral, at);
         break;
-      case 'fan':
-        if (downbeat) for (let s = 0; s < active; s++) sink.impulse(s, 'size', 0.08 * weight, at);
+      }
+      case 'fan': {
+        const pressure = input.experience?.world.radius ?? 0;
+        if (downbeat) for (let s = 0; s < active; s++) sink.target(s, 'size', this.slots[s].size * (1 + 0.12 * Math.max(-0.5, Math.min(1, pressure))), at);
         break;
+      }
       case 'mirror':
         if (downbeat) for (let s = 0; s < active; s++) sink.impulse(s, 'strobe', 0.6 * weight, at);
         break;

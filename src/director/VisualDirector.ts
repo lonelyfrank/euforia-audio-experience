@@ -4,6 +4,7 @@ import { clamp01, experienceById, moodAmount, moodById, NEUTRAL } from './profil
 import type { Character, DirectionSettings, Feature, Mapping, ModulationKey, ModulationState, SceneDirection } from './types';
 import { Dynamics } from '../dynamics/Dynamics';
 import type { DynamicsType } from '../dynamics/presets';
+import { WorldView, type WorldGains } from '../world/WorldView';
 
 /**
  * Every parameter except `impact` (the rig's timed pulse) lives on the
@@ -13,15 +14,12 @@ import type { DynamicsType } from '../dynamics/presets';
  * experience: [normal, slow (fluid), fast (reactive)].
  */
 const DYNAMIC_TYPES: Partial<Record<ModulationKey, readonly [DynamicsType, DynamicsType, DynamicsType]>> = {
-  expansion: ['glide', 'glide', 'glide'],
-  rotation: ['glide', 'glide', 'glide'],
   cameraMotion: ['drift', 'drift', 'drift'],
   depth: ['drift', 'drift', 'drift'],
   persistence: ['drift', 'drift', 'drift'],
   contrast: ['drift', 'drift', 'drift'],
   scale: ['level', 'swell', 'sparkle'],
   distortion: ['level', 'swell', 'sparkle'],
-  turbulence: ['level', 'swell', 'sparkle'],
   particleEmission: ['sparkle', 'level', 'sparkle'],
   brightness: ['level', 'swell', 'level'],
   bloom: ['swell', 'swell', 'level'],
@@ -50,10 +48,7 @@ const SNAP_SECONDS = 0.5;
 
 const DEFAULT_ROUTES: readonly Mapping[] = [
   { source: 'low', target: 'scale', amount: 0.65 }, { source: 'pulse', target: 'scale', amount: 0.2 },
-  { source: 'openness', target: 'expansion', amount: 0.55 }, { source: 'release', target: 'expansion', amount: 0.45 },
   { source: 'mid', target: 'distortion', amount: 0.65 }, { source: 'tension', target: 'distortion', amount: 0.25 },
-  { source: 'flux', target: 'turbulence', amount: 0.6 }, { source: 'high', target: 'turbulence', amount: 0.25 },
-  { source: 'mid', target: 'rotation', amount: 0.45 }, { source: 'flux', target: 'rotation', amount: 0.4 },
   { source: 'openness', target: 'cameraMotion', amount: 0.3 }, { source: 'mid', target: 'cameraMotion', amount: 0.4 },
   { source: 'high', target: 'particleEmission', amount: 0.65 }, { source: 'transient', target: 'particleEmission', amount: 0.25 },
   { source: 'brightness', target: 'brightness', amount: 0.3 }, { source: 'intensity', target: 'brightness', amount: 0.6 },
@@ -61,18 +56,16 @@ const DEFAULT_ROUTES: readonly Mapping[] = [
   { source: 'transient', target: 'impact', amount: 0.8 }, { source: 'release', target: 'impact', amount: 0.2 },
   { source: 'openness', target: 'depth', amount: 0.5 }, { source: 'warmth', target: 'depth', amount: 0.3 },
 ];
-const KEYS: readonly ModulationKey[] = ['scale', 'expansion', 'distortion', 'turbulence', 'rotation', 'cameraMotion', 'particleEmission', 'brightness', 'bloom', 'impact', 'persistence', 'depth', 'contrast', 'visibility'];
+const KEYS: readonly ModulationKey[] = ['scale', 'distortion', 'cameraMotion', 'particleEmission', 'brightness', 'bloom', 'impact', 'persistence', 'depth', 'contrast', 'visibility'];
 const CHARACTER_KEYS = Object.keys(NEUTRAL) as (keyof Character)[];
 const TIMES: Record<ModulationKey, readonly [number, number]> = {
-  scale: [0.04, 0.4], expansion: [0.5, 1.5], distortion: [0.07, 0.4], turbulence: [0.04, 0.35],
-  rotation: [0.4, 1.5], cameraMotion: [1.8, 3], particleEmission: [0.015, 0.25], brightness: [0.12, 0.6],
+  scale: [0.04, 0.4], distortion: [0.07, 0.4], cameraMotion: [1.8, 3], particleEmission: [0.015, 0.25], brightness: [0.12, 0.6],
   bloom: [0.3, 1], impact: [0.006, 0.18], persistence: [1, 2], depth: [3, 5], contrast: [1, 2], visibility: [0.03, 0.3],
 };
 const MODIFIER: Partial<Record<ModulationKey, keyof Character>> = {
-  expansion: 'expansion', distortion: 'distortion', turbulence: 'turbulence', rotation: 'motion',
-  cameraMotion: 'camera', particleEmission: 'particles', brightness: 'brightness', bloom: 'bloom', depth: 'depth',
+  distortion: 'distortion', cameraMotion: 'camera', particleEmission: 'particles', brightness: 'brightness', bloom: 'bloom', depth: 'depth',
 };
-const fresh = (): ModulationState => ({ scale: 0, expansion: 0, distortion: 0, turbulence: 0, rotation: 0, cameraMotion: 0, particleEmission: 0, brightness: 0, bloom: 0, impact: 0, persistence: 0, depth: 0, contrast: 0, visibility: 0 });
+const fresh = (): ModulationState => ({ scale: 0, distortion: 0, cameraMotion: 0, particleEmission: 0, brightness: 0, bloom: 0, impact: 0, persistence: 0, depth: 0, contrast: 0, visibility: 0 });
 
 export function approach(value: number, target: number, dt: number, attack: number, release: number): number {
   const tau = target > value ? attack : release;
@@ -98,6 +91,9 @@ export class VisualDirector {
   impactScale = 1;
   /** Current speed tier of the followers (NORMAL, SLOW, FAST). */
   private tier = NORMAL;
+  /** This layer's adapter of the shared world: the scenes' motion comes from it, scaled by the mood. */
+  readonly world = new WorldView();
+  private readonly gains: WorldGains = { motion: 1, expansion: 1, turbulence: 1 };
 
   constructor(private readonly direction: SceneDirection = { capabilities: {} }) {
     const custom = direction.mappings ?? [];
@@ -123,6 +119,9 @@ export class VisualDirector {
       c[key] = approach(c[key], moodAmount(mood[key], settings.moodIntensity) * experience.character[key], dt, 2, 2);
     }
     this.minimal = approach(this.minimal, experience.minimal, dt, 1, 1);
+    this.gains.motion = c.motion; this.gains.expansion = c.expansion; this.gains.turbulence = c.turbulence;
+    this.world.update(experienceState?.world, this.gains);
+    this.frame.world = this.world;
     this.attack = approach(this.attack, experience.attack, dt, 2, 2);
     this.release = approach(this.release, experience.release, dt, 2, 2);
     const f = this.features;
@@ -166,11 +165,9 @@ export class VisualDirector {
       const plan = experienceState.plan;
       const suspend = weight(intent[INTENT.suspend]);
       const pace = 1 + 0.3 * (weight(intent[INTENT.accelerate]) - weight(intent[INTENT.decelerate]));
-      t.expansion += weight(intent[INTENT.expand]) * 0.25 - weight(intent[INTENT.contract]) * 0.2;
-      t.rotation = (t.rotation + weight(intent[INTENT.rotate]) * 0.2) * pace;
+      // Expansion, rotation and turbulence are forces on the shared world (WorldEngine), not Director parameters.
       t.depth += weight(intent[INTENT.reveal]) * 0.15;
       t.distortion *= 0.4 + plan.desiredEntropy * 0.6;
-      t.turbulence *= 0.3 + plan.desiredEntropy * 0.7;
       t.particleEmission *= 0.35 + plan.desiredEntropy * 0.65;
       t.brightness *= plan.maxIntensity;
       t.bloom *= plan.maxIntensity * (1 - suspend * 0.65);
@@ -181,7 +178,7 @@ export class VisualDirector {
       const modifier = MODIFIER[key];
       if (modifier) t[key] *= c[modifier];
       if ((key === 'cameraMotion' && !caps.cameraMotion) || (key === 'particleEmission' && !caps.particles) ||
-          (key === 'depth' && !caps.depth) || (key === 'rotation' && !caps.rotation) || (key === 'distortion' && !caps.distortion)) t[key] = 0;
+          (key === 'depth' && !caps.depth) || (key === 'distortion' && !caps.distortion)) t[key] = 0;
       const channel = this.channels[key];
       if (clock && channel !== undefined) {
         this.dynamics.setTarget(channel, clamp01(t[key]), clock.time);
@@ -204,11 +201,6 @@ export class VisualDirector {
         const channel = this.channels[key];
         if (channel !== undefined) this.frame[key] = clamp01(this.dynamics.value(channel));
       }
-    }
-    if (experienceState) {
-      // Momentum is a geometric displacement; it never bypasses the shared brightness guard.
-      this.frame.expansion = clamp01(this.frame.expansion + experienceState.physics.displacement * 0.22);
-      this.frame.scale = clamp01(this.frame.scale + Math.abs(experienceState.physics.displacement) * 0.12);
     }
     this.adapt(music, experienceState, clock?.releaseLight ?? 0);
     return this.frame;
@@ -244,7 +236,7 @@ export class VisualDirector {
     out.flow = clamp01(music.flow * c.mid);
     out.detail = clamp01(music.detail * c.high);
     out.motion = clamp01(music.motion * c.motion);
-    out.openness = m.expansion;
+    out.openness = music.openness;
     out.tension = clamp01(music.tension * c.structure);
     out.impact = m.impact;
     out.density = clamp01(music.density * (0.5 + m.brightness));
@@ -258,7 +250,8 @@ export class VisualDirector {
     context.drop = clamp01((experience ? Math.min(experience.state.release, releaseLight) : music.music.drop) * c.structure);
     if (experience) {
       const s = experience.state;
-      out.motion = clamp01(s.motion * c.motion + Math.abs(experience.physics.velocity) * 0.025);
+      out.motion = clamp01(s.motion * c.motion);
+      out.openness = experience.world.openness;
       out.tension = s.tension;
       out.density = s.density;
       // Opposite-phase stereo can cancel the graphical mono waveform, not auditory presence.

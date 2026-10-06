@@ -13,9 +13,8 @@ import {
 } from 'three';
 import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
-import type { PaletteColors, SceneClock, VisualizerContext } from '../../types/visualizer';
-import { INTENT, type VisualIntent } from '../../experience/types';
-import { TunnelBody, type TunnelForces } from './TunnelBody';
+import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
+import { REST_VIEW } from '../../world/WorldView';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
@@ -53,11 +52,13 @@ const MID_END = hzToPosition(2000);
 const bendChunk = /* glsl */ `
   uniform float uTravel;
   uniform float uBend;
+  uniform float uLateral;
   vec2 curve(float s) {
     return vec2(sin(s * 0.013) + 0.5 * sin(s * 0.029), cos(s * 0.011) + 0.5 * sin(s * 0.023)) * uBend;
   }
+  // The world's lateral force (where the sound is in the stereo image) leans the far end towards it.
   vec2 bendAt(float d) {
-    return curve(d + uTravel) - curve(uTravel);
+    return curve(d + uTravel) - curve(uTravel) + vec2(uLateral * d * d * 0.004, 0.0);
   }
 `;
 
@@ -221,11 +222,6 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   private sparkTravel = 0;
   private roll = 0;
   private shapePhase = 0;
-  /** Physical response on the heard clock (with a SceneClock); otherwise the direct mapping below. */
-  private readonly body = new TunnelBody();
-  private readonly forces: TunnelForces = { rest: 1, expand: 0, speed: 0, pace: 0, surge: 0, roll: 0 };
-  private bodyTravel = 0;
-  private bodyRoll = 0;
   private leadPhase = 0;
 
   init({ quality, renderer }: VisualizerContext): void {
@@ -234,6 +230,7 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     const shared = {
       uTravel: { value: 0 },
       uBend: { value: p.bend },
+      uLateral: { value: 0 },
       uRadius: { value: p.radius },
       uLength: { value: p.length },
       tVoices: { value: this.voices.texture },
@@ -297,6 +294,7 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
         // Same uniform objects: bending stays in sync with the tunnel.
         uTravel: shared.uTravel,
         uBend: shared.uBend,
+        uLateral: shared.uLateral,
         uRadius: shared.uRadius,
         uLength: shared.uLength,
         uSparkTravel: { value: 0 },
@@ -314,44 +312,20 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     for (let i = 0; i < 3; i++) (u[`uColor${i}`].value as Color).copy(colors[i]);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
+    const { weight, flow, detail, music, trace } = response;
     const vary = music.variation;
-
-    // Motion owns forward speed. Tempo remains in the spacing of historical impacts.
-    const speed = (2 / p.ringDensity) * response.audible * (0.04 + 1.6 * motion) * (1 + 0.18 * tension + 1.1 * music.drop);
-    const rollRate = (modulation?.rotation ?? flow) * (0.04 + motion) * response.audible * 0.2 * (1 + tension * 0.5);
-    // MACRO: a full, wide sound widens the tunnel; a lone voice narrows it.
-    const opening = (0.82 + 0.38 * openness) * (1 - 0.28 * tension + 0.4 * music.drop);
-    let advance: number;
-    let radius: number;
-    if (clock) {
-      // Forces, not positions: the wall springs about the opening and rings after hits; travel and roll carry momentum.
-      const intents = modulation?.experienceState?.intents;
-      const f = this.forces;
-      f.rest = opening;
-      f.expand = intents ? (effective(intents[INTENT.expand]) - effective(intents[INTENT.contract])) * 6 : 0;
-      f.speed = speed;
-      f.pace = intents ? (effective(intents[INTENT.accelerate]) - effective(intents[INTENT.decelerate])) * speed : 0;
-      f.surge = (2 / p.ringDensity) * 0.8;
-      f.roll = rollRate;
-      this.body.advance(clock.time, f, clock.hits, clock.hitScale);
-      advance = Math.max(0, this.body.travel.position - this.bodyTravel);
-      this.bodyTravel = this.body.travel.position;
-      this.roll += this.body.roll.position - this.bodyRoll;
-      this.bodyRoll = this.body.roll.position;
-      radius = Math.max(0.3, this.body.wall.x);
-    } else {
-      advance = dt * speed;
-      this.roll += dt * rollRate;
-      radius = opening;
-    }
+    // The tunnel is a view of the shared world: its travel is the world's, the wall is the world's
+    // radial body (pressure, hits, stored tension), roll and torsion its angular momentum.
+    const world = modulation?.world ?? REST_VIEW;
+    const advance = world.dTravel * (2 / p.ringDensity);
     this.travel += advance;
-    this.sparkTravel += advance * 1.6 + dt * detail * music.highPercussion * 20;
-    // The wall's shape and the ring lines drift with the mids, never on their own.
-    this.shapePhase += dt * flow * (0.04 + motion) * response.audible * 0.15;
-    this.leadPhase -= dt * flow * (0.04 + motion) * response.audible * 0.25;
+    this.roll += world.dTurn * 0.25;
+    this.sparkTravel += advance * 1.6 + dt * world.shimmer * 8;
+    // The wall's shape and the ring lines turn and drift with the world, never on their own.
+    this.shapePhase += world.dTurn * 0.5;
+    this.leadPhase -= world.dTravel * 0.08;
 
     const { spectrum } = frame;
     this.traces.record(LOW, traceValue(frame, response, 1, sampleSpectrumRange(spectrum, 0, LOW_END)));
@@ -362,7 +336,7 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
 
     const u = this.tunnelMaterial.uniforms;
     u.uTravel.value = this.travel;
-    u.uRadius.value = p.radius * (modulation ? 0.75 + 0.5 * modulation.scale : 1) * radius;
+    u.uRadius.value = p.radius * (modulation ? 0.85 + 0.3 * modulation.scale : 1) * Math.max(0.4, 1 + 0.42 * world.pressure);
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
     // Bass: the section's depth (weight) and lobes (pitch: higher notes, more lobes; per song a base count).
@@ -370,17 +344,20 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     u.uShape.value = p.deform * (modulation?.distortion ?? weight) * response.lowAudible;
     u.uLobes.value = (3 + 4 * vary[0]) * (1 + 0.5 * Math.max(Math.log2(music.bassPitch / 40), 0));
     u.uShapePhase.value = this.shapePhase;
-    u.uRing.value = p.ringTrace * (0.7 + 0.6 * trace);
+    u.uRing.value = p.ringTrace * (0.5 + 0.4 * trace + 0.6 * world.excitation);
     // Mids: lead-shaped ring lines, twist and bend.
     u.uLeadWobble.value = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice) * response.midAudible;
     u.uLeadCycles.value = (2 + 3 * vary[3]) * (1 + 0.3 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
-    u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow * (1 + tension);
-    u.uBend.value = p.bend * (modulation ? 0.1 + 1.4 * modulation.turbulence : 0.3 + 0.7 * flow);
+    // Torsion: the long lines wind with the world's angular velocity.
+    u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow + world.spin * 0.03;
+    u.uBend.value = p.bend * (0.1 + 1.4 * world.disorder);
+    u.uLateral.value = world.lateral;
     // Highs: fine grid; brightness from energy, hits and drops.
     u.uDetail.value = detail * response.highAudible;
-    u.uDensity.value = density;
-    u.uRelease.value = music.drop;
+    u.uDensity.value = world.light;
+    // A release of stored potential opens a pressure front that rolls away from the camera.
+    u.uRelease.value = Math.min(1, world.releaseStrength * 2) * Math.exp(-world.releaseAge / 1.2);
     const s = this.sparkMaterial.uniforms;
     s.uSparkTravel.value = this.sparkTravel;
     s.uSparks.value = (modulation?.particleEmission ?? (detail * (0.3 + 0.7 * music.highPercussion))) * response.highAudible;
@@ -403,9 +380,4 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     this.traces.dispose();
     super.dispose();
   }
-}
-
-/** An intent's effective weight: strength attenuated by its confidence. */
-function effective(intent: VisualIntent): number {
-  return intent.strength * intent.confidence;
 }

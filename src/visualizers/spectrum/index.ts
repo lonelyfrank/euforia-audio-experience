@@ -9,7 +9,7 @@ export default defineVisualizer<SpectrumParams>({
   description: 'Radial spectrogram: a spectrum ring with echoes, voice-shaped core and orbit.',
   order: 2,
   icon: 'spectrum',
-  direction: { capabilities: { distortion: true, rotation: true }, mappings: [{ source: 'low', target: 'scale', amount: 0.5 }, { source: 'transient', target: 'scale', amount: 0.3 }] },
+  direction: { capabilities: { distortion: true }, mappings: [{ source: 'low', target: 'scale', amount: 0.5 }, { source: 'transient', target: 'scale', amount: 0.3 }] },
   preset: preset satisfies VisualizerPreset<SpectrumParams>,
   create: (p) => new SpectrumVisualizer(p),
 });

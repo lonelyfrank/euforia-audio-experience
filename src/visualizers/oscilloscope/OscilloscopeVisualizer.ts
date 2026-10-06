@@ -1,4 +1,5 @@
 import type { ModulationState } from '../../director/types';
+import { REST_VIEW } from '../../world/WorldView';
 import { OrthographicCamera, Scene, type InterleavedBufferAttribute } from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
@@ -91,8 +92,13 @@ export class OscilloscopeVisualizer implements Visualizer {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
+    const { weight, flow, detail, density, music, trace } = response;
     const [input, bass, lead] = this.channels;
+    // The scope keeps its readable traces; the world only gives the beam its inertia: the voices scroll
+    // with the world's travel, pressure spreads the channels, stored tension steps and narrows them,
+    // excitation and coherence decide how long the phosphor holds.
+    const world = modulation?.world ?? REST_VIEW;
+    const tension = world.tension;
 
     // CH1: the input, resampled; it flattens to a line as the sound goes (a bare noise floor included).
     const stride = WAVEFORM_SIZE / POINTS;
@@ -103,9 +109,8 @@ export class OscilloscopeVisualizer implements Visualizer {
     // Tension (build-ups) makes the voices more stepped, more "digital".
     const digital = Math.min(1, p.digital * (0.3 + 0.7 * music.stylePercussion) * (1 + 0.5 * tension));
     // MESO: busy music scrolls the voices; a held note stands still on the screen.
-    const scroll = (0.03 + 1.2 * motion) * response.audible;
-    this.bassPhase += dt * weight * music.pace * 0.2 * scroll;
-    this.leadPhase += dt * flow * music.pace * 0.3 * scroll;
+    this.bassPhase += world.dTravel * weight * music.pace * 0.15;
+    this.leadPhase += world.dTravel * flow * music.pace * 0.22;
     const bassCycles = 2 + 1.5 * Math.max(Math.log2(music.bassPitch / 40), 0);
     const leadCycles = 4 + 2 * Math.max(Math.log2(music.leadPitch / 180), 0);
     fillVoice(bass.values, music.bassLine, bassCycles, this.bassPhase, digital);
@@ -113,12 +118,12 @@ export class OscilloscopeVisualizer implements Visualizer {
     // Each channel flattens and fades with its region (slowly on a fade, at once on a cut).
     const { lowAudible, midAudible, audible } = response;
     // MACRO: a full sound spreads the channels apart; a lone voice keeps them close.
-    const spacing = p.voiceSpacing * (0.7 + 0.6 * openness) * (1 - 0.22 * tension);
+    const spacing = p.voiceSpacing * (0.75 + 0.4 * world.openness) * Math.max(0.5, 1 + 0.3 * world.pressure) * (1 - 0.22 * tension);
     this.write(bass, p.offsetY - spacing, p.voiceAmplitude * (modulation?.scale ?? weight) * lowAudible);
     this.write(lead, p.offsetY + spacing, p.voiceAmplitude * flow * (0.4 + 0.6 * music.leadVoice) * midAudible);
 
     // Bass → trace width, highs → brightness, drop → flash.
-    const flash = 0.3 * music.drop;
+    const flash = 0.3 * Math.min(1, world.releaseStrength * 2) * Math.exp(-world.releaseAge / 1.2);
     input.material.linewidth = p.traceWidth * (1 + 0.6 * weight);
     input.material.opacity = Math.min(1, 0.75 + 0.25 * detail + flash) * audible;
     bass.material.opacity = Math.min(1, 0.45 + 0.4 * weight + flash) * lowAudible;
@@ -128,7 +133,8 @@ export class OscilloscopeVisualizer implements Visualizer {
     // Hits lengthen the phosphor's persistence for a moment (the impacts' afterimage).
     // Afterimage damping is per rendered frame: convert the 60 Hz preset to elapsed time.
     // A drop briefly overdrives the phosphor, preserving the readable channel layout.
-    this.afterimage.uniforms.damp.value = Math.min(0.96, modulation ? 0.6 + 0.36 * modulation.persistence : p.persistence + 0.12 * trace + 0.07 * music.drop) ** (dt * 60);
+    const hold = (modulation ? 0.6 + 0.36 * modulation.persistence : p.persistence + 0.12 * trace) + 0.04 * world.excitation - 0.05 * world.disorder;
+    this.afterimage.uniforms.damp.value = Math.min(0.96, hold) ** (dt * 60);
   }
 
   resize(width: number, height: number): void {

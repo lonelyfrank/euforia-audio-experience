@@ -20,7 +20,8 @@ La UI implementa il **design system Halo** (token, componenti, le 8 fasi del moc
 - Cattura dell'audio di sistema su **Windows** (WASAPI loopback) e **Linux** (monitor PipeWire/PulseAudio); microfono su tutte le piattaforme
 - Solo audio dal vivo: niente file né tracce precaricate; in sviluppo c'è un segnale di test sintetico
 - Rust nativo/WASM: analisi stereo multi-risoluzione 512/2048/8192, ERB, loudness con percentili, noise floor per banda, fase, H/P/R, note e ritmo con ipotesi di metro e downbeat previsto; nel browser gira in un worker, mai sul frame loop; TS conserva spettro/waveform/voci grafiche
-- Memoria multiscala, ricorrenza di motivi, narrativa probabilistica con isteresi, trajectory, anticipazione causale, previsione con confidence ed event stream datato sui campioni; grammatica di 14 intenti e risposta fisica con momentum (Resonant Field, Tunnel)
+- Memoria multiscala, ricorrenza di motivi, narrativa probabilistica con isteresi, trajectory, anticipazione causale, previsione con confidence ed event stream datato sui campioni; grammatica di 14 intenti
+- **World Engine**: un mondo fisico persistente (pressione, momento angolare, avanzamento, bias stereo, eccitazione, turbolenza, coerenza, potenziale, luce) che la musica spinge con forze e impulsi; tutte le sette scene lo interpretano, il cambio di scena non lo azzera, il silenzio lo lascia decadere
 - Resonant Field: modi di una membrana e onde propagate/riflesse, con intensità distinta dalla complessità; budget DSP indipendente dalla qualità grafica
 - 8 mood e 5 modalità Experience; regia **Preset / Hybrid / Free**, fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
 - 7 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**
@@ -79,13 +80,15 @@ Live capture (system / microphone / test)
             ├─ memoria multiscala / motivi / narrativa / trajectory / previsione
             ├─ EventStream ordinato per tempo audio
             ├─ ExperiencePlanner → VisualIntent / contrasto / entropia
-            └─ ResonantPhysics → modi, momentum, onde
-                     ↓ history limitata sul clock percepito
+            ├─ WorldEngine → WorldState: corpi (pressione, spin, travel, bias) e campi
+            │    (eccitazione, turbolenza, coerenza, potenziale, luce, apertura); forze e impulsi
+            └─ ResonantPhysics → modi della membrana, onde
+                     ↓ history limitata; il mondo è estrapolato esattamente al clock percepito
        ClockSync / Timing → RigController
-            ├─ CueScheduler / FlashGuard / Dynamics
-            └─ ShowDirector / grafo scene / GpuBudget
+            ├─ CueScheduler / FlashGuard / Dynamics (luce del rig)
+            └─ ShowDirector / grafo scene / GpuBudget (rappresentazione, composizione)
                      ↓
-       Layer: VisualDirector → grammatica specifica + scena + pass
+       Layer: VisualDirector (luce, camera, guadagni del mood) + WorldView (adattatore) → scena + pass
                      ↓
        RenderEngine: 3 slot / 4 layer composti → Halo → Canvas
 ```
@@ -94,7 +97,7 @@ La [scheda tecnica per gli agenti](docs/technical-overview.md) descrive responsa
 contratti, verifiche dell'audit e miglioramenti prioritari. Il rapporto di questo refactor e le misure sono in [docs/refactor-report.md](docs/refactor-report.md).
 Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/realtime-analysis.md),
 [modello acustico](docs/acoustic-model.md), [planner](docs/experience-planner.md),
-[fisica](docs/physics-engine.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
+[fisica](docs/physics-engine.md), [World Engine](docs/world-engine.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
 
@@ -102,6 +105,7 @@ Principi:
 - **La sorgente audio non conosce i visualizer**: un provider espone PCM grafico tramite `readSamples()` e i record dell'analisi musicale tramite `readFeatures()`; l'analisi gira fuori dal frame loop (thread di cattura nativo o worker browser).
 - **Analisi centralizzata per percorso**: nessun visualizer fa FFT per conto suo. TS e Rust/WASM oggi calcolano alcune misure sovrapposte: la loro unificazione richiede una migrazione verificata, non la rimozione di uno dei due.
 - **Il render engine non conosce l'audio engine** né la UI: riceve una callback `frameSource(dt)`.
+- **La musica modifica il mondo, non ogni frame**: il moto delle scene viene dal `WorldState` condiviso (forze, momento, smorzamento); le scene lo interpretano, non lo ricalcolano.
 - **Riutilizzo nel percorso continuo**: buffer, eventi e oggetti Three.js persistono fra frame. Mount, cambi di look, IPC/worklet e debug possono allocare; non è una garanzia di zero allocazioni sull’intera pipeline.
 
 ### Stack
@@ -147,6 +151,7 @@ npm run dev              # solo frontend nel browser (segnale di test, microfono
 npm run check            # typecheck + lint + test (bench incluso) + build frontend
 cargo test -p spectrum-analysis -p spectrum-analysis-wasm --offline
 npm run wasm             # ricompila il WASM; serve il target wasm32-unknown-unknown
+HALO_CORPUS=~/halo-corpus npm run replay   # validazione su registrazioni locali (mai versionate)
 ```
 
 In modalità browser (`npm run dev`) "System Audio" non è disponibile: la sorgente di default è il segnale di test sintetico. Il microfono passa da `getUserMedia`. È utile per sviluppare le scene senza compilare la parte Rust.
@@ -177,7 +182,9 @@ src/
   director/         mood, Experience, matrice, VisualDirector, AutoDirection
   timing/           clock capture→host, cue percepiti, gate del ritmo, calibrazione
   experience/       memoria, narrativa, trajectory, previsione, event stream, planner, intenti, history
+  world/            WorldState, WorldEngine (forze, impulsi, energia), WorldView (adattatore per layer), WorldTrace
   physics/          modi risonanti, onde causali, primitive esatte (oscillatore, momento, inviluppo)
+  validation/       replay di registrazioni locali sul percorso live, metriche e tracce
   dynamics/         molle/follower/inviluppi, scheduler, cronologia hit, FlashGuard
   show/             scelta fixture/effetti, budget GPU, affinità e seed deterministici
   renderer/         RenderEngine (slot, crossfade, loop), Layer, composizione Halo, qualità
@@ -258,10 +265,15 @@ vale anche per narrativa e fisica. Impulsi luminosi e geometria hanno vie
 separate; Reduce Flashing conserva la deformazione. Gli stati sono indizi
 causali, non riconoscimento di genere o previsione certa della struttura.
 
-Le sei scene precedenti sono migrate tramite l'adattatore del Director;
-Resonant Field consuma direttamente intenti, modi, onde, stereo e fase. Nessuna
-scena esegue DSP. Il benchmark automatico confronta PCM→regia a 30/60/144 fps
-con batch 128/480/2048, oltre alle regressioni su silenzio e warm-up.
+Il **World Engine** dà a questo cervello un corpo: intenti, eventi e misure
+acustiche diventano forze e impulsi su uno stato persistente che nessuna scena
+possiede. Le sette scene lo interpretano tramite un `WorldView` per layer (momento
+angolare → orbita della Galaxy, torsione del Tunnel, vortice delle particelle,
+taglio del Liquid…); un cambio di scena non azzera il mondo, la previsione carica
+potenziale che solo un rilascio reale libera, il silenzio lo lascia decadere.
+Contratti, unità, mappe per scena e validazione: [docs/world-engine.md](docs/world-engine.md).
+Nessuna scena esegue DSP. Il benchmark automatico confronta PCM→regia→mondo a
+30/60/144 fps con batch 128/480/2048, oltre alle regressioni su silenzio e warm-up.
 
 ## Interpretazione grafica e fallback
 
@@ -269,7 +281,7 @@ con batch 128/480/2048, oltre alle regressioni su silenzio e warm-up.
 
 Tre scale: impact/shimmer in millisecondi, motion/density attorno al secondo, openness/tension e sezioni su più secondi. `MusicContext` conserva tempo, intensità relativa, build/drop e stile delle voci; espone trend firmati di energia, motion, copertura, tensione e apertura, più memoria recente di picchi e drop. Lo stato musicale ha confidence, durata e stato precedente, con isteresi e conferma temporale.
 
-Le sei scene interpretano gli stessi eventi secondo la propria geometria: un drop libera le spirali, apre il tunnel, espelle le particelle, allarga il fluido, emette un fronte sonar o carica i fosfori dell'oscilloscopio. In assenza sonora il moto si ferma e la memoria degli eventi decade.
+Forme delle voci, tracce e spettri disegnati restano su questo percorso grafico; il moto, la pressione, la turbolenza e i rilasci delle scene vengono invece dal mondo condiviso. Un rilascio libera le spirali, apre il tunnel, espelle le particelle, allarga il fluido, emette un fronte o carica i fosfori dell'oscilloscopio. In assenza sonora il mondo perde energia per smorzamento e le scene si fermano.
 
 Architettura, mood/modalità, Director, capacità e istruzioni di estensione: [docs/visual-director.md](docs/visual-director.md).
 
@@ -314,6 +326,16 @@ Audit precedente, costanti temporali, matrice delle scene, segnali deterministic
        // solo aggiornamenti: niente allocazioni qui
      }
    }
+   ```
+
+   Il moto si legge dal mondo condiviso, mai da un integratore locale guidato dall'audio:
+
+   ```ts
+   import { REST_VIEW } from '../../world/WorldView';
+   // in update(frame, dt, time, response, modulation):
+   const world = modulation?.world ?? REST_VIEW;   // fermo senza clock
+   this.angle += world.dTurn;                      // momento angolare, già × guadagno del mood
+   const radius = base * (1 + 0.3 * world.pressure);
    ```
 
 4. Esporta la definizione in `index.ts`:
@@ -386,6 +408,7 @@ interface Visualizer {
 - Il tracker TS delle scene resta basato sulla cassa; la regia usa gli onset multi-banda Rust con confidence e fallback. Musica senza ritmo affidabile o molto sincopata resta un limite. La calibrazione suggerisce un ritardo, ma non misura end-to-end il display e ogni uscita: verificare *Audio delay* a orecchio.
 - La qualità grafica Auto misura RAF, non il tempo GPU; il budget DSP misura separatamente CPU/durata audio.
 - Metro: ipotesi 3/4/5/7 con confidence, non analisi completa delle segnature; frase 4/8 battute euristica. Il corpus sintetico conserva il limite delle sezioni (4/12 entro una battuta).
+- Il World Engine è un modello fisico visivo, non meccanica calibrata; coefficienti tarati su segnali sintetici, non ancora su musica reale né con prova percettiva.
 - ERB, roughness, armonicità, H/P/R e range di loudness sono approssimazioni live, non strumenti certificati o separazione di sorgenti. La taratura percettiva su un corpus reale resta da eseguire.
 - Test automatici su analisi, presenza, semantica temporale e grammatica delle scene; la cattura reale WASAPI richiede ancora una verifica su Windows.
 
@@ -396,4 +419,4 @@ interface Visualizer {
 - Preset specifici per scena e caricamento di preset esterni
 - Consolidare gradualmente TS e Rust/WASM senza perdere waveform, spettro, voci e fallback; misurare cattura→display su hardware reale
 - Estendere i test alla macchina a stati della UI e ai dispositivi audio reali
-- Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; migrare con misure le altre scene alla risposta fisica; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)
+- Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; tarare il World Engine su un corpus reale e a occhio; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)

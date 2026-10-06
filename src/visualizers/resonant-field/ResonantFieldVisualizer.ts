@@ -3,7 +3,7 @@ import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { ModulationState } from '../../director/types';
 import type { PaletteColors, SceneClock, VisualizerContext } from '../../types/visualizer';
 import { MODE_SHAPES, MODES, WAVES } from '../../physics/ResonantPhysics';
-import { INTENT } from '../../experience/types';
+import { REST_VIEW } from '../../world/WorldView';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 
 export interface ResonantFieldParams { resolution: number }
@@ -30,14 +30,14 @@ export class ResonantFieldVisualizer extends BaseVisualizer<ResonantFieldParams>
     this.material = new ShaderMaterial({
       uniforms: {
         uModes: { value: this.amplitudes }, uWaves: { value: this.waves }, uTime: { value: 0 },
-        uExpansion: { value: 0 }, uWidth: { value: 0 }, uCoherence: { value: 0 },
+        uExpansion: { value: 0 }, uWidth: { value: 0 }, uCoherence: { value: 0 }, uLateral: { value: 0 },
         uLight: { value: 0 }, uSize: { value: context.quality.pixelScale * 2.3 },
         uA: { value: new Color() }, uB: { value: new Color() }, uC: { value: new Color() },
       },
       vertexShader: `
         attribute vec4 mode0; attribute vec4 mode1; attribute vec4 mode2;
         uniform float uModes[12]; uniform vec4 uWaves[8];
-        uniform float uTime, uExpansion, uWidth, uCoherence, uSize;
+        uniform float uTime, uExpansion, uWidth, uCoherence, uLateral, uSize;
         varying float vHeight, vNode;
         float pulse(vec2 p, vec2 origin, float age) {
           float d = distance(p, origin), behind = age * 1.4 - d;
@@ -59,9 +59,12 @@ export class ResonantFieldVisualizer extends BaseVisualizer<ResonantFieldParams>
           }
           float z=modal*2.5+wave*0.7;
           vec3 pos=position;
+          pos.z=0.0;
           pos.xy *= 1.0 + uExpansion*0.18;
           pos.x *= 1.0 + uWidth*0.3;
-          pos.z=z;
+          // The world's lateral force tilts the membrane towards where the sound is.
+          pos.z += uLateral * p.x * 0.35;
+          pos.z+=z;
           vHeight=clamp(abs(z),0.0,1.0);
           vNode=exp(-abs(modal)*20.0)*(0.25+uCoherence*0.75);
           vec4 mv=modelViewMatrix*vec4(pos,1.0);
@@ -97,20 +100,25 @@ export class ResonantFieldVisualizer extends BaseVisualizer<ResonantFieldParams>
   update(_frame: AudioFrame, _dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void {
     const e = clock?.experience;
     const u = this.material.uniforms;
+    const world = modulation?.world ?? REST_VIEW;
+    // The membrane turns slowly with the world's rotation; its expansion is the world's radial body.
+    this.points.rotation.z = Math.PI / 4 + world.turn * 0.08;
+    u.uExpansion.value = world.pressure;
+    u.uLateral.value = world.lateral;
     if (e) {
       this.amplitudes.set(e.physics.modes);
       for (let i = 0; i < WAVES; i++) this.waves[i].fromArray(e.physics.waves, i * 4);
       u.uTime.value = clock!.time;
       u.uWidth.value = e.acoustic.width * e.acoustic.stereoConfidence;
-      u.uCoherence.value = e.acoustic.phaseCoherence;
-      u.uLight.value = Math.min(0.8, 0.12 + (modulation?.brightness ?? e.state.energy) * 0.65) *
-        Math.max(response.audible, Math.min(0.6, e.physics.energy * 0.15));
-      // Suspension changes the forcing upstream; accumulated displacement continues to relax.
-      u.uExpansion.value = e.intents[INTENT.expand].strength - e.intents[INTENT.contract].strength;
+      // Nodal lines are as sharp as the world is coherent.
+      u.uCoherence.value = world.coherence;
+      // The world's light, held while the membrane still rings after the sound.
+      u.uLight.value = Math.min(0.8, 0.12 + (modulation?.brightness ?? world.light) * 0.65) *
+        Math.max(world.light, Math.min(0.6, e.physics.energy * 0.15));
     } else {
       this.amplitudes.fill(0); u.uLight.value = response.audible * 0.2;
       for (const wave of this.waves) wave.set(0, 0, -100, 0);
-      u.uWidth.value = u.uCoherence.value = u.uExpansion.value = 0;
+      u.uWidth.value = u.uCoherence.value = 0;
     }
   }
 }

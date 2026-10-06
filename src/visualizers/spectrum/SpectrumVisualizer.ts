@@ -1,4 +1,5 @@
 import type { ModulationState } from '../../director/types';
+import { REST_VIEW } from '../../world/WorldView';
 import { Color, Mesh, OrthographicCamera, PlaneGeometry, Scene, ShaderMaterial, Vector3 } from 'three';
 import { SPECTRUM_BINS } from '../../audio/analysis/AudioAnalyzer';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
@@ -252,9 +253,12 @@ export class SpectrumVisualizer implements Visualizer {
 
   update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
     const p = this.preset.visual;
-    const { weight, flow, detail, density, music, motion, openness, tension, trace } = response;
+    const { weight, flow, detail, music, trace } = response;
     const vary = music.variation;
     const u = this.material.uniforms;
+    // The spectrogram as a view of the shared world: echoes travel outwards with the world's travel,
+    // the disc turns with its rotation, pressure and tension size it, turbulence scatters the echoes.
+    const world = modulation?.world ?? REST_VIEW;
 
     // Store the audibility of each event with its spectrum. A cut cannot erase the past.
     const rows = this.rows;
@@ -268,7 +272,7 @@ export class SpectrumVisualizer implements Visualizer {
     }
     // Motion owns propagation. During a cut the last echoes finish travelling and fading.
     const activity = response.audible > 0.01 || remembered > 0.0001 ? 1 : 0;
-    this.progress += dt / ECHO_BEATS * (0.15 + 1.5 * motion) * activity;
+    this.progress += (world.dTravel + dt * 0.1 * activity) / ECHO_BEATS;
     if (this.progress >= 1) {
       this.progress -= Math.floor(this.progress);
       rows.copyWithin(SPECTRUM_BINS, 0, SPECTRUM_BINS * MAX_ECHOES);
@@ -281,9 +285,9 @@ export class SpectrumVisualizer implements Visualizer {
     this.history.write(rows, false, 0, 0, SPECTRUM_BINS);
 
     // Rotation and the voices' drift follow the mids; busy music (MESO motion) turns faster.
-    this.rotation += dt * (modulation?.rotation ?? flow) * 0.025 * (0.04 + motion) * response.audible * (vary[7] < 0.5 ? -1 : 1);
-    this.corePhase += dt * weight * (0.04 + motion) * response.audible * 0.1;
-    this.leadPhase -= dt * flow * (0.04 + motion) * response.audible * 0.2;
+    this.rotation += world.dTurn * 0.12 * (vary[7] < 0.5 ? -1 : 1);
+    this.corePhase += world.dTravel * weight * 0.06;
+    this.leadPhase -= world.dTravel * flow * 0.12;
     if (frame.highFlux > 0.5 && this.lastHighFlux <= 0.5) this.sparkSeed = (this.sparkSeed + 7.31) % 100;
     this.lastHighFlux = frame.highFlux;
     this.voices.update(frame, music, dt, p.digital);
@@ -298,11 +302,11 @@ export class SpectrumVisualizer implements Visualizer {
     u.uLeadLobes.value = (4 + 4 * vary[3]) * (1 + 0.4 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
     u.uWeight.value = weight;
-    u.uRingRadius.value = p.ringRadius * (0.85 + 0.35 * openness) * (1 - 0.15 * tension);
-    u.uEchoSpread.value = p.echoSpread * (0.6 + 0.65 * openness) * (1 - 0.6 * tension);
-    u.uDensity.value = density;
-    u.uRelease.value = music.drop;
-    u.uSparks.value = detail * music.highPercussion;
+    u.uRingRadius.value = p.ringRadius * (0.85 + 0.3 * world.openness) * Math.max(0.5, 1 + 0.25 * world.pressure) * (1 - 0.15 * world.tension);
+    u.uEchoSpread.value = p.echoSpread * (0.6 + 0.5 * world.openness) * (1 - 0.6 * world.tension) * (0.8 + 0.6 * world.disorder);
+    u.uDensity.value = world.light;
+    u.uRelease.value = Math.min(1, world.releaseStrength * 2) * Math.exp(-world.releaseAge / 1.2);
+    u.uSparks.value = detail * music.highPercussion * (0.5 + world.shimmer);
     u.uSparkSeed.value = this.sparkSeed;
     (u.uAudible.value as Vector3).set(response.lowAudible, response.midAudible, response.highAudible);
   }

@@ -10,7 +10,7 @@ const SR = 48000;
 const percentile = (a: number[], q: number) => [...a].sort((x,y)=>x-y)[Math.floor((a.length-1)*q)];
 const summary = (a: number[]) => [0.5,0.95,0.99].map(q=>percentile(a,q).toFixed(3)).join('/');
 
-it('PCM → acoustic → experience → planner → physics → show is invariant to render and audio batching', { timeout: 120000 }, async () => {
+it('PCM → acoustic → experience → planner → physics → world → show is invariant to render and audio batching', { timeout: 120000 }, async () => {
   const seconds = 24;
   const pcm = new Float32Array(seconds * SR * 2);
   new SignalGenerator('buildDrop', SR).fillStereo(pcm, seconds * SR);
@@ -51,7 +51,9 @@ it('PCM → acoustic → experience → planner → physics → show is invarian
       const start=performance.now();show.update(input,settings,sink);dynamics.advance(t-0.1);showTimes.push(performance.now()-start);
       if (Math.abs(t*6-Math.round(t*6))<1e-8 && t>2) {
         const s=snapshot.state;
-        shared.push(s.time,s.energy,s.complexity,s.anticipation,s.releasePotential,s.eventId,snapshot.physics.energy,...snapshot.physics.modes);
+        const w=snapshot.world;
+        shared.push(s.time,s.energy,s.complexity,s.anticipation,s.releasePotential,s.eventId,snapshot.physics.energy,...snapshot.physics.modes,
+          w.radius,w.angle,w.travel,w.bias,w.excitation,w.turbulence,w.potential,w.energy);
       }
     }
     wasm.dispose();
