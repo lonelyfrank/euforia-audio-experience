@@ -5,7 +5,8 @@ members = ["src-tauri", "native/audio-capture", "native/analysis", "native/analy
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
-license = "MIT"
+license-file = "LICENSE"
+publish = false
 
 # The analysis runs on the audio capture thread: keep it optimized in dev builds too.
 [profile.dev.package.spectrum-analysis]

@@ -433,3 +433,7 @@ interface Visualizer {
 - Consolidare gradualmente TS e Rust/WASM senza perdere waveform, spettro, voci e fallback; misurare cattura→display su hardware reale
 - Estendere i test alla macchina a stati della UI e ai dispositivi audio reali
 - Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; tarare il World Engine su un corpus reale e a occhio; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)
+
+## Licenza
+
+Software proprietario, tutti i diritti riservati: vedi [LICENSE](LICENSE). La pubblicazione dei sorgenti non concede alcun diritto d'uso, copia o ridistribuzione. Le dipendenze conservano le rispettive licenze.

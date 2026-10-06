@@ -3,7 +3,8 @@ name = "audio-capture"
 description = "Cross-platform system audio / microphone capture (WASAPI loopback on Windows)"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [dependencies]
 cpal = "0.18"
