@@ -1,24 +1,22 @@
-import type { MoodId, ExperienceId } from '../director/types';
 import { Color } from 'three';
 import { AudioEngine, type AudioEngineState } from '../audio/AudioEngine';
 import type { NativeSource } from '../audio/capture/NativeAudioCapture';
 import { TEST_SIGNALS, type TestSignal } from '../audio/capture/testSignals';
 import { isFullscreen, setFullscreen } from '../platform';
 import { RenderEngine } from '../renderer/RenderEngine';
-import { settingsStore, type Settings } from '../stores/settingsStore';
+import { resolveDirection, settingsStore, type Settings } from '../stores/settingsStore';
 import type { AudioSourceId } from '../types/audio';
-import type { QualitySetting, SceneInput } from '../types/visualizer';
+import type { SceneInput } from '../types/visualizer';
 import { REDUCED_FLASHES, STANDARD_FLASHES } from '../dynamics/FlashGuard';
-import type { RigMode } from '../show/types';
 import { Dial } from '../ui/Dial';
 import { h } from '../ui/dom';
 import { NowPlaying, type Track } from '../ui/NowPlaying';
 import { CalibrationView } from './calibration/CalibrationView';
 import { SettingsPanel } from '../ui/SettingsPanel';
-import { findPalette, hslCss, paletteColors, type PaletteId } from '../visualizers/palettes';
+import { findPalette, hslCss, paletteColors } from '../visualizers/palettes';
 import { findVisualizer, visualizers } from '../visualizers/registry';
 import { installShortcuts, type ShortcutAction } from './shortcuts';
-import { appMenu } from './menus';
+import { appMenu, coreTarget, menuSelection } from './menus';
 import { RigController } from './RigController';
 
 /** Inactivity before an open wheel collapses by itself (token: collapse-delay). */
@@ -63,7 +61,7 @@ export class App {
   constructor(root: HTMLElement) {
     const canvasHost = h('div', { class: 'app-canvas' });
     this.dial = new Dial({ menu: (key) => appMenu(key, settingsStore.get(), this.fullscreen), onSelect: (menu, id) => this.onSelect(menu, id), onCore: () => this.onCore() });
-    this.panel = new SettingsPanel(() => this.closePanel(), () => this.openCalibration());
+    this.panel = new SettingsPanel(() => this.closePanel(), () => this.openCalibration(), (source) => void this.selectSource(source));
     this.calibration = new CalibrationView(this.audio, () => this.closeCalibration());
     this.stage = h(
       'main',
@@ -134,41 +132,24 @@ export class App {
 
   /** Core click, by priority: close panel → back to root → close wheel → open wheel. */
   private onCore(): void {
-    const menu = this.dial.menu;
-    if (this.calibration.isOpen) this.closeCalibration();
-    else if (this.panel.isOpen) this.closePanel();
-    else if (menu && menu !== 'root') this.dial.open(['mood', 'experience', 'quality', 'rig'].includes(menu) ? 'direction' : 'root');
-    else if (menu) this.dial.close();
-    else this.dial.open('root');
+    if (this.calibration.isOpen) return this.closeCalibration();
+    if (this.panel.isOpen) return this.closePanel();
+    const target = coreTarget(this.dial.menu);
+    if (target) this.dial.open(target);
+    else this.dial.close();
   }
 
   private onSelect(menu: string, id: string): void {
-    if (menu === 'root') {
-      if (id === 'fullscreen') {
-        this.dial.close();
-        void this.toggleFullscreen();
-      } else if (id === 'settings') {
-        this.dial.close();
-        this.openPanel();
-      } else {
-        this.dial.open(id);
-      }
-      return;
-    }
-    if (menu === 'direction') {
-      this.dial.open(id);
-      return;
-    }
-    // Hybrid and free choose the mood themselves; a manual pick keeps the mode but stops that.
-    if (menu === 'rig') settingsStore.set({ rigMode: id as RigMode, autoDirection: id !== 'preset' });
-    if (menu === 'mood') settingsStore.set({ mood: id as MoodId, autoDirection: false });
-    if (menu === 'experience') settingsStore.set({ experience: id as ExperienceId, autoDirection: false });
+    const effect = menuSelection(menu, id);
+    if (effect.patch) settingsStore.set(effect.patch);
+    if (effect.source) void this.selectSource(effect.source);
+    if (effect.command) {
+      this.dial.close();
+      if (effect.command === 'fullscreen') void this.toggleFullscreen();
+      else this.openPanel();
+    } else if (effect.open) this.dial.open(effect.open);
     // Sub-ring picks apply at once and keep the ring open for comparison.
-    if (menu === 'scene') settingsStore.set({ scene: id });
-    if (menu === 'audio') void this.selectSource(id as AudioSourceId);
-    if (menu === 'presets') settingsStore.set({ preset: id as PaletteId });
-    if (menu === 'quality') settingsStore.set({ quality: id as QualitySetting });
-    this.dial.select(id);
+    else this.dial.select(id);
   }
 
   private openPanel(): void {
@@ -324,7 +305,8 @@ export class App {
   get directionDebug() { return this.render; }
 
   private applySettings(s: Settings, previous?: Settings): void {
-    this.render.setDirection(s);
+    const direction = resolveDirection(s);
+    this.render.setDirection(direction);
     const def = findVisualizer(s.scene) ?? visualizers[0];
     // Presets scale the user's audio preferences.
     this.audio.configure({
@@ -345,7 +327,7 @@ export class App {
     if (!previous || s.reflection !== previous.reflection) this.render.setReflection(s.reflection);
     if (!previous || s.quality !== previous.quality) this.render.setQuality(s.quality);
     // The chosen scene is the protagonist, except in free mode where the director picks it (it starts there).
-    if (!previous || (s.scene !== previous.scene && s.rigMode !== 'free')) {
+    if (!previous || (s.scene !== previous.scene && direction.rigMode !== 'free')) {
       this.rigController.showScene(s.scene);
     }
   }

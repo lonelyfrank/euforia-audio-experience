@@ -1,5 +1,5 @@
 import type { AudioEngine } from '../audio/AudioEngine';
-import type { Settings } from '../stores/settingsStore';
+import { resolveDirection, type Settings } from '../stores/settingsStore';
 import type { RigValues } from '../types/visualizer';
 import { Dynamics } from '../dynamics/Dynamics';
 import { CueScheduler } from '../dynamics/CueScheduler';
@@ -132,7 +132,7 @@ export class RigController {
     i.meterConfidence = f.meterConfidence;
     i.gridWeight = this.audio.timing.gridWeight;
     const s = this.settings();
-    this.showSettings.mode = s.rigMode;
+    this.showSettings.mode = resolveDirection(s).rigMode;
     this.showSettings.scene = s.scene;
     this.show.setBudget(this.budget.update(this.render.measuredFps, dt, this.render.qualityTier));
     this.show.update(i, this.showSettings, this.showSink);

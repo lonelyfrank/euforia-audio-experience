@@ -9,6 +9,16 @@ import type { RigMode } from '../show/types';
 
 const RIG_MODES: readonly RigMode[] = ['preset', 'hybrid', 'free'];
 
+/** Who directs: the system (auto), or the user's own mood, experience, intensity and rig (manual). */
+export type DirectionMode = 'auto' | 'manual';
+const DIRECTION_MODES: readonly DirectionMode[] = ['auto', 'manual'];
+/**
+ * Direction of a fresh install. Manual with the defaults below is the chosen
+ * scene as designed (rig Preset); switch to 'auto' to let the system direct
+ * from the first launch. Settings saved before this control existed stay manual.
+ */
+export const DEFAULT_DIRECTION_MODE: DirectionMode = 'manual';
+
 export type TrackInfoMode = 'always' | 'dim' | 'hidden';
 
 /** User settings, persisted locally. Flat so partial updates stay simple. */
@@ -40,6 +50,20 @@ export interface Settings extends DirectionSettings {
    * old Auto direction; `autoDirection` now follows it (and a manual mood pick).
    */
   rigMode: RigMode;
+  /**
+   * Auto ignores mood, experience, moodIntensity, rigMode and autoDirection
+   * (they stay stored as the manual choice); read them through `resolveDirection`.
+   */
+  direction: DirectionMode;
+}
+
+/** What the rig and the directors actually follow. */
+export type ResolvedDirection = DirectionSettings & { readonly rigMode: RigMode };
+/** Auto: the chosen scene with variations and supports, the mood follows the music. */
+export const AUTO_DIRECTION: ResolvedDirection = Object.freeze({ ...DEFAULT_DIRECTION, autoDirection: true, rigMode: 'hybrid' });
+/** Manual is the stored settings themselves (no copy: callable every frame). */
+export function resolveDirection(s: Settings): ResolvedDirection {
+  return s.direction === 'auto' ? AUTO_DIRECTION : s;
 }
 
 const STORAGE_KEY = 'euforia-audio-experience.settings.v1';
@@ -60,6 +84,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reflection: true,
   reduceFlashing: false,
   rigMode: 'preset',
+  direction: DEFAULT_DIRECTION_MODE,
 };
 
 /** Validate persisted data before it can reach audio math or quality profiles. */
@@ -90,6 +115,8 @@ export function normalizeSettings(value: unknown): Settings {
   // Older versions had an Auto toggle: it becomes the hybrid mode.
   settings.rigMode = choice(saved.rigMode, RIG_MODES, saved.autoDirection === true ? 'hybrid' : 'preset');
   settings.autoDirection = saved.autoDirection === true && settings.rigMode !== 'preset';
+  // Settings saved before the Auto / Manual control keep behaving as they did.
+  settings.direction = choice(saved.direction, DIRECTION_MODES, Object.keys(saved).length ? 'manual' : DEFAULT_DIRECTION_MODE);
   return settings;
 }
 
