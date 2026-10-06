@@ -23,7 +23,7 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 - Memoria multiscala, ricorrenza di motivi, narrativa probabilistica con isteresi, trajectory, anticipazione causale, previsione con confidence ed event stream datato sui campioni; grammatica di 14 intenti
 - **World Engine**: un mondo fisico persistente (pressione, momento angolare, avanzamento, bias stereo, eccitazione, turbolenza, coerenza, potenziale, luce) che la musica spinge con forze e impulsi; tutte le sette scene lo interpretano, il cambio di scena non lo azzera, il silenzio lo lascia decadere
 - Resonant Field: modi di una membrana e onde propagate/riflesse, con intensità distinta dalla complessità; budget DSP indipendente dalla qualità grafica
-- 8 mood e 5 modalità Experience; regia **Preset / Hybrid / Free**, fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
+- Direction **Auto / Manual**: Auto lascia la regia al sistema; Manual espone 8 mood, 5 modalità Experience, intensità e rig **Preset / Hybrid / Free**. Fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
 - 7 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**
 - Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
@@ -33,7 +33,7 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 
 ## Interfaccia
 
-Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `presets`, `direction`, `mood`, `experience`, `rig`, `quality` oppure nessuno), se il pannello Settings o la calibrazione è aperto e se l'app è in idle.
+Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `presets`, `direction`, `manual`, `mood`, `experience`, `rig` oppure nessuno), se il pannello Settings o la calibrazione è aperto e se l'app è in idle.
 
 | # | Fase | Cosa si vede |
 |---|---|---|
@@ -42,16 +42,21 @@ Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `pre
 | 03 | Scene | Anello delle 7 scene |
 | 04 | Audio | Arco con System Audio e Microphone |
 | 05 | Presets | Arco con le 4 palette |
-| 06 | Direction | Mood, Experience, Rig e Quality (Auto / Low / Medium / High) |
+| 06 | Direction | Arco con due scelte: Auto e Manual. Manual apre Mood, Experience e Rig |
 | 07 | Settings | Pannello sopra il core |
 | 08 | Auto-hide | Solo la scena; now playing attenuato, niente cursore |
 
-- **Core**: apre la ruota. In un sub-ring torna alla ruota, con il pannello aperto lo chiude. Pulsa con l'audio.
+- **Core**: apre la ruota. In un sub-ring torna all'anello precedente (Mood → Manual → Direction → ruota), con il pannello aperto lo chiude. Pulsa con l'audio.
 - **Nei sub-ring** la scelta si applica subito e l'anello resta aperto, così si possono confrontare le opzioni.
 - La ruota si chiude con un secondo click sul core, un click fuori, `Esc` o dopo 6 s di inattività.
 - L'auto-hide scatta dopo 3, 5 o 10 s (impostabile); qualsiasi movimento del mouse o tasto riporta la UI.
-- **Direction**: Mood (Euphoria, Dream, Dark, Pulse, Chaos, Ethereal, Melancholy, Focus), Experience (Ambient, Immersive, Reactive, Cinematic, Minimal), Rig (Preset, Hybrid, Free). Preset mantiene la scena scelta; Hybrid aggiunge variazioni e supporti; Free sceglie anche le scene. Una scelta manuale di Mood/Experience disattiva il mood automatico mantenendo la modalità Rig.
-- **Settings**: Mood intensity (0–1), Sensitivity, Smoothing, Beat response, Track info (Always / Dim / Hidden), Hide controls after, Hide cursor when idle, Water reflection, Reduce flashing, **Audio delay** e Sync calibration.
+- **Direction** decide chi fa la regia, con un solo controllo:
+  - **Auto**: il sistema dirige. Tiene la scena scelta come protagonista, aggiunge variazioni e supporti ai confini di frase e sceglie mood ed Experience dalla musica (equivale al rig Hybrid con mood automatico e intensità 0,65). Le scelte manuali restano memorizzate ma non vengono usate.
+  - **Manual**: apre Mood (Euphoria, Dream, Dark, Pulse, Chaos, Ethereal, Melancholy, Focus), Experience (Ambient, Immersive, Reactive, Cinematic, Minimal) e Rig (Preset, Hybrid, Free); *Mood intensity* compare in Settings → Advanced. Preset mantiene la scena scelta; Hybrid aggiunge variazioni e supporti; Free sceglie anche le scene. Hybrid e Free attivano il mood automatico; una scelta manuale di Mood/Experience lo disattiva mantenendo il rig.
+  - Il default di una nuova installazione è Manual con rig Preset (`DEFAULT_DIRECTION_MODE` in `src/stores/settingsStore.ts`). Le impostazioni salvate prima di questo controllo vengono caricate come Manual, con i loro valori.
+- **Settings** ha due zone:
+  - **Essenziale**: Source (System / Microphone), **Audio delay** con Sync calibration, Quality (Auto / Low / Medium / High), Reduce flashing.
+  - **Advanced** (chiusa a ogni avvio): Sensitivity, Smoothing, Mood intensity (0–1, solo con Direction Manual), Beat response, Track info (Always / Dim / Hidden), Hide controls after, Hide cursor when idle, Water reflection. Sensitivity e Smoothing restano come rete di sicurezza finché la taratura su musica reale non è fatta.
 - **Audio delay** (−100–400 ms) ritarda l'analisi per compensare la latenza dell'uscita: l'audio di sistema viene catturato prima di arrivare alle cuffie, e con cuffie Bluetooth le immagini anticiperebbero il suono di 150–250 ms. Si regola a orecchio o con Settings → Calibrate. I valori negativi anticipano i cue per compensare un display lento; il PCM può essere solo ritardato.
 
 ### Tastiera e accessibilità
@@ -64,7 +69,7 @@ Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `pre
 | `Spazio` | Pausa dell'animazione |
 | Frecce, `Home`, `End` | Dentro la ruota: spostano il focus tra gli item |
 
-Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruota usa `role="menu"`, il pannello `role="dialog"` con focus trap e toggle `role="switch"`. L'anello di focus appare solo con `:focus-visible`. Con `prefers-reduced-motion` le transizioni della UI diventano istantanee.
+Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruota usa `role="menu"` (scelte esclusive come `menuitemradio`, Auto / Manual inclusi), il pannello `role="dialog"` con focus trap e toggle `role="switch"`. La zona Advanced è un pulsante con `aria-expanded` e `aria-controls`; finché è chiusa i suoi controlli sono nascosti anche a Tab e screen reader. L'anello di focus appare solo con `:focus-visible`. Con `prefers-reduced-motion` le transizioni della UI diventano istantanee.
 
 ## Architettura
 
@@ -431,7 +436,7 @@ interface Visualizer {
 - Su Linux, seguire automaticamente il cambio di uscita predefinita; verifica su macOS
 - Preset specifici per scena e caricamento di preset esterni
 - Consolidare gradualmente TS e Rust/WASM senza perdere waveform, spettro, voci e fallback; misurare cattura→display su hardware reale
-- Estendere i test alla macchina a stati della UI e ai dispositivi audio reali
+- Estendere i test dalla macchina a stati dei menu (coperta) al DOM della UI e ai dispositivi audio reali
 - Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; tarare il World Engine su un corpus reale e a occhio; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)
 
 ## Licenza

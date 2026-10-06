@@ -51,6 +51,11 @@ con finestre musicali conservative. Preset mantiene la scena manuale;
 Hybrid/Free governano variazione e supporti. Palette, otto Mood, cinque
 Experience e interazione core/ring restano accessibili come prima.
 
+Dal 6 ottobre 2026 la voce Direction della ruota apre solo **Auto / Manual**. Auto
+equivale a Hybrid con mood automatico (`AUTO_DIRECTION`); Manual apre Mood, Experience
+e Rig con il comportamento descritto sotto, e Quality è passata nel pannello Settings.
+Contratto in [scheda tecnica](technical-overview.md), uso nel [README](../README.md).
+
 Il budget DSP riduce solo elaborazioni lente; il budget GPU esistente governa
 risoluzione, densità e pass. Per misure attuali, test a 30/60/144 fps e smoke
 Chromium vedere il [report](refactor-report.md). Per contratti e formule:

@@ -44,7 +44,7 @@ frontend, backend e WASM della stessa revisione.
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
 | Scene | `visualizers/` | Sette scene interpretano il mondo (`modulation.world`): moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti |
 | Validazione | `validation/replay.ts`, overlay DEV | Replay di WAV locali sul percorso live (`npm run replay`), metriche comportamentali e tracce; Shift+T esporta la traccia di sessione |
-| Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, notifiche/salvataggi solo se un valore cambia |
+| Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, `direction` Auto/Manual risolta da `resolveDirection`, notifiche/salvataggi solo se un valore cambia |
 | Build | `package.json`, `vite.config.ts`, Cargo workspace, `.github/workflows/ci.yml` | Nessuna nuova dipendenza; CI su check frontend, core Rust, layout e WASM; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
 
 ## Contratti da preservare
@@ -104,6 +104,18 @@ guidati dall'audio né da posizioni obiettivo. Nuove misure entrano come forze i
 `WorldEngine.setForces` o impulsi datati (`impact`, `release`); i guadagni del mood
 scalano velocità, non posizioni. Il mondo si azzera solo col reset di sessione e non
 legge qualità GPU né FlashGuard.
+
+**Direction.** `Settings.direction` (`auto` \| `manual`) decide chi dirige; rig, App e
+renderer leggono mood, Experience, intensità, `autoDirection` e `rigMode` solo tramite
+`resolveDirection(settings)`: in Manual restituisce le impostazioni stesse (nessuna
+copia, comportamento precedente invariato), in Auto la costante `AUTO_DIRECTION`
+(rig Hybrid, mood automatico, intensità di default). I valori manuali restano salvati
+mentre Auto è attivo. Il default di installazione è `DEFAULT_DIRECTION_MODE`; i dati
+salvati senza `direction` sono Manual. La chiave di storage resta `…settings.v1`: il
+campo è additivo e `normalizeSettings` lo ricostruisce, mentre una nuova chiave
+scarterebbe le preferenze esistenti senza una migrazione dedicata. I menu sono una
+macchina a stati pura in `app/menus.ts` (`appMenu`, `menuSelection`, `coreTarget`),
+che App si limita a eseguire.
 
 **Palette e timing.** Le palette appartengono all’utente; il rig ne permuta i colori
 e applica una tinta moderata. Il sesto argomento opzionale `SceneClock` trasporta
