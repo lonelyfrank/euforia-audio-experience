@@ -1,4 +1,4 @@
-# World Engine — il corpo fisico persistente di Halo
+# World Engine — il corpo fisico persistente di Euforia-Audio-Experience
 
 Data: 5 ottobre 2026. Estende [realtime-analysis](realtime-analysis.md),
 [experience-planner](experience-planner.md) e [physics-engine](physics-engine.md).
@@ -10,7 +10,7 @@ Live Audio → Capture Clock → DSP multi-rate (Rust/WASM) → Acoustic Model
   → Experience Engine (memoria · narrativa · previsione) → Experience Planner → Visual Intent
   → WORLD ENGINE (forze · impulsi · energia · vincoli)          [per hop, clock audio]
   → WorldState persistente (snapshot) → presentato al tempo udito (estrapolazione esatta)
-  → WorldView per layer (adattatore di scena, guadagni del mood) → scena → GPU / composizione Halo
+  → WorldView per layer (adattatore di scena, guadagni del mood) → scena → GPU / composizione finale
 UI (core, anelli, modal) resta un guscio separato.
 ```
 
@@ -207,11 +207,11 @@ Resonant Field), `uScatter` (Galaxy), `uDisorder` (Particle Field).
 - Test di invarianti: `src/world/WorldEngine.test.ts`, `src/world/WorldView.test.ts`,
   grammatica delle scene `src/visualizers/grammar.test.ts`, invarianza del percorso
   completo in `src/bench/experience.bench.test.ts` e `src/validation/replay.test.ts`.
-- **Corpus reale** (mai versionato): `HALO_CORPUS=~/halo-corpus npm run replay`. Ogni
+- **Corpus reale** (mai versionato): `EUFORIA_AUDIO_EXPERIENCE_CORPUS=~/euforia-audio-experience-corpus npm run replay`. Ogni
   `<nome>.wav` (PCM 16/24/32 bit o float 32), opzionale `<nome>.beats` (`tempo [posizione]`,
   1 = downbeat) e `corpus.json` `{"<nome>": {"style": "jazz", "tags": ["no-percussion",
   "odd-meter"]}}`. Stile e tag organizzano solo il report: l'engine non li vede (niente
-  priori di genere). Uscita in `<dir>/halo-report/`: traccia CSV a 20 Hz, JSON per brano,
+  priori di genere). Uscita in `<dir>/euforia-audio-experience-report/`: traccia CSV a 20 Hz, JSON per brano,
   `summary.json`. Metriche: onset/s, beat, BPM mediano/IQR/salti, beat/downbeat F1 ±70 ms e
   fase (con annotazioni), metro e confidence, downbeat, sezioni/frasi, novelty, ricorrenza,
   energia/complessità e loro correlazione, confidence di previsione, anticipazioni e false

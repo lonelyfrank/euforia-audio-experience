@@ -42,7 +42,7 @@ export interface Settings extends DirectionSettings {
   rigMode: RigMode;
 }
 
-const STORAGE_KEY = 'halo.settings.v1';
+const STORAGE_KEY = 'euforia-audio-experience.settings.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
   ...DEFAULT_DIRECTION,

@@ -1,6 +1,6 @@
 {
   "name": "Spectrum",
-  "author": "Halo",
+  "author": "Euforia-Audio-Experience",
   "version": 3,
   "audio": { "sensitivity": 1, "smoothing": 1 },
   "camera": { "fov": 45, "distance": 1, "drift": 0 },

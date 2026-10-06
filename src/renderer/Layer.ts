@@ -106,7 +106,7 @@ export class Layer {
     const rig = input.rig;
     if (rig?.timed) {
       this.clock.time = rig.time;
-      this.clock.impact = rig.haloPulse;
+      this.clock.impact = rig.glowPulse;
       this.clock.snapAt = rig.snapAt;
       this.clock.releaseLight = rig.experienceLight;
     }

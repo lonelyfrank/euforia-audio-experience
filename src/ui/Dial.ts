@@ -63,18 +63,18 @@ export class Dial {
   ) {
     this.core = h(
       'button',
-      { type: 'button', class: 'halo-core', attrs: { 'aria-label': 'Visualizer controls', 'aria-expanded': 'false', 'aria-haspopup': 'menu' } },
-      h('span', { class: 'halo-core__icon halo-core__icon--main' }, svg(icon('bars'))),
-      h('span', { class: 'halo-core__icon halo-core__icon--back' }, svg(icon('back'))),
+      { type: 'button', class: 'app-core', attrs: { 'aria-label': 'Visualizer controls', 'aria-expanded': 'false', 'aria-haspopup': 'menu' } },
+      h('span', { class: 'app-core__icon app-core__icon--main' }, svg(icon('bars'))),
+      h('span', { class: 'app-core__icon app-core__icon--back' }, svg(icon('back'))),
     );
     this.core.addEventListener('click', () => options.onCore());
-    this.items = h('div', { class: 'halo-dock__items', attrs: { role: 'menu', 'aria-label': 'Controls' } });
+    this.items = h('div', { class: 'app-dock__items', attrs: { role: 'menu', 'aria-label': 'Controls' } });
     this.items.addEventListener('keydown', (e) => this.onMenuKey(e));
-    this.caption = h('div', { class: 'halo-dock__caption', attrs: { 'aria-hidden': 'true' } });
+    this.caption = h('div', { class: 'app-dock__caption', attrs: { 'aria-hidden': 'true' } });
     this.element = h(
       'div',
-      { class: 'halo-dock' },
-      h('div', { class: 'halo-guide', attrs: { 'aria-hidden': 'true' } }),
+      { class: 'app-dock' },
+      h('div', { class: 'app-guide', attrs: { 'aria-hidden': 'true' } }),
       this.caption,
       this.items,
       this.core,
@@ -152,7 +152,7 @@ export class Dial {
     return menu.items.map((item, k) => {
       const button = h('button', {
         type: 'button',
-        class: 'halo-item__disc',
+        class: 'app-item__disc',
         tabIndex: -1,
         attrs: { role: menu.caption && !menu.actions ? 'menuitemradio' : 'menuitem', 'aria-label': item.label },
       });
@@ -163,9 +163,9 @@ export class Dial {
       });
       const el = h(
         'div',
-        { class: `halo-item${item.selected ? ' is-selected' : ''}` },
+        { class: `app-item${item.selected ? ' is-selected' : ''}` },
         button,
-        h('span', { class: 'halo-item__label', attrs: { 'aria-hidden': 'true' } }, item.label),
+        h('span', { class: 'app-item__label', attrs: { 'aria-hidden': 'true' } }, item.label),
       );
       this.items.append(el);
       return { el, button, angle: angles[k], id: item.id };

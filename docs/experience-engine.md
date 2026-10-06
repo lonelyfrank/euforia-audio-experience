@@ -151,7 +151,7 @@ write timed targets and impulses; the renderer reads values every frame.
   envelope then starts at its peak when first seen. A snap zeroes spring
   velocities, holds ζ = 1 for a while and clears envelopes. The layer starts
   over when the capture clock does (a new source).
-- First fixture migrated: the Halo composition's halo pulse (`uImpact`).
+- First fixture migrated: the Euforia-Audio-Experience composition's glow pulse (`uImpact`).
   `CueScheduler` schedules predicted beats ahead at their exact time
   (weighted by the grid's weight), takes kicks off the grid on the fast path
   (skipping those that are a scheduled beat) and snaps at section changes.
@@ -160,7 +160,7 @@ Measured (tests): step responses match theory (critically damped glide/drift:
 no overshoot, 90% at 3.89/ω, 2% at 5.83/ω; pulse/swing overshoot e^(−πζ/√(1−ζ²)));
 values identical at 60 and 144 fps and with irregular frames; a snap leaves
 no trail after one bar. In the browser on the synthetic 124 BPM beat, the
-time from a kick being heard to the halo pulse reaching half its peak:
+time from a kick being heard to the glow pulse reaching half its peak:
 
 | quality | before (per-frame envelope) | after (Dynamics) |
 |---|---|---|
@@ -248,7 +248,7 @@ should keep it to one), the look on Windows/WebView2.
 ## Phase 6 — Safety, bench, measurements
 
 - **Flash guard** (`src/dynamics/FlashGuard.ts`): every light transient of
-  the rig — the halo pulse that drives the scenes' impacts, and fixture
+  the rig — the glow pulse that drives the scenes' impacts, and fixture
   strobes — passes one rate limit on its audio timestamp: flashes at least
   1/3 s apart (≤ 3 per second, WCAG 2.3.1); one too close becomes a
   shimmer under the 10% threshold; fixtures on the same beat (±20 ms) are

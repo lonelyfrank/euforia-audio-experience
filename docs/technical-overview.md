@@ -1,4 +1,4 @@
-# Halo — scheda tecnica e audit
+# Euforia-Audio-Experience — scheda tecnica e audit
 
 Aggiornata il **5 ottobre 2026**. Il [README](../README.md) è la fonte di verità per
 funzionalità, avvio e architettura; questa scheda contiene i dettagli operativi per
@@ -227,7 +227,6 @@ costo; evitare wrapper creati soltanto per spostare righe.
   del renderer verificano scheduling/dispose, non compilazione GLSL o resa visiva.
 - `git diff --check`: nessun errore di whitespace.
 
-Artefatti locali della sessione (non versionati): `/tmp/halo-check.log`,
-`/tmp/halo-regressions.log`, `/tmp/halo-baseline-context.log`,
-`/tmp/halo-decoder-bench.mjs`, `/tmp/halo-decoder-bench.json`. I dati e il metodo
+Artefatti locali della sessione (log di check, regressioni, contesto baseline e
+microbenchmark del decoder in `/tmp`, non versionati né più presenti). I dati e il metodo
 sono riportati qui perché i file temporanei possono scomparire.

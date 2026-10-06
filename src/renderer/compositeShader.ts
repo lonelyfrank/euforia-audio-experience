@@ -1,27 +1,27 @@
 import { Color, Vector2, Vector4 } from 'three';
 
-/** Horizon line, as a fraction of the height from the top (Halo layout). */
+/** Horizon line, as a fraction of the height from the top (main layout). */
 export const HORIZON = 0.47;
-/** Scene centre, as fractions of the window from the top-left (Halo layout, with the water reflection). */
+/** Scene centre, as fractions of the window from the top-left (main layout, with the water reflection). */
 export const SCENE_CENTER = { x: 0.52, y: 0.38 };
 /** Without the reflection the scene uses the whole window: centred, resting on a low ground line. */
 export const OPEN_CENTER = { x: 0.5, y: 0.5 };
 export const OPEN_HORIZON = 0.66;
 
 /**
- * Final composition of the Halo frame, in linear colour:
+ * Final composition of the frame, in linear colour:
  * 1. sky: crossfade of the outgoing/incoming scene + navy haze + stars;
  * 2. floor: the sky mirrored below the horizon with sinusoidal ripples,
  *    darkened toward the bottom edge;
  * The sky reacts only lightly, one role each so it never all pulses together:
- * mass → large ripples on the floor, detail → star twinkle, density → halo
- * and horizon, impact → a brief halo pulse. All are gated by presence, so
+ * mass → large ripples on the floor, detail → star twinkle, density → glow
+ * and horizon, impact → a brief glow pulse. All are gated by presence, so
  * silence (or a bare noise floor) leaves a still picture.
  * 3. a thin luminous horizon line where the scene touches the water.
  * `uReflection` fades 2–3 out (0 = the sky and the scene fill the window).
  */
 export const CompositeShader = {
-  name: 'HaloCompositeShader',
+  name: 'CompositionShader',
   uniforms: {
     tL0: { value: null },
     tL1: { value: null },

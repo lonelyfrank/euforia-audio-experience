@@ -93,4 +93,4 @@ class SampleTap extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('halo-sample-tap', SampleTap);
+registerProcessor('euforia-audio-experience-sample-tap', SampleTap);

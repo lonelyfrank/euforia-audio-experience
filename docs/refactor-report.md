@@ -4,7 +4,7 @@
 > vedi [realtime-analysis](realtime-analysis.md). Questo report descrive la prima fase.
 
 Data: 5 ottobre 2026. Repository di lavoro locale, baseline iniziale pulita.
-Nessun commit o deployment eseguito. UI Halo, core/ring, Direction, palette,
+Nessun commit o deployment eseguito. UI Euforia-Audio-Experience, core/ring, Direction, palette,
 fullscreen e sorgenti live rimangono il prodotto; Resonant Field è la settima scena.
 
 ## Sintesi e architettura prima/dopo
@@ -175,8 +175,8 @@ Comandi riproducibili (i WAV sintetici sono strumenti di test, non una sorgente 
 cargo run -p spectrum-analysis --release --offline --example realtime -- 0
 cargo run -p spectrum-analysis --release --offline --example realtime -- 1
 cargo run -p spectrum-analysis --release --offline --example realtime -- 2
-cargo run -p spectrum-analysis --release --offline --example corpus -- --synth /tmp/halo-corpus
-cargo run -p spectrum-analysis --release --offline --example corpus -- /tmp/halo-corpus
+cargo run -p spectrum-analysis --release --offline --example corpus -- --synth /tmp/euforia-audio-experience-corpus
+cargo run -p spectrum-analysis --release --offline --example corpus -- /tmp/euforia-audio-experience-corpus
 npm run bench -- --reporter=verbose
 ```
 

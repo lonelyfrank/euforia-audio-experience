@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    music_visualizer_lib::run()
+    euforia_audio_experience_lib::run()
 }

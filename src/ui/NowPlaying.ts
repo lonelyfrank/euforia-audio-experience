@@ -25,12 +25,12 @@ function formatTime(seconds: number): string {
  */
 export class NowPlaying {
   readonly element: HTMLElement;
-  private readonly title = h('h1', { class: 'halo-np__title' });
-  private readonly artist = h('div', { class: 'halo-np__artist' });
-  private readonly wave = h('canvas', { class: 'halo-np__wave', attrs: { 'aria-hidden': 'true' } });
-  private readonly position = h('span', { class: 'halo-np__pos' });
-  private readonly duration = h('span', { class: 'halo-np__dur' });
-  private readonly source = h('span', { class: 'halo-np__src' });
+  private readonly title = h('h1', { class: 'app-np__title' });
+  private readonly artist = h('div', { class: 'app-np__artist' });
+  private readonly wave = h('canvas', { class: 'app-np__wave', attrs: { 'aria-hidden': 'true' } });
+  private readonly position = h('span', { class: 'app-np__pos' });
+  private readonly duration = h('span', { class: 'app-np__dur' });
+  private readonly source = h('span', { class: 'app-np__src' });
   private readonly context: CanvasRenderingContext2D;
   /** Static envelope giving the waveform its shape; the audio level modulates it. */
   private readonly envelope = new Float32Array(BARS);
@@ -46,12 +46,12 @@ export class NowPlaying {
   constructor() {
     this.element = h(
       'section',
-      { class: 'halo-np', attrs: { 'aria-label': 'Now playing' } },
+      { class: 'app-np', attrs: { 'aria-label': 'Now playing' } },
       this.title,
       this.artist,
       this.wave,
-      h('div', { class: 'halo-np__times' }, this.position, this.duration),
-      h('div', { class: 'halo-np__source' }, h('span', { class: 'halo-np__glyph' }, svg(icon('source'))), this.source),
+      h('div', { class: 'app-np__times' }, this.position, this.duration),
+      h('div', { class: 'app-np__source' }, h('span', { class: 'app-np__glyph' }, svg(icon('source'))), this.source),
     );
     this.context = this.wave.getContext('2d')!;
     this.resizeObserver = new ResizeObserver(([entry]) => {

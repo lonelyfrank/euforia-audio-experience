@@ -1,7 +1,7 @@
 import type { QualityProfile, QualitySetting } from '../types/visualizer';
 
 /**
- * Halo quality ladder: Low 0.5×, Medium 0.75×, High 1× of the device pixel
+ * Euforia-Audio-Experience quality ladder: Low 0.5×, Medium 0.75×, High 1× of the device pixel
  * ratio (capped at 2); Auto starts at 1× capped at 1.5 and steps down.
  */
 export const QUALITY_PROFILES: Record<QualitySetting, QualityProfile> = {

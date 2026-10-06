@@ -1,6 +1,6 @@
 {
   "name": "Oscilloscope",
-  "author": "Halo",
+  "author": "Euforia-Audio-Experience",
   "version": 3,
   "audio": { "sensitivity": 1, "smoothing": 0.8 },
   "camera": { "fov": 50, "distance": 1, "drift": 0 },

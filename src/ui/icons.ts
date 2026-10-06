@@ -1,8 +1,8 @@
 import { hslCss, type Palette } from '../visualizers/palettes';
 
 /*
- * Halo icon set: 24px grid, 1.5px stroke, round caps and joins, currentColor.
- * Ported from the design system runtime (`Halo.icon`).
+ * Euforia-Audio-Experience icon set: 24px grid, 1.5px stroke, round caps and joins, currentColor.
+ * Ported from the design system runtime (`Euforia-Audio-Experience.icon`).
  */
 
 const TAU = Math.PI * 2;
@@ -58,7 +58,7 @@ const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 
-/** Inline SVG markup for a Halo icon (static, trusted strings). */
+/** Inline SVG markup for a Euforia-Audio-Experience icon (static, trusted strings). */
 export function icon(name: IconName): string {
   const dots = name === 'particles';
   return `<svg viewBox="0 0 24 24" fill="${dots ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="${dots ? 0 : 1.5}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;

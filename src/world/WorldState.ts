@@ -1,5 +1,5 @@
 /*
- * The persistent physical condition of Halo's visual universe. It belongs to
+ * The persistent physical condition of Euforia-Audio-Experience's visual universe. It belongs to
  * no scene: the WorldEngine advances it on the audio clock, every scene reads
  * it and interprets it in its own geometry. Changing scene never resets it;
  * only a new audio session does.

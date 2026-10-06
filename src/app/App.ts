@@ -30,7 +30,7 @@ const MAX_RETRIES = 5;
 
 /**
  * Application controller. Wires audio engine → render engine and drives the
- * Halo UI: one core button, a radial wheel with sub-rings, a settings panel
+ * Euforia-Audio-Experience UI: one core button, a radial wheel with sub-rings, a settings panel
  * and auto-hide. The whole UI state is: open menu, panel open, idle.
  */
 export class App {
@@ -61,15 +61,15 @@ export class App {
   private readonly cleanup: Array<() => void> = [];
 
   constructor(root: HTMLElement) {
-    const canvasHost = h('div', { class: 'halo-canvas' });
+    const canvasHost = h('div', { class: 'app-canvas' });
     this.dial = new Dial({ menu: (key) => appMenu(key, settingsStore.get(), this.fullscreen), onSelect: (menu, id) => this.onSelect(menu, id), onCore: () => this.onCore() });
     this.panel = new SettingsPanel(() => this.closePanel(), () => this.openCalibration());
     this.calibration = new CalibrationView(this.audio, () => this.closeCalibration());
     this.stage = h(
       'main',
-      { class: 'halo-stage' },
+      { class: 'app-stage' },
       canvasHost,
-      h('div', { class: 'halo-vignette' }),
+      h('div', { class: 'app-vignette' }),
       this.nowPlaying.element,
       this.dial.element,
       this.panel.element,

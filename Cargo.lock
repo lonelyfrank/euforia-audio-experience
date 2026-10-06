@@ -851,6 +851,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "euforia-audio-experience"
+version = "0.1.0"
+dependencies = [
+ "audio-capture",
+ "serde",
+ "spectrum-analysis",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1982,17 +1993,6 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "music-visualizer"
-version = "0.1.0"
-dependencies = [
- "audio-capture",
- "serde",
- "spectrum-analysis",
- "tauri",
- "tauri-build",
 ]
 
 [[package]]

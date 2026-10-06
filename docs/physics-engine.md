@@ -29,7 +29,7 @@ scientifico della PDE; i rimbalzi successivi non sono simulati.
 Resonant Field precomputa dodici mode shape per vertice al mount. Un singolo
 Points/ShaderMaterial, nessuna texture ping-pong o pass supplementare;
 risoluzione della membrana proporzionale alla radice della densità di qualità.
-Palette Halo, campo scuro, glow e deformazione; ampiezze condivise, onde datate,
+Palette Euforia-Audio-Experience, campo scuro, glow e deformazione; ampiezze condivise, onde datate,
 width e coherence acustiche, intenti expand/contract. Il dispose di BaseVisualizer
 rilascia geometria e materiale. I buffer delle uniform vengono riusati.
 

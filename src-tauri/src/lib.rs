@@ -8,5 +8,5 @@ pub fn run() {
         .manage(audio::AudioState::default())
         .invoke_handler(tauri::generate_handler![audio::start_audio_capture, audio::stop_audio_capture])
         .run(tauri::generate_context!())
-        .expect("error while running Halo");
+        .expect("error while running Euforia-Audio-Experience");
 }

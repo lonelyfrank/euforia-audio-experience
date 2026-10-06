@@ -1,4 +1,4 @@
-# Lavorare su Halo
+# Lavorare su Euforia-Audio-Experience
 
 - Iniziare da `README.md` (fonte di verità), poi `docs/technical-overview.md`
   (mappa dei moduli, invarianti, audit e backlog). `docs/experience-engine.md`

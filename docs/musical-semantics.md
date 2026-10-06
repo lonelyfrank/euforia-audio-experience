@@ -58,7 +58,7 @@ Build combina crescita di intensità/brightness con attività transiente/percuss
 | Trace | onde storiche dei kick | anelli storici nelle pareti | anelli di memoria | tracce per banda e fosfori | spettro + audibilità storica per eco | vera persistenza dei fosfori |
 | Impact / drop | onda dal core verso il bordo con luce locale | fronte di pressione, apertura/accelerazione | espulsione radiale e riassestamento | shock largo e libertà delle correnti | fronte sonar verso l'esterno | breve overdrive e maggiore persistenza |
 
-Openness non cambia più la densità emessa delle particelle o la frequenza degli echi; trace non cambia più la massa di Galaxy/Particles/Spectrum. Non ci sono nuovi colori fissi: tutte le tinte derivano dalle palette Halo. Non si aggiungono controlli utente o soglie nei preset.
+Openness non cambia più la densità emessa delle particelle o la frequenza degli echi; trace non cambia più la massa di Galaxy/Particles/Spectrum. Non ci sono nuovi colori fissi: tutte le tinte derivano dalle palette Euforia-Audio-Experience. Non si aggiungono controlli utente o soglie nei preset.
 
 In silenzio i moti integrati si fermano con l'audibilità; le geometrie possono assestarsi con il decay macro e gli eventi già emessi possono terminare. Il compositing conserva una piccola quota di trace/drop dopo il taglio del segnale live, per non cancellare i fosfori e gli echi. Spectrum salva l'audibilità di ogni eco e la fa decadere separatamente. Oscilloscope converte il damping dei fosfori da riferimento 60 Hz a `dt` reale; Liquid fa lo stesso quando il pass è attivo.
 
@@ -92,8 +92,8 @@ Nessuna dipendenza o pass GPU aggiunto. Cinque trend hanno ciascuno due scalari 
 
 - Chromium headless, WebGL su Intel UHD (Mesa/ANGLE), viewport 1280×720: le sei scene renderizzate nei dieci scenari della matrice, nessun errore JavaScript/GLSL. Controllati gli screenshot di build e drop, mantenendo forme e palette distinguibili; Spectrum resta un ring continuo e Scope conserva i tre canali.
 - Verificati cambio qualità Low/Medium/High, completamento del crossfade e reflection on/off. Overlay aperto separatamente con Shift+D; assente dalla normale schermata.
-- Report e 60 screenshot della sessione in `/tmp/halo-semantics/` (artefatti temporanei, non necessari all'app).
+- Report e 60 screenshot della sessione in una cartella temporanea (artefatti non versionati e non più presenti, non necessari all'app).
 - `cargo check --workspace --offline` passa usando il sysroot di sviluppo già disponibile per ALSA/GTK/WebKit. Nessun file Rust o provider di cattura modificato. La cattura WASAPI su hardware Windows non è stata eseguita in questa sessione.
 
 - `npm run check`: 58 test (8 file), typecheck, lint e build frontend. Il groove resta `active` anche quando l'intensità relativa si assesta in basso; un plateau di volume non genera build/drop.
-- Misura RAF del loop reale (audio sintetico, analisi, rendering), senza compilazioni concorrenti, dopo warmup: circa 60 FPS in tutte le 18 combinazioni scena × Low/Medium/High a 1280×720, mediana 16.7 ms e p95 16.7–16.8 ms su 90 frame. Scena montata e qualità controllate a ogni cambio; risultati in `/tmp/halo-semantics/performance.json`. È uno smoke test locale, non una garanzia a 1080p/4K o su altre GPU; Auto resta attivo e invariato.
+- Misura RAF del loop reale (audio sintetico, analisi, rendering), senza compilazioni concorrenti, dopo warmup: circa 60 FPS in tutte le 18 combinazioni scena × Low/Medium/High a 1280×720, mediana 16.7 ms e p95 16.7–16.8 ms su 90 frame. Scena montata e qualità controllate a ogni cambio; risultati in `/tmp/app-semantics/performance.json`. È uno smoke test locale, non una garanzia a 1080p/4K o su altre GPU; Auto resta attivo e invariato.

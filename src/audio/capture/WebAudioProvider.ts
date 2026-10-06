@@ -37,7 +37,7 @@ export abstract class WebAudioProvider extends BaseCaptureProvider {
     this.ring = new SampleRingBuffer(Math.ceil(context.sampleRate * RING_SECONDS));
     try {
       await context.audioWorklet.addModule(new URL('./tap.worklet.js', import.meta.url));
-      const tap = new AudioWorkletNode(context, 'halo-sample-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: 'max' });
+      const tap = new AudioWorkletNode(context, 'euforia-audio-experience-sample-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: 'max' });
       tap.port.onmessage = (event: MessageEvent<Float32Array>) => {
         const pcm = event.data;
         for (let i = 0; i < pcm.length / 2; i++) this.mono[i] = (pcm[i * 2] + pcm[i * 2 + 1]) * 0.5;

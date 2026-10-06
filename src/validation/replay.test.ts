@@ -7,15 +7,15 @@ import { parseBeats, parseWav, replay, type Pcm } from './replay';
  * report sanity, invariance of the presented world to render rate and
  * analysis batching on the full PCM → WASM → experience → world path).
  *
- * With HALO_CORPUS=<dir> (`HALO_CORPUS=~/halo-corpus npm run replay`): every
+ * With EUFORIA_AUDIO_EXPERIENCE_CORPUS=<dir> (`EUFORIA_AUDIO_EXPERIENCE_CORPUS=~/euforia-audio-experience-corpus npm run replay`): every
  * `<name>.wav` in the directory (optional `<name>.beats`, optional
  * `corpus.json` {"<name>": {"style": "...", "tags": ["no-percussion", …]}})
- * is replayed; traces and reports land in `<dir>/halo-report/`. Recordings
+ * is replayed; traces and reports land in `<dir>/euforia-audio-experience-report/`. Recordings
  * stay local: never commit copyrighted audio.
  */
 
 const env = (globalThis as unknown as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
-const corpus = env.HALO_CORPUS;
+const corpus = env.EUFORIA_AUDIO_EXPERIENCE_CORPUS;
 
 function wav(pcm: Pcm): ArrayBuffer {
   const frames = pcm.samples.length / pcm.channels;
@@ -58,11 +58,11 @@ describe('real-music replay harness', () => {
     expect(parseBeats('0.5 1\n1.0 2\n# comment\n1.5\t3\n')).toEqual([{ time: 0.5, position: 1 }, { time: 1, position: 2 }, { time: 1.5, position: 3 }]);
   });
 
-  it.skipIf(!corpus)('replays the local corpus in HALO_CORPUS', { timeout: 3600_000 }, async () => {
+  it.skipIf(!corpus)('replays the local corpus in EUFORIA_AUDIO_EXPERIENCE_CORPUS', { timeout: 3600_000 }, async () => {
     const fs = await import(/* @vite-ignore */ 'node:fs' as string);
     const path = await import(/* @vite-ignore */ 'node:path' as string);
     const dir = corpus!.replace(/^~(?=\/)/, env.HOME ?? '~');
-    const out = path.join(dir, 'halo-report');
+    const out = path.join(dir, 'euforia-audio-experience-report');
     fs.mkdirSync(out, { recursive: true });
     const manifestPath = path.join(dir, 'corpus.json');
     const manifest: Record<string, { style?: string; tags?: string[] }> = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : {};

@@ -12,7 +12,7 @@ import { RhythmGate } from '../timing/RhythmGate';
  * gate → cue scheduler (with the flash guard) → Dynamics, read once per
  * rendered frame at 30, 60 and 144 fps. Models a perfect clock and no output
  * latency: the frame at audio time T has heard everything captured until T.
- * Measures when the fixture (the halo pulse) crosses its visible threshold
+ * Measures when the fixture (the glow pulse) crosses its visible threshold
  * after each kick, and whether the values agree across frame rates.
  */
 
@@ -31,7 +31,7 @@ interface RigRun {
   delays: number[];
   /** Per measured kick: distance (s) to the nearest scheduled hit. */
   hitErrors: number[];
-  /** Halo value at every 1/30 s (the grid all frame rates share). */
+  /** Glow value at every 1/30 s (the grid all frame rates share). */
   grid: Map<number, number>;
   /** Every scheduled hit time after the settling time. */
   hits: number[];
@@ -41,8 +41,8 @@ async function runRig(signal: TestSignal, bpm: number, fps: number, seconds: num
   const analysis = await WasmAnalysis.create(SR, 1);
   const generator = new SignalGenerator(signal, SR);
   const dynamics = new Dynamics();
-  const halo = dynamics.channel('halo', 'flash');
-  const cues = new CueScheduler(dynamics, halo, true, new FlashGuard());
+  const glow = dynamics.channel('glow', 'flash');
+  const cues = new CueScheduler(dynamics, glow, true, new FlashGuard());
   const gate = new RhythmGate();
   const chunk = new Float32Array(BATCH);
   const { decoder } = analysis;
@@ -64,7 +64,7 @@ async function runRig(signal: TestSignal, bpm: number, fps: number, seconds: num
     cues.update(frame, weight, decoder.onsets.items, decoder.onsets.count, decoder.sections.items, decoder.sections.count);
     for (let i = 0; i < cues.hits.size; i++) if (cues.hits.times[i] > 0) hitTimes.add(cues.hits.times[i]);
     dynamics.advance(t);
-    const value = dynamics.value(halo);
+    const value = dynamics.value(glow);
     frames.push([t, value]);
     const tick = Math.round(t * 30);
     if (Math.abs(t * 30 - tick) < 1e-6) grid.set(tick, value);

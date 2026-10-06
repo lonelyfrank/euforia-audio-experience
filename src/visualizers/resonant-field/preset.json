@@ -1,5 +1,5 @@
 {
-  "name": "Resonant Field", "author": "Halo", "version": 1,
+  "name": "Resonant Field", "author": "Euforia-Audio-Experience", "version": 1,
   "audio": { "sensitivity": 1, "smoothing": 1 },
   "camera": { "fov": 55, "distance": 9, "drift": 0.1 },
   "bloom": { "strength": 0.65, "radius": 0.35, "threshold": 0.2 },

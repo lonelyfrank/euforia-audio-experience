@@ -171,7 +171,7 @@ export function installDebugOverlay(app: App): () => void {
   const onKey = (event: KeyboardEvent) => {
     if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.code === 'KeyD') toggle();
-    if (event.code === 'KeyT') download(`halo-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, trace.toCsv());
+    if (event.code === 'KeyT') download(`euforia-audio-experience-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, trace.toCsv());
   };
   window.addEventListener('keydown', onKey);
   if (new URLSearchParams(location.search).has('debug')) toggle();

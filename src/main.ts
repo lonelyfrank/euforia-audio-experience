@@ -1,7 +1,7 @@
 import { App } from './app/App';
 import '@fontsource-variable/geist';
 import './ui/tokens.css';
-import './ui/halo.css';
+import './ui/app.css';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('#app root element missing');

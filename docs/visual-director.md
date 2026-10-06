@@ -94,7 +94,7 @@ flowchart TD
     Modulation --> Scene[Scena: geometria e shader]
     Palette[Palette: Nebula / Aurora / Ember / Mono] --> Scene
     AudioFrame -->|forma d'onda / spettro da disegnare| Scene
-    Scene --> Renderer[Bloom, crossfade, composizione Halo]
+    Scene --> Renderer[Bloom, crossfade, composizione finale]
 ```
 
 | Concetto | Responsabilità |
@@ -156,7 +156,7 @@ Le capacità non dichiarate sono disabilitate. La UI non mostra target non suppo
 | Spectrum | Scala del core, deformazione lead, rotazione e durata degli echi |
 | Oscilloscope | Ampiezze/forma dei canali e durata del fosforo |
 
-Bloom e contrasto vengono diretti dal renderer; i limiti di qualità restano vincolanti. Minimal agisce anche sul fondo Halo, così il silenzio non lascia un cielo animato indipendente dal suono.
+Bloom e contrasto vengono diretti dal renderer; i limiti di qualità restano vincolanti. Minimal agisce anche sul fondo della composizione, così il silenzio non lascia un cielo animato indipendente dal suono.
 
 ## Auto e UI
 
@@ -213,4 +213,4 @@ Le modifiche precedenti a sezioni, segnali di prova, tracce e relativi test sono
 - Prova RAF con audio sintetico live, riflesso attivo e Chaos/Immersive, tutte le scene: circa **60 fps Low**, **41–50 Medium**, **27–35 High** nelle condizioni della macchina durante questa sessione. Sono campioni brevi (90 frame dopo 3 s di riscaldamento), non una garanzia su altri sistemi.
 - Confronto nello stesso browser su Galaxy/Liquid, Director attivo/disattivato: update CPU di Director+scena mediamente 0,16–0,27 ms contro 0,12–0,15 ms del percorso compatibile. Disattivarlo non ripristina 60 fps High. Il confronto isola la direzione, non costituisce un benchmark completo della versione precedente; il costo del rendering va misurato separatamente su WebView2.
 
-Artefatti locali non versionati: `/tmp/halo-direction/browser.json`, `performance.json`, `compare.json` e screenshot. La prossima verifica percettiva deve usare brani reali e la cattura Windows, includendo fade/tagli, passaggi quieti e musica priva di kick regolare.
+Artefatti locali non versionati (non più presenti): misure browser, prestazioni, confronto e screenshot in `/tmp`. La prossima verifica percettiva deve usare brani reali e la cattura Windows, includendo fade/tagli, passaggi quieti e musica priva di kick regolare.

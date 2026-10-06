@@ -61,7 +61,7 @@ class Slot {
 }
 
 /**
- * Owns the WebGL renderer, the frame loop and the final Halo composition
+ * Owns the WebGL renderer, the frame loop and the final composition
  * (the rig's layers, sky, reflective floor, horizon). Audio comes in through
  * the `frameSource` callback, so it does not depend on the audio engine.
  * Up to SLOTS fixtures (scenes) play at once; slot 0 is the protagonist.
@@ -266,7 +266,7 @@ export class RenderEngine {
     u.uDetail.value = response.detail;
     u.uDensity.value = response.density;
     // Migrated to the Dynamics layer: predicted beats and kicks, instant attack (falls back to the old envelope).
-    u.uImpact.value = input.rig?.haloPulse ?? response.impact;
+    u.uImpact.value = input.rig?.glowPulse ?? response.impact;
     // Allow a short event afterimage to survive the live audibility gate.
     const directed = current.director.response ?? response;
     u.uAudible.value = Math.max(directed.audible, directed.trace * 0.5, directed.music.drop * 0.4);
@@ -278,7 +278,7 @@ export class RenderEngine {
   };
 
   /**
-   * Layout between the Halo one (above the water) and the open one (whole
+   * Layout between the main one (above the water) and the open one (whole
    * window, floating gently with the music); pushed to the scenes and the
    * composition only when it moves.
    */

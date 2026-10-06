@@ -1,6 +1,6 @@
 {
   "name": "Galaxy",
-  "author": "Halo",
+  "author": "Euforia-Audio-Experience",
   "version": 2,
   "audio": { "sensitivity": 1, "smoothing": 1 },
   "camera": { "fov": 50, "distance": 15, "drift": 0.5 },

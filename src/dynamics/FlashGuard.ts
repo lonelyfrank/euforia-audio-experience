@@ -24,7 +24,7 @@ export const REDUCED_FLASHES: FlashLimits = { gap: 1, max: 0.5 };
 export const SUBTLE = 0.1;
 
 /**
- * Rate limit on every light transient of the rig (the halo pulse that
+ * Rate limit on every light transient of the rig (the glow pulse that
  * drives the scenes' impacts, fixture strobes), checked on the audio
  * timestamps they are scheduled at, so the limit holds whatever the frame
  * rate or the order events arrive in (predicted beats come ahead, attacks

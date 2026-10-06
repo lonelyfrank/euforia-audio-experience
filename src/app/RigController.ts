@@ -15,11 +15,11 @@ import type { AudioEvent, EventCursor } from '../experience/EventStream';
 export class RigController {
   /** Dynamics: fixture parameters driven by timed targets and impulses (see src/dynamics). */
   readonly dynamics = new Dynamics();
-  private readonly haloPulse = this.dynamics.channel('halo.pulse', 'flash');
-  /** Photosensitivity: one rate limit on every flash of the rig (halo pulse and strobes). */
+  private readonly glowPulse = this.dynamics.channel('glow.pulse', 'flash');
+  /** Photosensitivity: one rate limit on every flash of the rig (glow pulse and strobes). */
   readonly flashGuard = new FlashGuard();
-  private readonly cues = new CueScheduler(this.dynamics, this.haloPulse, true, this.flashGuard);
-  readonly rig: RigValues = { time: 0, timed: false, haloPulse: 0, snapAt: -1, hits: this.cues.hits };
+  private readonly cues = new CueScheduler(this.dynamics, this.glowPulse, true, this.flashGuard);
+  readonly rig: RigValues = { time: 0, timed: false, glowPulse: 0, snapAt: -1, hits: this.cues.hits };
   /** The show: which fixtures (scenes) play, how, with which effects (see src/show). */
   readonly show = new ShowDirector();
   private readonly budget = new GpuBudget();
@@ -90,7 +90,7 @@ export class RigController {
     this.rig.experience = clock.ready ? this.audio.experience.present(timing.heardTime) : undefined;
     if (!clock.ready) {
       this.rig.timed = false;
-      this.rig.haloPulse = 0;
+      this.rig.glowPulse = 0;
       this.rig.snapAt = -1;
       return;
     }
@@ -103,7 +103,7 @@ export class RigController {
     this.applyShow();
     this.rig.time = timing.heardTime;
     this.rig.timed = true;
-    this.rig.haloPulse = this.dynamics.value(this.haloPulse);
+    this.rig.glowPulse = this.dynamics.value(this.glowPulse);
     this.rig.experienceLight = this.dynamics.value(this.experienceLight);
     // Section boundaries snap every Director's dynamics too (no trail of the build into the drop).
     this.rig.snapAt = sections.count > 0 ? sections.items[sections.count - 1].time : -1;

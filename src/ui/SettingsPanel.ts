@@ -5,7 +5,7 @@ import { icon } from './icons';
 type NumberKey = 'sensitivity' | 'smoothing' | 'audioDelay' | 'moodIntensity';
 type ToggleKey = 'beatResponse' | 'hideCursor' | 'reflection' | 'reduceFlashing';
 
-const VERSION = `Halo ${__APP_VERSION__}`;
+const VERSION = `Euforia-Audio-Experience ${__APP_VERSION__}`;
 
 /**
  * The one conventional panel: floats above the core, opened from Settings on
@@ -17,11 +17,11 @@ export class SettingsPanel {
   private readonly unsubscribe: () => void;
 
   constructor(onClose: () => void, onCalibrate: () => void) {
-    const close = h('button', { type: 'button', class: 'halo-panel__x', attrs: { 'aria-label': 'Close settings' }, onclick: () => onClose() }, svg(icon('close')));
+    const close = h('button', { type: 'button', class: 'app-panel__x', attrs: { 'aria-label': 'Close settings' }, onclick: () => onClose() }, svg(icon('close')));
     this.element = h(
       'div',
-      { class: 'halo-panel', attrs: { role: 'dialog', 'aria-label': 'Settings', 'aria-modal': 'false' } },
-      h('div', { class: 'halo-panel__head' }, h('h2', { class: 'halo-panel__title' }, 'Settings'), close),
+      { class: 'app-panel', attrs: { role: 'dialog', 'aria-label': 'Settings', 'aria-modal': 'false' } },
+      h('div', { class: 'app-panel__head' }, h('h2', { class: 'app-panel__title' }, 'Settings'), close),
       this.row('Mood intensity', this.range('moodIntensity', 0, 1, 0.05, 'Mood intensity')),
       this.row('Sensitivity', this.range('sensitivity', 0.4, 1.8, 0.05)),
       this.row('Smoothing', this.range('smoothing', 0, 0.95, 0.05)),
@@ -46,8 +46,8 @@ export class SettingsPanel {
       this.row('Water reflection', this.toggle('reflection', 'Water reflection')),
       this.row('Reduce flashing', this.toggle('reduceFlashing', 'Reduce flashing')),
       this.delayRow(),
-      this.row('Sync', h('div', { class: 'halo-seg' }, h('button', { type: 'button', textContent: 'Calibrate…', onclick: () => onCalibrate() }))),
-      h('div', { class: 'halo-panel__foot' }, h('span', {}, 'Esc to close'), h('span', {}, VERSION)),
+      this.row('Sync', h('div', { class: 'app-seg' }, h('button', { type: 'button', textContent: 'Calibrate…', onclick: () => onCalibrate() }))),
+      h('div', { class: 'app-panel__foot' }, h('span', {}, 'Esc to close'), h('span', {}, VERSION)),
     );
     this.element.addEventListener('keydown', (e) => this.trapFocus(e));
     this.unsubscribe = settingsStore.subscribe((s) => this.refreshers.forEach((refresh) => refresh(s)));
@@ -72,17 +72,17 @@ export class SettingsPanel {
   }
 
   private row(label: string, control: HTMLElement): HTMLElement {
-    return h('div', { class: 'halo-row' }, h('span', { class: 'halo-row__label' }, label), control);
+    return h('div', { class: 'app-row' }, h('span', { class: 'app-row__label' }, label), control);
   }
 
   /** Output latency compensation, e.g. ~150–250 ms for Bluetooth headphones. */
   private delayRow(): HTMLElement {
-    const value = h('span', { class: 'halo-row__value' });
+    const value = h('span', { class: 'app-row__value' });
     this.refreshers.push((s) => (value.textContent = `${s.audioDelay} ms`));
     return h(
       'div',
-      { class: 'halo-row', attrs: { title: 'Delay the visuals to match the sound (Bluetooth headphones: ~150–250 ms; negative for a slow display)' } },
-      h('span', { class: 'halo-row__label' }, 'Audio delay ', value),
+      { class: 'app-row', attrs: { title: 'Delay the visuals to match the sound (Bluetooth headphones: ~150–250 ms; negative for a slow display)' } },
+      h('span', { class: 'app-row__label' }, 'Audio delay ', value),
       this.range('audioDelay', -100, 400, 5, 'Audio delay'),
     );
   }
@@ -90,7 +90,7 @@ export class SettingsPanel {
   private range(key: NumberKey, min: number, max: number, step: number, label = key === 'sensitivity' ? 'Sensitivity' : 'Smoothing'): HTMLElement {
     const input = h('input', {
       type: 'range',
-      class: 'halo-range',
+      class: 'app-range',
       min: String(min),
       max: String(max),
       step: String(step),
@@ -106,7 +106,7 @@ export class SettingsPanel {
   }
 
   private toggle(key: ToggleKey, label: string): HTMLElement {
-    const button = h('button', { type: 'button', class: 'halo-toggle', attrs: { role: 'switch', 'aria-label': label } }, h('span'));
+    const button = h('button', { type: 'button', class: 'app-toggle', attrs: { role: 'switch', 'aria-label': label } }, h('span'));
     button.addEventListener('click', () => settingsStore.set((s) => ({ [key]: !s[key] })));
     this.refreshers.push((s) => button.setAttribute('aria-checked', String(s[key])));
     return button;
@@ -117,7 +117,7 @@ export class SettingsPanel {
     label: string,
     options: [T, string][],
   ): HTMLElement {
-    const group = h('div', { class: 'halo-seg', attrs: { role: 'group', 'aria-label': label } });
+    const group = h('div', { class: 'app-seg', attrs: { role: 'group', 'aria-label': label } });
     const buttons = options.map(([value, text]) => {
       const button = h('button', { type: 'button', textContent: text });
       button.addEventListener('click', () => settingsStore.set({ [key]: value }));

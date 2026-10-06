@@ -79,8 +79,8 @@ export interface RigValues {
   time: number;
   /** Whether `time` is valid (the clock is synchronized). */
   timed: boolean;
-  /** Halo composition: the brief halo pulse on beats and kicks (instant attack, decay). */
-  haloPulse: number;
+  /** Composition: the brief glow pulse on beats and kicks (instant attack, decay). */
+  glowPulse: number;
   /** Audio time of a section boundary reported this frame (snap), or -1. */
   snapAt: number;
   /** Timed hits (predicted beats, kicks) on the same clock. */

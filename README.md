@@ -1,6 +1,6 @@
-# Halo
+# Euforia-Audio-Experience
 
-Visualizzatore musicale desktop in tempo reale, ispirato ai visualizer di Windows Media Player, Winamp e MilkDrop, ricostruito con tecnologie moderne (Tauri, Rust, TypeScript, Three.js, GLSL). "Halo" è il nome provvisorio.
+Visualizzatore musicale desktop in tempo reale, ispirato ai visualizer di Windows Media Player, Winamp e MilkDrop, ricostruito con tecnologie moderne (Tauri, Rust, TypeScript, Three.js, GLSL). Il nome dell'applicativo è **Euforia-Audio-Experience**.
 
 L'app **non dipende da nessun player**: cattura l'audio che il computer sta riproducendo (Spotify, YouTube, VLC, giochi…) e lo trasforma in una scena a tutto schermo.
 
@@ -11,7 +11,7 @@ LIVE AUDIO → AUDIO CLOCK → ANALISI MULTI-RATE (Rust/WASM fuori dal RAF) → 
 
 > Il visualizer è l'interfaccia. Oltre alla scena si vedono solo le informazioni sulla sorgente, a sinistra, e un pulsante circolare in basso al centro. Tutto il resto compare quando serve e si richiude da solo.
 
-La UI implementa il **design system Halo** (token, componenti, le 8 fasi del mockup *Screens → AppPhases*).
+La UI implementa il **design system Euforia-Audio-Experience** (token, componenti, le 8 fasi del mockup *Screens → AppPhases*).
 
 ---
 
@@ -25,7 +25,7 @@ La UI implementa il **design system Halo** (token, componenti, le 8 fasi del moc
 - Resonant Field: modi di una membrana e onde propagate/riflesse, con intensità distinta dalla complessità; budget DSP indipendente dalla qualità grafica
 - 8 mood e 5 modalità Experience; regia **Preset / Hybrid / Free**, fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
 - 7 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**
-- Composizione Halo: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
+- Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
 - Qualità Auto / Low / Medium / High, fullscreen, auto-hide di controlli e cursore
 - Impostazioni persistenti validate al caricamento, riconnessione automatica se il dispositivo si scollega
@@ -90,7 +90,7 @@ Live capture (system / microphone / test)
                      ↓
        Layer: VisualDirector (luce, camera, guadagni del mood) + WorldView (adattatore) → scena + pass
                      ↓
-       RenderEngine: 3 slot / 4 layer composti → Halo → Canvas
+       RenderEngine: 3 slot / 4 layer composti → composizione → Canvas
 ```
 
 La [scheda tecnica per gli agenti](docs/technical-overview.md) descrive responsabilità,
@@ -151,7 +151,7 @@ npm run dev              # solo frontend nel browser (segnale di test, microfono
 npm run check            # typecheck + lint + test (bench incluso) + build frontend
 cargo test -p spectrum-analysis -p spectrum-analysis-wasm --offline
 npm run wasm             # ricompila il WASM; serve il target wasm32-unknown-unknown
-HALO_CORPUS=~/halo-corpus npm run replay   # validazione su registrazioni locali (mai versionate)
+EUFORIA_AUDIO_EXPERIENCE_CORPUS=~/euforia-audio-experience-corpus npm run replay   # validazione su registrazioni locali (mai versionate)
 ```
 
 In modalità browser (`npm run dev`) "System Audio" non è disponibile: la sorgente di default è il segnale di test sintetico. Il microfono passa da `getUserMedia`. È utile per sviluppare le scene senza compilare la parte Rust.
@@ -187,14 +187,14 @@ src/
   validation/       replay di registrazioni locali sul percorso live, metriche e tracce
   dynamics/         molle/follower/inviluppi, scheduler, cronologia hit, FlashGuard
   show/             scelta fixture/effetti, budget GPU, affinità e seed deterministici
-  renderer/         RenderEngine (slot, crossfade, loop), Layer, composizione Halo, qualità
+  renderer/         RenderEngine (slot, crossfade, loop), Layer, composizione finale, qualità
   visualizers/
     registry.ts     auto-discovery delle scene
     palettes.ts     i 4 preset di colore
     shared/         BaseVisualizer, dispose, defineVisualizer
     tunnel/ spectrum/ particle-field/ galaxy/ liquid/ oscilloscope/ resonant-field/
                     index.ts + <Nome>Visualizer.ts + preset.json
-  ui/               Dial (core + ruota), NowPlaying, SettingsPanel, icone, tokens.css, halo.css
+  ui/               Dial (core + ruota), NowPlaying, SettingsPanel, icone, tokens.css, app.css
   stores/           store osservabile, impostazioni persistenti
   platform/         differenze desktop/browser (fullscreen, disponibilità delle sorgenti)
   types/            AudioFrame, Visualizer, preset, qualità
@@ -212,7 +212,7 @@ Nota: la proposta iniziale prevedeva due crate separati, `native/windows-audio` 
 
 ### Design token
 
-`src/ui/tokens.css` contiene i token del design system Halo come custom property (`--void`, `--glass`, `--accent-live`, `--core-size`, `--dur-expand`, …). La UI usa sempre i token, mai valori copiati. `--accent-live` viene riscritto sullo stage con la prima tinta del preset attivo.
+`src/ui/tokens.css` contiene i token del design system Euforia-Audio-Experience come custom property (`--void`, `--glass`, `--accent-live`, `--core-size`, `--dur-expand`, …). La UI usa sempre i token, mai valori copiati. `--accent-live` viene riscritto sullo stage con la prima tinta del preset attivo.
 
 ## AudioFrame
 
@@ -402,7 +402,7 @@ interface Visualizer {
 - **Metadati del brano**: non vengono ancora letti (su Windows servirebbero i Global System Media Transport Controls, su Linux MPRIS). Il now playing mostra la sorgente: "System Audio" e il nome del dispositivo, "Live input" per il microfono.
 - **Linux**: "System Audio" registra il monitor dell'uscita predefinita *al momento dell'avvio della cattura*. Se poi si cambia uscita (per esempio dalle cuffie Bluetooth agli altoparlanti), bisogna riselezionare Audio → System Audio. Serve un server PipeWire o PulseAudio: con ALSA puro l'audio di sistema non è disponibile.
 - **Windows**: la cattura WASAPI compila ed è verificata staticamente (`cargo check`/`clippy` per `x86_64-pc-windows-msvc`), ma non è ancora stata provata su una macchina Windows reale.
-- **Dispositivo audio**: la UI Halo non prevede la scelta del dispositivo, quindi si usa sempre quello predefinito di sistema. Quando il predefinito cambia, cpal lo segue; se la cattura cade, l'app ritenta 5 volte.
+- **Dispositivo audio**: la UI Euforia-Audio-Experience non prevede la scelta del dispositivo, quindi si usa sempre quello predefinito di sistema. Quando il predefinito cambia, cpal lo segue; se la cattura cade, l'app ritenta 5 volte.
 - **Palette / Mood / Experience** sono indipendenti. I profili iniziali richiedono ulteriore taratura percettiva su registrazioni reali; Auto non classifica generi o struttura completa dei brani.
 - **Fullscreen**: usa la finestra corrente; non c'è ancora la scelta del monitor.
 - Il tracker TS delle scene resta basato sulla cassa; la regia usa gli onset multi-banda Rust con confidence e fallback. Musica senza ritmo affidabile o molto sincopata resta un limite. La calibrazione suggerisce un ritardo, ma non misura end-to-end il display e ogni uscita: verificare *Audio delay* a orecchio.

@@ -1,12 +1,12 @@
 [package]
-name = "music-visualizer"
-description = "Real-time music visualizer"
+name = "euforia-audio-experience"
+description = "Euforia-Audio-Experience: real-time audio experience"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "music_visualizer_lib"
+name = "euforia_audio_experience_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
