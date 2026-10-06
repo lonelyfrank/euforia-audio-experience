@@ -379,6 +379,9 @@ body,
   backdrop-filter: blur(20px) saturate(120%);
   box-shadow: var(--shadow-panel);
   color: var(--ink);
+  /* The advanced zone can outgrow a small window. */
+  max-height: calc(100% - var(--core-bottom) - var(--core-size) - var(--space-6) - var(--space-4));
+  overflow-y: auto;
   z-index: 4;
   opacity: 0;
   visibility: hidden;
@@ -446,6 +449,37 @@ body,
   gap: var(--space-3);
   min-height: 40px;
   border-top: 1px solid var(--hairline);
+}
+
+.app-panel [hidden] {
+  display: none;
+}
+
+.app-panel__more {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.app-panel__more::after {
+  content: '+';
+}
+
+.app-panel__more[aria-expanded='true']::after {
+  content: '−';
+}
+
+.app-panel__more:hover {
+  color: var(--ink);
 }
 
 .app-row__label {
