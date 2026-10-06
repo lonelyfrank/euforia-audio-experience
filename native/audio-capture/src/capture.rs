@@ -185,7 +185,8 @@ where
     let device = platform::open_device(source, device_id)?;
     let supported = platform::stream_config(&device, source)?;
     let sample_format = supported.sample_format();
-    let config: StreamConfig = supported.config();
+    let mut config: StreamConfig = supported.config();
+    config.buffer_size = platform::buffer_size(&supported);
     let channels = usize::from(config.channels.max(1));
     let info =
         CaptureInfo { sample_rate: config.sample_rate, channels: config.channels, device_name: device.to_string() };

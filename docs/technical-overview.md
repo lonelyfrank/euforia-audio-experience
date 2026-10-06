@@ -83,6 +83,16 @@ nativi concorrenti. Una richiesta getUserMedia pendente deve risolversi prima ch
 la coda possa liberarla: non esiste qui un annullamento del prompt del browser.
 `AudioEngine.stop()` invalida le richieste precedenti e rilascia le risorse.
 
+**Età della cattura.** Il record di clock di ogni batch nativo porta l'età del suo
+campione più recente, ricavata dai timestamp di cpal; `ClockSync` se ne fida. Se il
+backend dichiara un'età maggiore del reale, il tempo udito supera l'ultimo snapshot
+e `ExperienceEngine.present()` non restituisce nulla oltre 0,5 s: le scene perdono
+esperienza e mondo (le forme grafiche TS continuano). Su Linux `platform::buffer_size`
+chiede quindi ~10 ms per callback: misurato il 6 ottobre 2026 su Fedora 44, PipeWire,
+monitor di un'uscita Bluetooth A2DP a 48 kHz, l'età passa da ~1,68 s (frammenti da
+16.384 frame) a ~0,10 s. Non provato su ALSA puro, su altre uscite né su Windows, dove
+resta il default del backend.
+
 **Reset esplicito.** `AudioEngine.session` cambia quando l’analisi viene azzerata.
 RigController resetta cue, flash guard, memoria ShowDirector e budget anche quando
 la sessione precedente è durata meno di un secondo. La regressione del clock di

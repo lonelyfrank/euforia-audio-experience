@@ -156,3 +156,42 @@ pub fn stream_config(device: &Device, source: CaptureSource) -> Result<cpal::Sup
         CaptureSource::Microphone => Ok(device.default_input_config()?),
     }
 }
+
+/// Frames per callback to ask the backend for.
+///
+/// PulseAudio / PipeWire hand a record stream with no requested size whatever
+/// the source prefers: the monitor of a Bluetooth output delivers ~340 ms
+/// fragments and reports them as seconds old. Asking for ~10 ms keeps delivery
+/// and the capture timestamps close to real time. Other platforms keep the
+/// backend's default (WASAPI loopback already delivers ~10 ms).
+pub fn buffer_size(supported: &cpal::SupportedStreamConfig) -> cpal::BufferSize {
+    if !cfg!(target_os = "linux") {
+        return cpal::BufferSize::Default;
+    }
+    let wanted = supported.sample_rate() / 100;
+    match *supported.buffer_size() {
+        cpal::SupportedBufferSize::Range { min, max } if min <= max => cpal::BufferSize::Fixed(wanted.clamp(min, max)),
+        _ => cpal::BufferSize::Default,
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::buffer_size;
+    use cpal::{BufferSize, SampleFormat, SupportedBufferSize, SupportedStreamConfig};
+
+    fn config(rate: u32, size: SupportedBufferSize) -> SupportedStreamConfig {
+        SupportedStreamConfig::new(2, rate, size, SampleFormat::F32)
+    }
+
+    #[test]
+    fn asks_for_ten_milliseconds_within_what_the_device_supports() {
+        let range = |min, max| SupportedBufferSize::Range { min, max };
+        assert_eq!(buffer_size(&config(48_000, range(1, 1 << 20))), BufferSize::Fixed(480));
+        assert_eq!(buffer_size(&config(44_100, range(1, 1 << 20))), BufferSize::Fixed(441));
+        assert_eq!(buffer_size(&config(192_000, range(1, 1 << 20))), BufferSize::Fixed(1920));
+        assert_eq!(buffer_size(&config(48_000, range(1024, 8192))), BufferSize::Fixed(1024));
+        assert_eq!(buffer_size(&config(48_000, range(16, 256))), BufferSize::Fixed(256));
+        assert_eq!(buffer_size(&config(48_000, SupportedBufferSize::Unknown)), BufferSize::Default);
+    }
+}
