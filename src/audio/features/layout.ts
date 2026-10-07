@@ -4,7 +4,7 @@
 /** Record tags of the analysis event stream. */
 export const TAG = { frame: 1, onset: 2, beat: 3, clock: 4, section: 5 } as const;
 
-export const RECORD = { frame: 295, onset: 6, beat: 9, clock: 3, section: 9 } as const;
+export const RECORD = { frame: 343, onset: 6, beat: 9, clock: 3, section: 9 } as const;
 
 /** Field name → [offset in the record, length]. */
 export const FRAME_FIELDS = {
@@ -122,6 +122,10 @@ export const FRAME_FIELDS = {
   complexitySlope: [292, 1],
   harmonicitySlope: [293, 1],
   nextDownbeatTime: [294, 1],
+  partialHz: [295, 12],
+  partialLevel: [307, 12],
+  partialPan: [319, 12],
+  partialPhase: [331, 12],
 } as const;
 
 export const ONSET_FIELDS = {

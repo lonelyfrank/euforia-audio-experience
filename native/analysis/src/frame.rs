@@ -1,6 +1,8 @@
 //! The per-hop measurement record, and its flat export (a list of named f64
 //! fields) for hosts across a boundary: Tauri IPC, WebAssembly, other engines.
 
+use crate::harmony::PARTIALS;
+
 /// Number of energy bands.
 pub const BANDS: usize = 8;
 /// Band edges (Hz): sub, bass, low-mid, mid, high-mid, presence, brilliance, air.
@@ -186,6 +188,16 @@ pub struct FeatureFrame {
     /// Predicted capture time (s) of the next downbeat; 0 while not tracking. A forecast, not an event:
     /// weigh it by `downbeat_confidence` (and `meter_confidence`; with meter 0 the grid's fallback grouping is used).
     pub next_downbeat_time: f64,
+    // Partials (see `harmony`): the strongest spectral peaks of the long window, loudest first.
+    /// Frequency (Hz, interpolated); 0 = no partial in this slot. Slots are ordered by level, not tracked:
+    /// the same partial can change slot between analyses.
+    pub partial_hz: [f32; PARTIALS],
+    /// Level relative to the loudest partial, scaled by how tonal and present the sound is (0..1).
+    pub partial_level: [f32; PARTIALS],
+    /// -1 left … 1 right at the partial's bin (0 for mono).
+    pub partial_pan: [f32; PARTIALS],
+    /// Phase (rad) of the left channel against the right at the partial; 0 for mono or centred sound.
+    pub partial_phase: [f32; PARTIALS],
 }
 
 impl Default for FeatureFrame {
@@ -306,6 +318,10 @@ impl Default for FeatureFrame {
             complexity_slope: 0.0,
             harmonicity_slope: 0.0,
             next_downbeat_time: 0.0,
+            partial_hz: [0.0; PARTIALS],
+            partial_level: [0.0; PARTIALS],
+            partial_pan: [0.0; PARTIALS],
+            partial_phase: [0.0; PARTIALS],
         }
     }
 }
@@ -518,6 +534,10 @@ layout!(FeatureFrame {
     complexity_slope: f32,
     harmonicity_slope: f32,
     next_downbeat_time: f64,
+    partial_hz: [f32; PARTIALS],
+    partial_level: [f32; PARTIALS],
+    partial_pan: [f32; PARTIALS],
+    partial_phase: [f32; PARTIALS],
 });
 
 #[cfg(test)]

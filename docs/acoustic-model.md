@@ -49,6 +49,10 @@ qualità GPU. I benchmark disabilitano l'adattamento per confronti deterministic
   magnitudine alimentano fit armonico, inarmonicità e salience. Roughness
   usa coppie di picchi e la curva parametrica descritta da
   [Sethares](https://sethares.engr.wisc.edu/paperspdf/adaptun2002.pdf).
+  Gli stessi dodici picchi sono esportati come **parziali** (`partialHz`,
+  `partialLevel` relativo al più forte × tonalità × presenza, `partialPan`,
+  `partialPhase` = fase del canale sinistro rispetto al destro al picco),
+  ordinati per livello e non tracciati fra un'analisi e la successiva.
   Sono indizi del carattere, non trascrizione, riconoscimento di accordi o
   un modello completo di dissonanza polifonica. La risoluzione sotto C2
   resta limitata e i picchi deboli vengono esclusi.

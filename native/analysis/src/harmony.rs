@@ -18,6 +18,8 @@ const TO_HZ: f32 = 5000.0;
 const CHROMA_TAU: f32 = 0.15;
 /// Memory (s) of the chroma the key is estimated from.
 const KEY_MEMORY: f32 = 8.0;
+/// Spectral peaks reported as partials (the strongest first).
+pub const PARTIALS: usize = 12;
 /// Seconds another key must lead before it is reported.
 const KEY_HOLD: f32 = 4.0;
 /// Smoothing (s) of the key confidence: the margin swings with each chord of a progression.
@@ -36,6 +38,13 @@ pub struct HarmonyReading {
     pub inharmonicity: f32,
     pub pitch_salience: f32,
     pub roughness: f32,
+    /// The strongest spectral peaks, loudest first: frequency (Hz, interpolated; 0 = no partial), level
+    /// relative to the loudest (0..1), where it sits between the channels (-1 left … 1 right) and the
+    /// phase of the left channel against the right at the peak (rad, 0 for mono or centred sound).
+    pub partial_hz: [f32; PARTIALS],
+    pub partial_level: [f32; PARTIALS],
+    pub partial_pan: [f32; PARTIALS],
+    pub partial_phase: [f32; PARTIALS],
     pub chroma_confidence: f32,
     /// 0–11 = C … B major, 12–23 = C … B minor; -1 while unknown.
     pub key: i8,
@@ -51,6 +60,10 @@ impl Default for HarmonyReading {
             inharmonicity: 0.0,
             pitch_salience: 0.0,
             roughness: 0.0,
+            partial_hz: [0.0; PARTIALS],
+            partial_level: [0.0; PARTIALS],
+            partial_pan: [0.0; PARTIALS],
+            partial_phase: [0.0; PARTIALS],
             chroma_confidence: 0.0,
             key: -1,
             key_confidence: 0.0,
@@ -179,7 +192,8 @@ impl Harmony {
     /// Bounded peak analysis: harmonic-series fit and critical-band pair roughness.
     /// Evidence for source character, not a transcription or a dissonance judgement.
     fn character(&mut self) {
-        let mut peaks = [(0.0f32, 0.0f32); 12];
+        // Frequency, amplitude and bin of each peak, strongest first.
+        let mut peaks = [(0.0f32, 0.0f32, 0usize); PARTIALS];
         let top = self.amplitudes[self.from..=self.to].iter().copied().fold(0.0f32, f32::max);
         for k in self.from + 1..self.to {
             let a = self.amplitudes[k];
@@ -192,31 +206,48 @@ impl Harmony {
             let r = self.amplitudes[k + 1].max(1e-12).ln();
             let offset = (0.5 * (l - r) / (l - 2.0 * c + r).min(-1e-9)).clamp(-0.5, 0.5);
             let hz = (k as f32 + offset) * self.bin_hz;
-            for i in 0..12 {
+            for i in 0..PARTIALS {
                 if a > peaks[i].1 {
-                    for j in (i + 1..12).rev() {
+                    for j in (i + 1..PARTIALS).rev() {
                         peaks[j] = peaks[j - 1];
                     }
-                    peaks[i] = (hz, a);
+                    peaks[i] = (hz, a, k);
                     break;
                 }
             }
         }
         let total: f32 = peaks.iter().map(|p| p.1).sum();
+        let r = &mut self.reading;
+        r.partial_hz = [0.0; PARTIALS];
+        r.partial_level = [0.0; PARTIALS];
+        r.partial_pan = [0.0; PARTIALS];
+        r.partial_phase = [0.0; PARTIALS];
         if total < 1e-6 {
-            self.reading.harmonicity = 0.0;
-            self.reading.inharmonicity = 0.0;
-            self.reading.pitch_salience = 0.0;
-            self.reading.roughness = 0.0;
+            r.harmonicity = 0.0;
+            r.inharmonicity = 0.0;
+            r.pitch_salience = 0.0;
+            r.roughness = 0.0;
             return;
         }
+        for (i, &(hz, a, k)) in peaks.iter().enumerate() {
+            if a <= 0.0 {
+                break;
+            }
+            let ((lr, li), (rr, ri)) = (self.spec_a[k], self.spec_b[k]);
+            let (left, right) = (lr * lr + li * li, rr * rr + ri * ri);
+            r.partial_hz[i] = hz;
+            r.partial_level[i] = a / peaks[0].1;
+            r.partial_pan[i] = if left + right > 1e-18 { (right - left) / (right + left) } else { 0.0 };
+            // Phase of left · conj(right): how far the left channel leads the right at this partial.
+            r.partial_phase[i] = (li * rr - lr * ri).atan2(lr * rr + li * ri);
+        }
         let mut fit = 0.0f32;
-        for &(fundamental, a) in &peaks {
+        for &(fundamental, a, _) in &peaks {
             if a < top * 0.1 || fundamental < 55.0 {
                 continue;
             }
             let mut score = 0.0;
-            for &(hz, amp) in &peaks {
+            for &(hz, amp, _) in &peaks {
                 let ratio = hz / fundamental;
                 let harmonic = ratio.round().max(1.0);
                 let cents = 1200.0 * (ratio.max(1e-6) / harmonic).log2().abs();
@@ -226,10 +257,10 @@ impl Harmony {
         }
         let mut rough = 0.0;
         let mut pairs = 0.0;
-        for i in 0..12 {
-            for j in i + 1..12 {
-                let (f1, a1) = peaks[i];
-                let (f2, a2) = peaks[j];
+        for i in 0..PARTIALS {
+            for j in i + 1..PARTIALS {
+                let (f1, a1, _) = peaks[i];
+                let (f2, a2, _) = peaks[j];
                 let d = (f1 - f2).abs() * 0.24 / (0.021 * f1.min(f2) + 19.0);
                 let weight = a1 * a2;
                 rough += weight * ((-3.5 * d).exp() - (-5.75 * d).exp());

@@ -42,6 +42,7 @@ pub use analyzer::{Analyzer, AnalyzerOptions, FFT_SIZE, HOP};
 pub use beat::{BeatEvent, BEATS_PER_BAR};
 pub use context::QUANTILES;
 pub use frame::{FeatureFrame, Field, BANDS, BAND_EDGES};
+pub use harmony::PARTIALS;
 pub use loudness::SILENT_LUFS;
 pub use rhythm::{OnsetEvent, MAX_BPM, MIN_BPM};
 pub use structure::{SectionEvent, SectionKind};

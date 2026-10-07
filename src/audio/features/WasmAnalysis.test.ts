@@ -44,6 +44,24 @@ describe('WebAssembly analysis', { timeout: 30000 }, () => {
     for (const gap of gaps) expect(gap).toBeCloseTo(60 / 124, 1);
   });
 
+  it('reports the partials of a harmonic tone across the wire: frequencies, levels falling with the harmonic number, centred', async () => {
+    // 110 Hz with harmonics 1..8 at 1/n.
+    const { frame } = await run('harmonicSeries', 2);
+    expect(frame.partialHz.length).toBe(12); expect(frame.partialLevel.length).toBe(12);
+    const found = Array.from(frame.partialHz, (hz, i) => ({ hz, level: frame.partialLevel[i], pan: frame.partialPan[i], phase: frame.partialPhase[i] })).filter((p) => p.level > 0);
+    expect(found.length).toBe(8);
+    found.forEach((p, i) => {
+      // Loudest first = lowest first for this spectrum.
+      expect(Math.abs(p.hz - 110 * (i + 1))).toBeLessThan(2);
+      if (i > 0) expect(p.level).toBeLessThan(found[i - 1].level);
+      expect(p.pan).toBe(0); expect(p.phase).toBe(0);
+    });
+    expect(found[0].level).toBeGreaterThan(0.8);
+    // Noise has spectral peaks but no partials worth the name; silence none.
+    expect(Math.max(...(await run('whiteNoise', 2)).frame.partialLevel)).toBeLessThan(0.1);
+    expect(Math.max(...(await run('silence', 1)).frame.partialLevel)).toBe(0);
+  });
+
   it('is silent in silence and has no key yet', async () => {
     const { frame } = await run('silence', 1);
     expect(frame.silent).toBe(1);

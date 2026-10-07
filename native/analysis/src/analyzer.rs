@@ -468,6 +468,10 @@ impl Analyzer {
             f.inharmonicity = h.inharmonicity * tonal;
             f.pitch_salience = h.pitch_salience * tonal;
             f.roughness = h.roughness * f.presence;
+            f.partial_hz = h.partial_hz;
+            f.partial_level = h.partial_level.map(|level| level * tonal);
+            f.partial_pan = h.partial_pan;
+            f.partial_phase = h.partial_phase;
             f.chroma = h.chroma;
             f.chroma_confidence = h.chroma_confidence;
             f.key = h.key;
