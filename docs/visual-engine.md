@@ -51,7 +51,7 @@ Field, Galaxy, Tunnel), anelli da `ShockRings`/`HitLog` (Tunnel, Liquid) accanto
 | `WorldRecipe.ts` | `WorldRecipe`, `PrimitiveSlot` (base / costo / affinità / tempi) |
 | `VisualWorld.ts` | il mondo: interpretazione una volta per frame, budget, presenze, memoria, osservatore, lifecycle |
 | `RecipeVisualizer.ts` | adattatore `Visualizer` (compatibilità con `Layer`) e `defineRecipe` |
-| `primitives/` | `MatterPrimitive`, `FilamentPrimitive`, `WaveSurfacePrimitive`, `ConnectionGraphPrimitive`, `ShockwavePrimitive` |
+| `primitives/` | `MatterPrimitive`, `FilamentPrimitive`, `WaveSurfacePrimitive` (+ `ModalMemory`: i gusci, [spectral-shell](spectral-shell.md)), `ConnectionGraphPrimitive`, `ShockwavePrimitive` |
 
 In `render-systems/fields/`: `fieldHeaderGlsl` (uniform e nomi dei campi, estratti dal
 testo della legge senza cambiarlo: il GLSL risultante è identico byte per byte) e
@@ -98,7 +98,7 @@ TypeScript (riferimento per i test).
 |---|---|---|
 | `MatterPrimitive` | la materia persistente (simulazione GPU, punti / legami / faccette, forme del segnale e dei parziali): la parte generica di ogni mondo di particelle | campi, fronti, materiale; `particleMass` → grandezza degli elementi |
 | `FilamentPrimitive` | linee di flusso: partono da un punto del corpo e sono portate dallo stesso flusso della materia; vibrano come corde nella forma reale di una voce; si diramano | lunghezza ← `continuity`/`tonalShape`; scia ← `viscosity`, `trailPersistence`; arco ↔ retta ← `curvature`; corda ← cicli, altezza, `stepping`; rami ← `branching`; quante ← `density` |
-| `WaveSurfacePrimitive` | una membrana: modi propri e impulsi causali di `ResonantPhysics`, più arco, increspature, terrazze, inclinazione delle creste; griglia o disco, punti o fili | ampiezza ← `elasticity`, `tension`; arco ← `surfaceDisplacement`, `curvature`; increspatura ← `surfaceRoughness`, `waveScale`, `waveVelocity`; terrazze ← `stepping`; creste ← `skew`; strappo ← `fracture` |
+| `WaveSurfacePrimitive` | una membrana: modi propri e impulsi causali di `ResonantPhysics`, più arco, increspature, terrazze, inclinazione delle creste; griglia o disco, punti o fili; su richiesta (`shells`) il proprio passato attorno come gusci | ampiezza ← `elasticity`, `tension`; arco ← `surfaceDisplacement`, `curvature`; increspatura ← `surfaceRoughness`, `waveScale`, `waveVelocity`; terrazze ← `stepping`; creste ← `skew`; strappo ← `fracture` |
 | `ConnectionGraphPrimitive` | nodi su due gusci e giunti fra quelli vicini: una gabbia che si chiude, si rompe e si richiude | reticolo ↔ sparso ← `symmetry`, `coherence`; raggio dei giunti ← `connectionRadius`; apertura ← `fracture`; lampo dei nodi ← `impulse` |
 | `ShockwavePrimitive` | i fronti del `WaveField`, visibili: due anelli per fronte, tondi o poligonali | poligono ← `edgeHardness`; luce ← `look.wave` (FlashGuard) |
 | `FieldTracerPrimitive` | traccianti di un campo vettoriale (simulazione GPU propria): si vede il loro moto, non loro | topologia ← `disorder`, `coherence`, `fragmentation`, `energy`; scia ← `trailPersistence`; luce ← `look` |
@@ -148,7 +148,7 @@ export const matterFieldRecipe: RecipeBuilder<MatterFieldParams> = (p, quality) 
     { id: 'matter', base: true, create: (c) => new MatterPrimitive(c, matterQuality(p, quality), { pointSize: p.pointSize, forms: true, mass: 0.5 }) },
     { id: 'shockwaves', cost: 0.3, attack: 0.3, release: 1.5, create: (c) => new ShockwavePrimitive(c) },
     { id: 'filaments', cost: 1, affinity: (g) => …, create: … },
-    { id: 'surface',   cost: 1, affinity: (g) => …, create: … },
+    { id: 'surface',   cost: 1, affinity: (g) => …, create: … },   // WaveSurfacePrimitive con RESONANT_DISC: il grafico circolare
     { id: 'graph',     cost: 1, affinity: (g) => …, create: … },
   ],
 });
@@ -160,7 +160,8 @@ export default defineRecipe({ id: 'matter-field', name: 'Matter Field', …, pre
 | **Matter Field** (nuova) | solo architettura nuova | materia + fronti + filamenti + membrana + grafo |
 | **Spectral Matter** | convertita, comportamento invariato (stessi test, stessi uniform) | la sola materia |
 | **Resonant Field** | convertita a parità di aspetto | la sola membrana (griglia di punti), `grammar` 0,6 |
-| **Field** (nuova, 7 ottobre notte) | solo architettura nuova | traccianti + linee di un campo vettoriale ([physical-scenes](physical-scenes.md)) |
+| **Vector Field** (7 ottobre notte; nata come *Field*, id `field` → `vector-field`) | solo architettura nuova | traccianti + linee di un campo vettoriale ([physical-scenes](physical-scenes.md)) |
+| **Spectral Shell** (nuova, 7 ottobre, dopo) | solo architettura nuova | la membrana a disco di Matter Field con i propri gusci + fronti + polvere ([spectral-shell](spectral-shell.md)) |
 | Tunnel, Galaxy, Particle Field, Liquid, Oscilloscope | legacy (`Visualizer` diretto); Tunnel e Particle Field riviste come scene fisiche | — |
 | **Spectrum** | legacy, **da non toccare** | nessuna estrazione dal suo codice |
 

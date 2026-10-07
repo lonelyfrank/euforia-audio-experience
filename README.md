@@ -28,8 +28,9 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 - **Visual Systems** (sperimentale): primitive grafiche condivise — campi spaziali derivati dal mondo, materia particellare simulata su GPU, onde datate sugli eventi, memoria visiva — e la scena-laboratorio **Spectral Matter**, la cui forma emerge dai campi invece di essere disegnata in anticipo
 - **Matter Engine** (sperimentale, prima milestone): la morfologia del suono (periodicità, ricchezza di parziali, rumore, transienti…) decide che materia è, e la stessa materia persistente passa da particelle a filamenti, nastri, superfici e poligoni senza essere ricreata: si condensa sulla curva 3D tracciata dalla waveform reale e sulla rete dei parziali, si frattura su un rilascio e si richiude
 - **Visual Engine** (sperimentale): un mondo visuale persistente fatto di primitive che condividono campi, fronti e materiale. `SonicGeometryMapper` traduce suono e mondo in una geometria (curvatura, spigoli, gradini, connessioni, onde, massa…), anche dalla forma reale dei cicli delle voci; le strutture si formano, si rompono e si sciolgono con la musica senza che nulla venga ricreato. La scena **Matter Field** ne è la prova: particelle, filamenti che vibrano come corde, una membrana, una gabbia di connessioni e fronti d'urto mossi dalle stesse forze
-- **Scene fisiche** (sperimentale): le scene sono interpretazioni fisiche diverse dello stesso mondo, non animazioni indipendenti. **Field** mostra il mondo come campo vettoriale (sorgenti, vortici, gusci, fronti) con traccianti e linee di campo; il **Tunnel** è architettura sotto forze acustiche (torsione geometrica, guida d'onda, tagli in anelli e pannelli, un fronte di rilascio che lascia un'altra struttura); in **Particle Field** le particelle si organizzano in un potenziale stazionario comune (nuvola, gusci, filamenti, eliche, lamine, reticolo). Nel silenzio nulla genera moto nuovo ([docs/physical-scenes.md](docs/physical-scenes.md))
-- 10 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**, **Matter Field**, **Field**
+- **Scene fisiche** (sperimentale): le scene sono interpretazioni fisiche diverse dello stesso mondo, non animazioni indipendenti. **Vector Field** (già *Field*) mostra il mondo come campo vettoriale (sorgenti, vortici, gusci, fronti) con traccianti e linee di campo; il **Tunnel** è architettura sotto forze acustiche (torsione geometrica, guida d'onda, tagli in anelli e pannelli, un fronte di rilascio che lascia un'altra struttura); in **Particle Field** le particelle si organizzano in un potenziale stazionario comune (nuvola, gusci, filamenti, eliche, lamine, reticolo). Nel silenzio nulla genera moto nuovo ([docs/physical-scenes.md](docs/physical-scenes.md))
+- **Spectral Shell** (sperimentale): il grafico circolare che compare dentro Matter Field, da solo. È la stessa membrana a disco (dodici modi propri eccitati dalle altezze che suonano, impulsi causali dagli eventi), con il proprio passato attorno come gusci: ogni guscio è la membrana come risuonava un momento prima, più grande e più tenue con l'età. Il suono dà la forma; il mondo decide come sta nello spazio ([docs/spectral-shell.md](docs/spectral-shell.md))
+- 11 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**, **Matter Field**, **Vector Field**, **Spectral Shell**
 - Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
 - Qualità Auto / Low / Medium / High, fullscreen, auto-hide di controlli e cursore
@@ -44,7 +45,7 @@ Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `pre
 |---|---|---|
 | 01 | Idle | Scena, now playing, core chiuso |
 | 02 | Control active | Il core sale e si apre la ruota: Scene, Audio, Palette, Settings, Direction, Fullscreen |
-| 03 | Scene | Anello delle 10 scene |
+| 03 | Scene | Anello delle 11 scene |
 | 04 | Audio | Arco con System Audio e Microphone |
 | 05 | Presets | Arco con le 4 palette |
 | 06 | Direction | Arco con due scelte: Auto e Manual. Manual apre Mood, Experience e Rig |
@@ -119,7 +120,8 @@ Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/real
 [fisica](docs/physics-engine.md), [World Engine](docs/world-engine.md), [Visual Systems e Spectral Matter](docs/visual-systems.md),
 [Matter Engine: morfologia, materiale, forme](docs/matter-engine.md), [Visual Engine: mondo visuale, primitive, recipe](docs/visual-engine.md),
 [Visual Grammar: che cosa chiede il suono alla geometria](docs/visual-grammar.md),
-[scene fisiche: Field, Tunnel, Particle Field](docs/physical-scenes.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
+[scene fisiche: Vector Field, Tunnel, Particle Field](docs/physical-scenes.md),
+[Spectral Shell: la membrana di Matter Field e il suo passato](docs/spectral-shell.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
 
@@ -248,7 +250,8 @@ src/
     tunnel/ spectrum/ particle-field/ galaxy/ liquid/ oscilloscope/ resonant-field/
                     index.ts + <Nome>Visualizer.ts + preset.json
                     (tunnel/topology.ts e particle-field/regimes.ts: come il mondo trasforma la scena, funzioni pure)
-    field/          recipe: il mondo come campo vettoriale (traccianti + linee di campo)
+    vector-field/   recipe: il mondo come campo vettoriale (traccianti + linee di campo)
+    spectral-shell/ recipe: la membrana a disco di Matter Field con il proprio passato attorno come gusci
     spectral-matter/ recipe con la sola materia (laboratorio del Matter Engine)
     matter-field/   recipe del Visual Engine: materia + fronti + filamenti + membrana + grafo
     resonant-field/ recipe con la sola membrana (la scena precedente resta per il confronto in DEV)
@@ -446,7 +449,7 @@ Una scena può anche essere una **recipe**: una lista di primitive condivise in 
 | Low | 0,5× (DPR max 1,5) | 35% | no |
 | Auto | parte da 1× (DPR max 1,5) | 100% | sì |
 
-Spectral Matter interpreta la densità come quantità di materia (circa 96.000 / 62.000 / 34.000 elementi) e riduce con essa legami e faccette disegnati (assenti a Low, dove materia e forme restano punti), risoluzione della memoria visiva (assente a Low) e dettaglio della turbolenza. Matter Field scala ogni primitiva (materia 60.000 / 39.000 / 21.000 elementi, filamenti, anelli della membrana, nodi) e tiene la memoria visiva a metà risoluzione. Field scala traccianti (circa 36.000 / 23.500 / 12.500) e linee di campo, con memoria visiva a metà risoluzione (assente a Low).
+Spectral Matter interpreta la densità come quantità di materia (circa 96.000 / 62.000 / 34.000 elementi) e riduce con essa legami e faccette disegnati (assenti a Low, dove materia e forme restano punti), risoluzione della memoria visiva (assente a Low) e dettaglio della turbolenza. Matter Field scala ogni primitiva (materia 60.000 / 39.000 / 21.000 elementi, filamenti, anelli della membrana, nodi) e tiene la memoria visiva a metà risoluzione. Vector Field scala traccianti (circa 36.000 / 23.500 / 12.500) e linee di campo, con memoria visiva a metà risoluzione (assente a Low). Spectral Shell scala gli anelli della membrana, il numero di gusci (4 / 3 / 2) e la polvere (16.000 / 10.400 / 5.600 elementi).
 
 **Auto** riduce prima la sola risoluzione a 0,85×, poi passa a Medium, riduce bloom/risoluzione e infine a Low. Soglia di discesa: 3 s sotto 51 fps. Recupera un passo dopo almeno 30 s a 58 fps e cooldown di 60 s. Gli stalli non costituiscono evidenza. I cambi di sola risoluzione non ricreano la scena.
 

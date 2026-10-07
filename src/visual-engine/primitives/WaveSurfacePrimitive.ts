@@ -1,9 +1,11 @@
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, LineSegments, Points, ShaderMaterial, Vector4, type Object3D } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, LineSegments, Points, ShaderMaterial, Vector3, Vector4, type Object3D } from 'three';
+import { unit } from '../../experience/types';
 import { MODE_SHAPES, MODES, WAVES } from '../../physics/ResonantPhysics';
 import { fieldHeaderGlsl } from '../../render-systems/fields/fieldLaw';
 import { flowLawGlsl, TURBULENCE_SHIFT } from '../../render-systems/fields/flowLaw';
 import type { PaletteColors, QualityProfile } from '../../types/visualizer';
 import type { Primitive, PrimitiveContext, WorldFrame } from '../Primitive';
+import { ModalMemory } from './ModalMemory';
 
 /*
  * A wave surface: a membrane that the sound deforms. Its height is physics
@@ -21,7 +23,25 @@ import type { Primitive, PrimitiveContext, WorldFrame } from '../Primitive';
  * rim) and two ways of showing (points, or the wire of its lines).
  * Stateless except for the ripple's phase. The height law is written twice
  * (GLSL and the CPU reference below).
+ *
+ * A membrane can keep its own past round it as shells (`shells`, off unless
+ * asked for; docs/spectral-shell.md): each shell is the same membrane as it
+ * rang a moment ago (its modes from a memory on the audio clock, its pulses
+ * at that earlier time), larger with its age and bent into a cap round the
+ * live one, alternately above and below it. A shell is left where the
+ * structure was when it sounded: a turning world twists the stack, a moving
+ * centre trails it. The shell law is written twice like the height law.
  */
+
+/** A membrane's past, kept round it as shells. */
+export interface ShellOptions {
+  /** Shells round the live membrane (0 = none). */
+  count: number;
+  /** Age of the oldest shell (s of audio time). */
+  span: number;
+  /** Rings of a shell relative to the live membrane's. */
+  detail: number;
+}
 
 export interface SurfaceOptions {
   topology: 'grid' | 'polar';
@@ -47,7 +67,18 @@ export interface SurfaceOptions {
   pointSize: number;
   /** Light of one element (the picture is additive). */
   exposure: number;
+  /** The membrane's past as shells round it (none by default). */
+  shells?: ShellOptions;
 }
+
+/**
+ * The resonant disc: a membrane held at its rim, drawn as the wire of its rings and spokes, lying through the body
+ * along the world's axis so its height reads as height. The circular graph inside Matter Field, and Spectral
+ * Shell's live membrane: one definition for both.
+ */
+export const RESONANT_DISC = {
+  topology: 'polar', style: 'wire', plane: 'axial', size: 1.35, follow: 1, turn: true, grammar: 1, relief: 1.2, pointSize: 2, exposure: 0.6,
+} as const satisfies Omit<SurfaceOptions, 'resolution'>;
 
 /** Cells per side / rings at a quality: fewer vertices, the same surface. */
 export function surfaceResolution(resolution: number, quality: QualityProfile): number {
@@ -65,16 +96,45 @@ const SECTORS = 4;
 const RIM = 0.82;
 /** How far a unit front lifts the membrane where it crosses it (× its size). */
 const FRONT_LIFT = 0.06;
+/** How the age of shell k of n is spread over the span: the first ones follow the membrane closely, the last are its memory. */
+const AGE_CURVE = 1.6;
+/** Radius the oldest shell gains over the live membrane in a fully open world (× its size), and how much a release adds. */
+const SHELL_SPREAD = 0.85;
+const RELEASE_SPREAD = 1.2;
+/** The oldest shell's bend at full closure (rad: a hemisphere), and the share of it the youngest has. */
+const SHELL_BEND = 1.5707963;
+const YOUNG_BEND = 0.55;
+/**
+ * A shell is left where the structure was. Its turn back per second of age and unit of vortex is stylised (the
+ * structure itself turns a fifth as fast: the twist would not read); its lateral lag is the centre's own velocity.
+ */
+const SHELL_TORSION = 0.5;
+const SHELL_LAG = 1.5;
+/** How much more the disordered flow has torn the oldest shell than the live membrane. */
+const SHELL_TEAR = 2;
+/** Light the oldest shell has lost, and how much of what lies behind the structure's centre the depth takes. */
+const SHELL_FADE = 0.7;
+const DEPTH_FADE = 0.6;
+/** Share of the span over which the shells beyond the reach fade out (also the least reach: the youngest shells always show). */
+const REACH_EDGE = 0.35;
+/** Height of the fine ripple a unit of shimmer raises (× the size). */
+const SHIMMER_RIPPLE = 0.05;
+
+/** Age (s) of shell `k` of `count` (k = 0 is the live membrane) and its share of the span, 0..1. */
+export function shellAge(k: number, count: number, span: number): number {
+  return count > 0 ? span * Math.pow(k / count, AGE_CURVE) : 0;
+}
 
 /** The modal sum written out: one sine per wave number and axis, then a product per mode (no array of mode numbers on the GPU). */
 const ORDERS = Math.max(...MODE_SHAPES.flat());
-const modalSum = MODE_SHAPES.map(([m, n], i) => `uModes[${i}] * sx[${m - 1}] * sy[${n - 1}]`).join(' + ');
+const modalSum = MODE_SHAPES.map(([m, n], i) => `uModes[base + ${i}] * sx[${m - 1}] * sy[${n - 1}]`).join(' + ');
 
-const law = /* glsl */ `
+const law = (layers: number) => /* glsl */ `
 #define DETAIL 0
+#define LAYERS ${layers}
 ${fieldHeaderGlsl}
 ${flowLawGlsl}
-uniform float uModes[${MODES}];
+uniform float uModes[${MODES * layers}];
 uniform vec4 uPulses[${WAVES}];
 uniform float uTime;
 // x: modal gain, y: pulse gain, z: bow, w: held rim (1 = a disc held at its rim, 0 = a grid held at its sides)
@@ -90,7 +150,9 @@ float pulse(vec2 p, vec2 origin, float age) {
 }
 
 // x: height at p (−1..1 on both axes), relative to the size; y: the modal part alone (the nodal lines are where it is zero).
-vec2 surfaceHeight(vec2 p) {
+// \`layer\` picks whose modes (0 = the live membrane), \`delay\` how long ago its pulses are read (s).
+vec2 surfaceHeight(vec2 p, int layer, float delay) {
+  int base = layer * ${MODES};
   vec2 q = (p + 1.0) * 1.5707963;
   float sx[${ORDERS}];
   float sy[${ORDERS}];
@@ -100,7 +162,7 @@ vec2 surfaceHeight(vec2 p) {
   for (int i = 0; i < ${WAVES}; i++) {
     vec4 w = uPulses[i];
     if (w.w <= 0.0) continue;
-    float age = uTime - w.z;
+    float age = uTime - delay - w.z;
     // First image sources implement the reflection at the fixed edge; every pulse stays causal.
     wave += w.w * (pulse(p, w.xy, age)
       - 0.55 * pulse(p, vec2(2.0 - w.x, w.y), age) - 0.55 * pulse(p, vec2(-2.0 - w.x, w.y), age)
@@ -114,10 +176,26 @@ vec2 surfaceHeight(vec2 p) {
   // A disc is held at its rim.
   return vec2(h, modal) * mix(1.0, 1.0 - smoothstep(${RIM}, 1.0, sqrt(r2)), uRelief.w);
 }
+
+#if LAYERS > 1
+// x: age (s), y: share of the span 0..1, z: side (+1 above the membrane, −1 below), per layer; layer 0 is the live membrane.
+uniform vec3 uLayer[LAYERS];
+// x: radius the oldest shell gains (× the size), y: its bend (rad), z: turn back per second of age and unit of vortex, w: lateral lag per second of age and unit of drift
+uniform vec4 uShell;
+
+// A shell: the disc bent into the cap of a sphere through its rim. The rim (radius \`a\`) stays in the membrane's plane,
+// the pole rises a·tan(bend / 2) off it on its \`side\`; the height \`h\` displaces along the cap's own normal.
+vec3 shellPoint(vec2 at, float h, float a, float bend, float side) {
+  float r = length(at);
+  vec2 dir = r > 1e-6 ? at / r : vec2(0.0);
+  float b = max(bend, 1e-3), sb = sin(b), sn = sin(r * b), cs = cos(r * b);
+  return vec3(dir * (a * sn / sb + sn * h), side * (a * (cs - cos(b)) / sb + cs * h));
+}
+#endif
 `;
 
-const vertexShader = (points: boolean) => /* glsl */ `
-${law}
+const vertexShader = (points: boolean, layers: number) => /* glsl */ `
+${law(layers)}
 // x: half extent (units), y: how far it follows the matter's radius, z: whether it turns with the structure, w: how far the disordered flow tears it
 uniform vec4 uPlace;
 // x: lean of the crests, y: stereo stretch, z: lateral tilt, w: how much the world's fronts lift it
@@ -128,25 +206,51 @@ uniform float uWave;
 uniform float uAxial;
 // How unevenly the surface is lit (rough, noisy sound): each point keeps its own share.
 uniform float uGrain;
+#if LAYERS > 1
+// x: light the oldest shell has lost, y: how far back the shells show in full (share of the span; they fade out beyond), z: fine ripple per unit of shimmer, w: how much depth dims
+uniform vec4 uEcho;
+#endif
 varying float vHeight;
 varying float vNode;
 varying float vLight;
 
 void main() {
   vec2 uv = position.xy;
-  vec2 height = surfaceHeight(uv);
+#if LAYERS > 1
+  int layer = int(position.z + 0.5);
+  vec3 echo = uLayer[layer];
+  vec2 height = surfaceHeight(uv, layer, echo.x);
+  // Shimmer is fine detail on the whole structure; its phase advances only with the world's activity.
+  float held = 1.0 - smoothstep(${RIM}, 1.0, length(uv));
+  height.x += uEcho.z * F_SHIMMER * held * sin(uv.x * 47.0 + F_PHASE * 7.0) * sin(uv.y * 53.0 - F_PHASE * 5.0);
+#else
+  vec2 height = surfaceHeight(uv, 0, 0.0);
+#endif
   float size = uPlace.x * mix(1.0, F_RADIUS, uPlace.y);
   // A leaning cycle tilts the crests along the surface.
   vec2 at = uv * (1.0 + uShape.x * height.x);
   vec3 P = vec3(at.x * size * (1.0 + uShape.y), at.y * size, (height.x + uShape.z * uv.x) * size);
-  float turn = F_TURN * uPlace.z, c = cos(turn), s = sin(turn);
+  float turn = F_TURN * uPlace.z, tear = uPlace.w;
+#if LAYERS > 1
+  if (layer > 0) {
+    P = shellPoint(at, (height.x + uShape.z * uv.x) * size, size * (1.0 + uShell.x * echo.y), uShell.y * mix(${YOUNG_BEND}, 1.0, echo.y), echo.z);
+    P.x *= 1.0 + uShape.y;
+    // Left where the structure was when it sounded: turned back, and the longer in the disordered flow the more torn.
+    turn -= uShell.z * F_VORTEX * echo.x;
+    tear *= 1.0 + ${SHELL_TEAR}.0 * echo.y;
+  }
+#endif
+  float c = cos(turn), s = sin(turn);
   P = vec3(c * P.x - s * P.y, s * P.x + c * P.y, P.z);
   // Laid along the axis, the membrane's own normal is the world's vertical.
   vec3 normal = uAxial > 0.5 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
   if (uAxial > 0.5) P = vec3(P.x, P.z, -P.y);
   P.x += F_LATERAL * uPlace.y;
+#if LAYERS > 1
+  P.x -= uShell.w * F_DRIFT * echo.x * uPlace.y;
+#endif
   vec3 q = P * F_TURBULENCE_SCALE + vec3(F_PHASE, F_PHASE * 0.7 + 1.3, F_PHASE * 1.3 + 2.1);
-  P += abc(q) * (0.6 * F_TURBULENCE * uPlace.w);
+  P += abc(q) * (0.6 * F_TURBULENCE * tear);
   // The world's fronts cross the membrane: they push it aside and lift it where they pass.
   vec4 fronts = frontsAt(P, 0.5);
   P += (fronts.xyz + normal * (fronts.w * ${FRONT_LIFT})) * (uShape.w * uPlace.x);
@@ -155,6 +259,12 @@ void main() {
   vNode = exp(-abs(height.y) * 20.0) * (0.25 + 0.75 * uShow.y);
   vLight = uShow.x * (1.0 - 0.6 * uGrain * fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453)) + fronts.w * uWave * uShape.w;
   vec4 mv = modelViewMatrix * vec4(P, 1.0);
+#if LAYERS > 1
+  // Older shells are fainter and the oldest show only while the sound leaves long traces; what lies behind the centre is dimmer.
+  vLight *= (1.0 - uEcho.x * echo.y) * (1.0 - smoothstep(uEcho.y, uEcho.y + ${REACH_EDGE}, echo.y));
+  float centre = -(modelViewMatrix * vec4(F_LATERAL * uPlace.y, 0.0, 0.0, 1.0)).z;
+  vLight *= 1.0 - uEcho.w * smoothstep(-0.2, 1.0, (-mv.z - centre) / (size * (1.0 + uShell.x)));
+#endif
   gl_Position = vLight > 0.002 ? projectionMatrix * mv : vec4(2.0, 2.0, 2.0, 1.0);
   ${points ? 'gl_PointSize = clamp(uShow.z * uShow.w * (9.0 / max(2.0, -mv.z)), 1.0, 5.0 * uShow.w);' : ''}
 }
@@ -227,10 +337,45 @@ export function surfaceHeight(x: number, y: number, shape: Readonly<SurfaceShape
   return heightOut;
 }
 
-/** Where the surface is sampled: xy in −1..1 per vertex (z unused), for points or for the two ends of each wire segment. */
-export function surfaceVertices(options: Pick<SurfaceOptions, 'topology' | 'style'>, resolution: number): Float32Array {
-  const out: number[] = [];
-  const point = (u: number, v: number) => { out.push(u, v, 0); };
+/** Result of the CPU reference of the shell law: a point in the membrane's own frame (xy its plane, z its normal). Reused. */
+export const shellOut = new Float64Array(3);
+
+/**
+ * CPU reference of the GLSL `shellPoint`: the point (x, y) of the disc on a shell of rim radius `a`, bent by `bend`
+ * (rad) to its `side` (±1) of the membrane, displaced by the height `h` (units) along the cap's normal.
+ */
+export function shellPoint(x: number, y: number, h: number, a: number, bend: number, side: number): Float64Array {
+  const r = Math.sqrt(x * x + y * y), dx = r > 1e-6 ? x / r : 0, dy = r > 1e-6 ? y / r : 0;
+  const b = Math.max(bend, 1e-3), sb = Math.sin(b), sn = Math.sin(r * b), cs = Math.cos(r * b);
+  const lateral = a * sn / sb + sn * h;
+  shellOut[0] = dx * lateral; shellOut[1] = dy * lateral; shellOut[2] = side * (a * (cs - Math.cos(b)) / sb + cs * h);
+  return shellOut;
+}
+
+/** How the shells stand round the membrane this frame, as the primitive sets it (also the CPU reference's input). */
+export interface ShellShape {
+  /** Radius the oldest shell gains over the live membrane (× its size). */
+  spread: number;
+  /** Bend of the oldest shell (rad). */
+  bend: number;
+  /** How far back the shells show in full, as a share of the span (beyond it they fade out). */
+  reach: number;
+}
+
+/** Rim radius (× the membrane's size) and bend (rad) of the shell at `share` of the span. */
+export function shellRadius(shape: Readonly<ShellShape>, share: number): number {
+  return 1 + shape.spread * share;
+}
+export function shellBend(shape: Readonly<ShellShape>, share: number): number {
+  return shape.bend * (YOUNG_BEND + (1 - YOUNG_BEND) * share);
+}
+
+/**
+ * Where the surface is sampled: xy in −1..1 per vertex, for points or for the two ends of each wire segment;
+ * z is the layer the vertex belongs to (0 = the membrane itself).
+ */
+export function surfaceVertices(options: Pick<SurfaceOptions, 'topology' | 'style'>, resolution: number, layer = 0, out: number[] = []): Float32Array {
+  const point = (u: number, v: number) => { out.push(u, v, layer); };
   if (options.topology === 'grid') {
     const at = (i: number) => 2 * i / resolution - 1;
     if (options.style === 'points') {
@@ -268,19 +413,42 @@ export class WaveSurfacePrimitive implements Primitive {
   readonly vertices: number;
   /** The height law's inputs this frame (also the CPU reference's). */
   readonly shape: SurfaceShape = { modal: 0, pulse: 0, bow: 0, rim: 0, ripple: 0, frequency: 12, phase: 0, terraces: 0 };
-  readonly debug = { 'surface vertices': 0, 'surface relief': 0, terraces: 0 };
+  /** How the shells stand this frame (zero without shells). */
+  readonly shells: ShellShape = { spread: 0, bend: 0, reach: 0 };
+  /** Layers drawn: the membrane and its shells. */
+  readonly layers: number;
+  readonly debug: Record<string, number> = { 'surface vertices': 0, 'surface relief': 0, terraces: 0 };
   private readonly material: ShaderMaterial;
   private readonly geometry = new BufferGeometry();
-  private readonly modes = new Float32Array(MODES);
+  /** The modes of every layer: the live ones, then each shell's as the memory gives them. */
+  private readonly modes: Float32Array;
   private readonly pulses = Array.from({ length: WAVES }, () => new Vector4(0, 0, -100, 0));
+  private readonly memory: ModalMemory | null = null;
+  private readonly ages: Float32Array;
 
   constructor(context: PrimitiveContext, private readonly options: SurfaceOptions, resolution: number) {
-    const positions = surfaceVertices(options, resolution), points = options.style === 'points';
+    const points = options.style === 'points', shells = Math.max(0, Math.round(options.shells?.count ?? 0)), layers = this.layers = 1 + shells;
+    const vertices: number[] = [];
+    surfaceVertices(options, resolution, 0, vertices);
+    const layer = Array.from({ length: layers }, () => new Vector3(0, 0, 1));
+    this.ages = new Float32Array(layers);
+    if (options.shells && shells > 0) {
+      const { span, detail } = options.shells, coarse = Math.max(8, Math.round(resolution * detail));
+      this.memory = new ModalMemory(span);
+      for (let k = 1; k <= shells; k++) {
+        surfaceVertices(options, coarse, k, vertices);
+        // Shells alternate above and below the membrane, so its past closes round it.
+        layer[k].set(this.ages[k] = shellAge(k, shells, span), k / shells, k % 2 === 1 ? 1 : -1);
+      }
+    }
+    const positions = new Float32Array(vertices);
+    this.modes = new Float32Array(MODES * layers);
     this.geometry.setAttribute('position', new BufferAttribute(positions, 3));
     this.shape.rim = options.topology === 'polar' ? 1 : 0;
     this.material = new ShaderMaterial({
-      vertexShader: vertexShader(points), fragmentShader: fragmentShader(points), transparent: true, depthWrite: false, depthTest: false, blending: AdditiveBlending,
+      vertexShader: vertexShader(points, layers), fragmentShader: fragmentShader(points), transparent: true, depthWrite: false, depthTest: false, blending: AdditiveBlending,
       uniforms: {
+        uLayer: { value: layer }, uShell: { value: new Vector4() }, uEcho: { value: new Vector4() },
         uField: { value: context.uField }, uWaveA: { value: context.uWaveA }, uWaveB: { value: context.uWaveB },
         uModes: { value: this.modes }, uPulses: { value: this.pulses }, uTime: { value: 0 },
         uRelief: { value: new Vector4(0, 0, 0, this.shape.rim) }, uTexture: { value: new Vector4(0, 12, 0, 0) },
@@ -303,10 +471,15 @@ export class WaveSurfacePrimitive implements Primitive {
 
   update(frame: Readonly<WorldFrame>, presence: number): void {
     const { geometry: g, look, snapshot } = frame, o = this.options, u = this.material.uniforms, shape = this.shape, k = o.grammar;
-    const physics = frame.timed ? snapshot?.physics : undefined;
+    const physics = frame.timed ? snapshot?.physics : undefined, memory = this.memory;
     let ringing = 0;
     if (physics) {
       this.modes.set(physics.modes);
+      if (memory) {
+        // Each shell is the membrane as it rang its age ago: the pulses are dated, the modes are remembered.
+        memory.record(frame.time, physics.modes);
+        for (let k = 1; k < this.layers; k++) memory.read(this.ages[k], this.modes, k * MODES);
+      }
       for (let i = 0; i < WAVES; i++) this.pulses[i].fromArray(physics.waves, i * 4);
       u.uTime.value = frame.time;
       // The membrane keeps its light while it still rings after the sound.
@@ -314,6 +487,7 @@ export class WaveSurfacePrimitive implements Primitive {
     } else {
       // Without the audio clock nothing is dated: the membrane lies flat.
       this.modes.fill(0);
+      memory?.clear();
       for (const pulse of this.pulses) pulse.set(0, 0, -100, 0);
     }
     // An elastic world rings further; stored potential draws the membrane taut.
@@ -338,7 +512,21 @@ export class WaveSurfacePrimitive implements Primitive {
     show.y = g.coherence;
     u.uWave.value = presence * look.wave;
     u.uGrain.value = k * look.grain;
-    if (import.meta.env.DEV) { this.debug['surface relief'] = shape.modal; this.debug.terraces = shape.terraces; }
+    if (memory) {
+      const shells = this.shells;
+      // An open, wide world holds its past further out and stored potential draws it in; a release throws the shells apart.
+      shells.spread = SHELL_SPREAD * (0.4 + 0.6 * g.particleSpread) * (1 - 0.4 * g.tension) * (1 + RELEASE_SPREAD * g.fracture);
+      // Round sound and stored potential close the shells round the membrane; a release lays them open.
+      shells.bend = SHELL_BEND * unit(0.3 + 0.3 * g.curvature + 0.45 * g.tension - 0.4 * g.fracture);
+      // Steady, coherent sound leaves long traces: its oldest shells still show.
+      shells.reach = REACH_EDGE + 0.9 * g.trailPersistence;
+      (u.uShell.value as Vector4).set(shells.spread, shells.bend, SHELL_TORSION, SHELL_LAG);
+      (u.uEcho.value as Vector4).set(SHELL_FADE, shells.reach, SHIMMER_RIPPLE, DEPTH_FADE * look.depthFade);
+    }
+    if (import.meta.env.DEV) {
+      this.debug['surface relief'] = shape.modal; this.debug.terraces = shape.terraces;
+      if (memory) { this.debug['shell spread'] = this.shells.spread; this.debug['shell bend'] = this.shells.bend; this.debug['shell reach'] = this.shells.reach; }
+    }
   }
 
   setPixelRatio(ratio: number): void {
@@ -347,6 +535,7 @@ export class WaveSurfacePrimitive implements Primitive {
 
   reset(): void {
     this.shape.phase = 0;
+    this.memory?.clear();
   }
 
   dispose(): void {

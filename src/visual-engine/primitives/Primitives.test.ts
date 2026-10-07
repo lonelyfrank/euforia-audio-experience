@@ -6,7 +6,8 @@ import { MAX_WAVES, WaveField } from '../../render-systems/waves/WaveField';
 import { CAGE, jointReach, nodePoint, seedGraph, type GraphSeeds } from './ConnectionGraphPrimitive';
 import { BRANCHES, filamentPoint, seedFilaments, stringLobes, type FilamentShape } from './FilamentPrimitive';
 import { ringPoint, ringSides } from './ShockwavePrimitive';
-import { surfaceHeight, surfaceVertices, type SurfaceShape } from './WaveSurfacePrimitive';
+import { MEMORY_RATE, ModalMemory } from './ModalMemory';
+import { shellAge, shellBend, shellPoint, shellRadius, surfaceHeight, surfaceVertices, type SurfaceShape } from './WaveSurfacePrimitive';
 
 const pack = (set: Partial<SpatialFields> = {}, phase = 0): Float32Array => packFields(new Float32Array(FIELD_VALUES), { ...createFields(), ...set }, phase);
 const NO_WAVES = new Float32Array(MAX_WAVES * 4);
@@ -251,3 +252,107 @@ describe('wave surface', () => {
     for (let i = 0; i < disc.length; i += 3) expect(Math.hypot(disc[i], disc[i + 1])).toBeLessThanOrEqual(1 + 1e-6);
   });
 });
+
+describe('shells of a membrane', () => {
+  it('a shell that is not bent is the membrane itself, larger: its points, its height along its normal', () => {
+    for (const [x, y] of [[0, 0], [0.3, -0.5], [-0.8, 0.1], [0, 1]]) {
+      const p = point(shellPoint(x, y, 0.07, 1.4, 0, 1));
+      expect(distance(p, [1.4 * x, 1.4 * y, 0.07])).toBeLessThan(2e-3);
+    }
+    // The other side of the membrane is its mirror image.
+    const above = point(shellPoint(0.3, -0.5, 0.07, 1.4, 0.9, 1)), below = point(shellPoint(0.3, -0.5, 0.07, 1.4, 0.9, -1));
+    expect(below).toEqual([above[0], above[1], -above[2]]);
+  });
+
+  it('bends into the cap of a sphere through its rim: the rim stays in the membrane\'s plane, the pole rises off it', () => {
+    for (const bend of [0.2, 0.8, Math.PI / 2]) {
+      // The rim: a circle of the shell's radius, in the plane, whatever the bend.
+      for (let k = 0; k < 8; k++) {
+        const angle = k * Math.PI / 4, rim = point(shellPoint(Math.cos(angle), Math.sin(angle), 0, 1.3, bend, 1));
+        expect(Math.hypot(rim[0], rim[1])).toBeCloseTo(1.3, 6); expect(rim[2]).toBeCloseTo(0, 6);
+      }
+      expect(point(shellPoint(0, 0, 0, 1.3, bend, 1))).toEqual([0, 0, expect.closeTo(1.3 * Math.tan(bend / 2), 6)]);
+      // Every point lies on one sphere; a height moves it along the radius of that sphere, by that much.
+      const centre = [0, 0, -1.3 * Math.cos(bend) / Math.sin(bend)], radius = 1.3 / Math.sin(bend);
+      for (const [x, y] of [[0.2, 0.1], [-0.6, 0.5], [0.1, -0.9]]) {
+        expect(distance(point(shellPoint(x, y, 0, 1.3, bend, 1)), centre)).toBeCloseTo(radius, 6);
+        expect(distance(point(shellPoint(x, y, 0.1, 1.3, bend, 1)), centre)).toBeCloseTo(radius + 0.1, 6);
+      }
+    }
+    // Fully closed, the oldest shell is a hemisphere round the membrane's centre.
+    expect(distance(point(shellPoint(0.4, 0.3, 0, 2, Math.PI / 2, 1)), [0, 0, 0])).toBeCloseTo(2, 6);
+  });
+
+  it('older shells are larger and more bent, so they nest; their ages run from the membrane\'s present to the span', () => {
+    const shape = { spread: 0.6, bend: 1.1, reach: 1 };
+    let pole = 0, age = 0;
+    for (let k = 1; k <= 4; k++) {
+      const share = k / 4, top = shellPoint(0, 0, 0, shellRadius(shape, share), shellBend(shape, share), 1)[2];
+      expect(top).toBeGreaterThan(pole); expect(shellAge(k, 4, 1.4)).toBeGreaterThan(age);
+      pole = top; age = shellAge(k, 4, 1.4);
+    }
+    expect(shellAge(0, 4, 1.4)).toBe(0); expect(shellAge(4, 4, 1.4)).toBeCloseTo(1.4, 9); expect(shellAge(0, 0, 1.4)).toBe(0);
+    expect(shellRadius(shape, 0)).toBe(1); expect(shellBend(shape, 1)).toBeCloseTo(1.1, 9);
+    // The first shells follow the membrane closely.
+    expect(shellAge(1, 4, 1.4)).toBeLessThan(0.2);
+    // Each vertex says which layer it belongs to.
+    const vertices = surfaceVertices({ topology: 'polar', style: 'wire' }, 12, 3);
+    for (let i = 2; i < vertices.length; i += 3) expect(vertices[i]).toBe(3);
+  });
+
+  it('remembers the modes on the audio clock: the same past at any frame rate, flat before anything was heard', () => {
+    const modesAt = (t: number, out = new Float32Array(MODES)) => { for (let i = 0; i < MODES; i++) out[i] = Math.sin((0.7 + 0.4 * i) * t) * 0.3; return out; };
+    const past = (fps: number, delay: number) => {
+      const memory = new ModalMemory(1.4), live = new Float32Array(MODES), out = new Float32Array(MODES);
+      let t = 5;
+      for (let i = 0; i < 4 * fps; i++) { t += 1 / fps; memory.record(t, modesAt(t, live)); }
+      memory.read(delay, out);
+      return { out, t };
+    };
+    for (const delay of [0, 0.011, 0.11, 0.53, 1.4]) {
+      const reference = past(60, delay), truth = modesAt(reference.t - delay);
+      for (const fps of [30, 60, 144]) {
+        const { out, t } = past(fps, delay);
+        expect(t).toBeCloseTo(reference.t, 6);
+        // Linear interpolation between ticks a thirtieth of a second apart, of modes that turn at up to 5 rad/s.
+        for (let i = 0; i < MODES; i++) expect(Math.abs(out[i] - truth[i]), `${fps} fps, ${delay} s, mode ${i}`).toBeLessThan(0.004);
+      }
+    }
+    // Nothing older than the span is kept: a longer delay reads the oldest state there is.
+    const a = past(60, 1.4).out, b = past(60, 9).out;
+    expect(Array.from(b)).toEqual(Array.from(a));
+    // What sounded before the memory began was a flat membrane.
+    const memory = new ModalMemory(1.4), out = new Float32Array(MODES).fill(9);
+    memory.read(0.5, out);
+    expect(Array.from(out)).toEqual(new Array(MODES).fill(0));
+    memory.record(3, modesAt(3)); memory.record(3 + 1 / 60, modesAt(3 + 1 / 60));
+    memory.read(0.5, out);
+    expect(Array.from(out)).toEqual(new Array(MODES).fill(0));
+    memory.read(0, out);
+    expect(Array.from(out)).toEqual(Array.from(modesAt(3 + 1 / 60)));
+  });
+
+  it('keeps a bounded memory through stalls, a hesitating clock, a new session and broken input', () => {
+    const memory = new ModalMemory(1), out = new Float32Array(MODES), ring = new Float32Array(MODES).fill(0.5);
+    memory.record(10, ring); memory.record(10.5, ring);
+    // A long stall: everything the memory can hold now happened during it.
+    memory.record(100, ring);
+    memory.read(1, out);
+    expect(out[0]).toBeCloseTo(0.5, 6);
+    // A clock that hesitates changes nothing.
+    memory.record(99.99, new Float32Array(MODES).fill(-1));
+    memory.read(0, out);
+    expect(out[0]).toBe(0.5);
+    // A clock that starts again is another session: its past is flat.
+    memory.record(2, ring);
+    memory.read(0.5, out);
+    expect(out[0]).toBe(0);
+    memory.read(0, out);
+    expect(out[0]).toBe(0.5);
+    // Broken input never reaches the shells.
+    memory.record(2.1, [NaN, Infinity, ...new Array(MODES - 2).fill(0.2)]); memory.record(NaN, ring);
+    for (const delay of [0, 0.05, 0.5]) { memory.read(delay, out); for (const value of out) expect(Number.isFinite(value)).toBe(true); }
+    expect(MEMORY_RATE).toBeGreaterThanOrEqual(30);
+  });
+});
+

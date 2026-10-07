@@ -14,7 +14,8 @@ export const FIXTURES: readonly FixtureSpec[] = [
   { id: 'oscilloscope', cost: 0.9, affinity: { intro: 0.9, build: 0.6, drop: 0.5, break: 0.7, outro: 0.7 } },
   { id: 'spectral-matter', cost: 1.2, affinity: { intro: 0.7, build: 0.9, drop: 0.9, break: 0.7, outro: 0.7 } },
   { id: 'matter-field', cost: 1.2, affinity: { intro: 0.75, build: 0.9, drop: 0.95, break: 0.75, outro: 0.7 } },
-  { id: 'field', cost: 1, affinity: { intro: 0.8, build: 0.85, drop: 0.85, break: 0.8, outro: 0.75 } },
+  { id: 'vector-field', cost: 1, affinity: { intro: 0.8, build: 0.85, drop: 0.85, break: 0.8, outro: 0.75 } },
+  { id: 'spectral-shell', cost: 1, affinity: { intro: 0.85, build: 0.8, drop: 0.8, break: 0.9, outro: 0.85 } },
   { id: 'spectrum', cost: 0.9, affinity: { intro: 0.7, build: 0.7, drop: 0.8, break: 0.6, outro: 0.6 } },
 ];
 

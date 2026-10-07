@@ -6,7 +6,7 @@
   (thread, clock, stati, eventi, confidence, benchmark), `docs/refactor-report.md`,
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
-  `docs/visual-grammar.md` e `docs/physical-scenes.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/visual-grammar.md`, `docs/physical-scenes.md` e `docs/spectral-shell.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -53,10 +53,15 @@
 - Scene fisiche (`docs/physical-scenes.md`): una scena evolve perché cambia il mondo, mai perché passa il tempo.
   Niente fasi o `uTime` decorativi; ciò che trasforma una scena è una funzione pura di `WorldView` e delle età
   degli eventi (`tunnelTopology`, `particleRegimes`, `deriveTopology`): zero a riposo, limitata, uguale a ogni
-  frame rate. Uno stato proprio (i traccianti di Field) si ferma quando il campo si annulla. `vectorField`,
+  frame rate. Uno stato proprio (i traccianti di Vector Field) si ferma quando il campo si annulla. `vectorField`,
   `tracerLaw`, `tracerStep`, `wells` sono scritti in GLSL e in TS: cambiarli insieme e ripetere `runTracerParity()`
   (`render-systems/particles/tracerParity.ts`). La struttura lasciata da un rilascio la sceglie il suo tempo audio
   (`world/Reorganization.ts`).
+- Spectral Shell (`docs/spectral-shell.md`): il grafico circolare dentro Matter Field è lo slot `surface`
+  (`WaveSurfacePrimitive` con `RESONANT_DISC`); Spectral Shell è la stessa primitiva con la stessa definizione, più
+  `shells`. Un guscio è la membrana nel passato: modi da `ModalMemory` (tick del clock audio, mai una riga per frame),
+  impulsi rivalutati a `uTime − età`. Il suono dà la forma (modi, impulsi); il mondo solo come i gusci stanno nello
+  spazio. `shellPoint` è scritto in GLSL e in TS: cambiarli insieme. Senza `shells` lo shader resta a un solo layer.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente, non hop/beat.
   Il wire e il WASM versionato devono corrispondere al backend.
 - La cattura nativa è condivisa: non sovrapporre stop/start o creare AudioEngine

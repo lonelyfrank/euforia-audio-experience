@@ -29,10 +29,10 @@ import { WorldView } from '../../world/WorldView';
 import { findVisualizer } from '../registry';
 import fieldScene from './index';
 import preset from './preset.json';
-import { fieldRecipe, type FieldParams } from './recipe';
+import { vectorFieldRecipe, type VectorFieldParams } from './recipe';
 
 const NEUTRAL = { motion: 1, expansion: 1, turbulence: 1 };
-const typed = preset as VisualizerPreset<FieldParams>;
+const typed = preset as VisualizerPreset<VectorFieldParams>;
 
 /** A present, sustained, ordered sound in a lit world; the tests then set what the world does. */
 function alive(experience: ReturnType<typeof createSnapshot>, response: VisualResponse['frame'], entropy = 0.4): void {
@@ -65,7 +65,7 @@ function stage(count = 384, seed = 7) {
   const probe = new TracerProbe(count, seed, shared);
   const audio = new AudioAnalyzer().frame, response = new VisualResponse().frame;
   const experience = createSnapshot(newFrame()), events = new EventStream(), world = experience.world;
-  const tune = fieldRecipe(typed.visual, QUALITY_PROFILES.low).tune!;
+  const tune = vectorFieldRecipe(typed.visual, QUALITY_PROFILES.low).tune!;
   let phase = 0;
   const frame = (dt: number): TracerMeasure => {
     world.time += dt; world.travel += world.speed * dt; world.angle += world.spin * dt;
@@ -243,7 +243,7 @@ const uniformsOf = (object: unknown) => (object as { material: ShaderMaterial })
 function mount(quality: QualityProfile = QUALITY_PROFILES.medium) {
   const renderer = { getPixelRatio: () => 1, extensions: { has: () => true }, getRenderTarget: () => null, setRenderTarget: vi.fn(), render: vi.fn() };
   const passes: Pass[] = [];
-  const scene = new RecipeVisualizer(typed, fieldRecipe);
+  const scene = new RecipeVisualizer(typed, vectorFieldRecipe);
   scene.init({ renderer: renderer as unknown as WebGLRenderer, quality, width: 800, height: 600, addPass: (pass) => { passes.push(pass); } });
   scene.resize(800, 600);
   scene.setPalette([new Color('purple'), new Color('cyan'), new Color('white')]);
@@ -265,11 +265,11 @@ function mount(quality: QualityProfile = QUALITY_PROFILES.medium) {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('Field (the scene)', () => {
+describe('Vector Field (the scene)', () => {
   it('is a scene like any other: registered, a fixture of the show, known to the scene graph, a recipe of two primitives', () => {
-    expect(findVisualizer('field')).toBe(fieldScene);
-    expect(fixtureById('field')?.cost).toBeGreaterThan(0);
-    expect(relationship('field', 'matter-field')).toBeGreaterThan(relationship('field', 'oscilloscope'));
+    expect(findVisualizer('vector-field')).toBe(fieldScene);
+    expect(fixtureById('vector-field')?.cost).toBeGreaterThan(0);
+    expect(relationship('vector-field', 'matter-field')).toBeGreaterThan(relationship('vector-field', 'oscilloscope'));
     expect((fieldScene as VisualizerDefinition).create(fieldScene.preset)).toBeInstanceOf(RecipeVisualizer);
     const r = mount();
     expect(r.scene.world.mounted.map((m) => m.slot.id)).toEqual(['tracers', 'lines']);

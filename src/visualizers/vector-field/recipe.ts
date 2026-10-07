@@ -4,7 +4,7 @@ import { fieldLineQuality, FieldLinePrimitive, type FieldLineParams } from '../.
 import { FieldTracerPrimitive, tracerQuality, type TracerParams } from '../../visual-engine/primitives/FieldTracerPrimitive';
 import type { RecipeBuilder } from '../../visual-engine/RecipeVisualizer';
 
-export interface FieldParams extends TracerParams, FieldLineParams {
+export interface VectorFieldParams extends TracerParams, FieldLineParams {
   /** Seed of the world: the same seed is the same tracers and the same lines. */
   seed: number;
   /** Tilt of the world's axis away from the viewer (rad). */
@@ -15,7 +15,7 @@ export interface FieldParams extends TracerParams, FieldLineParams {
 const RENEWAL = 0.12;
 
 /**
- * Field: the world as a vector field, with nothing in it but what shows the
+ * Vector Field: the world as a vector field, with nothing in it but what shows the
  * field. It is the flow that moves the free matter and the filaments of
  * Matter Field, on its own and completed into F(P)
  * (render-systems/fields/vectorField.ts): the world's radial velocity is a
@@ -32,12 +32,12 @@ const RENEWAL = 0.12;
  * field is zero, the lines have no length and the tracers stay where they are
  * and go dark.
  */
-export const fieldRecipe: RecipeBuilder<FieldParams> = (p, quality) => {
+export const vectorFieldRecipe: RecipeBuilder<VectorFieldParams> = (p, quality) => {
   const tracers = tracerQuality(p, quality), lines = fieldLineQuality(p, quality);
   // One packed topology for everything in this world that reads the vector field.
   const topology = new Float32Array(TOPOLOGY_VALUES);
   return {
-    id: 'field', seed: p.seed, tilt: p.tilt, memory: tracers.feedback, trail: 0.7, spatial: 0.5,
+    id: 'vector-field', seed: p.seed, tilt: p.tilt, memory: tracers.feedback, trail: 0.7, spatial: 0.5,
     tune: (fields, g) => {
       // An open, wide sound gives the field more room.
       fields.radius = Math.min(1.9, fields.radius + 0.25 * g.particleSpread);

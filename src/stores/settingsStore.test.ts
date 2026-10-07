@@ -11,6 +11,11 @@ describe('persisted settings', () => {
     expect(normalizeSettings({ quality: 'ultra', source: 'file', preset: 'gone', reflection: 'false', sensitivity: NaN,
       smoothing: Infinity, hideDelay: -1, scene: '', direction: 'both', extra: true })).toEqual({ ...DEFAULT_SETTINGS, direction: 'manual' });
   });
+  it('follows a renamed scene to its new id and keeps any other choice as saved', () => {
+    expect(normalizeSettings({ scene: 'field' }).scene).toBe('vector-field');
+    expect(normalizeSettings({ scene: 'spectral-shell' }).scene).toBe('spectral-shell');
+  });
+
   it('clamps controls and preserves supported negative audio delay', () => {
     expect(normalizeSettings({ sensitivity: 999, smoothing: -1, moodIntensity: 8, audioDelay: -50 })).toMatchObject({
       sensitivity: 1.8, smoothing: 0, moodIntensity: 1, audioDelay: -50,

@@ -19,7 +19,8 @@ tempo udito) → ShowDirector (rappresentazione, struttura per fixture) / Visual
 Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-planner.md),
 [fisica](physics-engine.md), [World Engine](world-engine.md), [integrazione scene](visual-director.md),
 [Visual Systems e Spectral Matter](visual-systems.md), [Matter Engine](matter-engine.md),
-[Visual Engine](visual-engine.md), [Visual Grammar](visual-grammar.md), [scene fisiche](physical-scenes.md).
+[Visual Engine](visual-engine.md), [Visual Grammar](visual-grammar.md), [scene fisiche](physical-scenes.md),
+[Spectral Shell](spectral-shell.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
 indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
@@ -50,7 +51,7 @@ frontend, backend e WASM della stessa revisione.
 | Visual Engine | `visual-engine/` | Mondo visuale persistente: `SonicGeometryMapper` (morfologia, mondo, planner, forma dei cicli delle voci → `GeometryState`, 36 tratti continui), `MaterialSystem` (luce comune), `VisualWorld` (campi e fronti impacchettati una volta, budget strutturale, presenze, memoria, osservatore), cinque primitive con legge GLSL + riferimento CPU, `WorldRecipe` e `RecipeVisualizer` (adattatore verso `Layer`: recipe e scene legacy convivono) |
 | Scene fisiche | `render-systems/fields/vectorField.ts`, `wells.ts`, `particles/tracer*.ts`, `Tracer*.ts`, `visual-engine/primitives/Field*Primitive.ts` | Campo vettoriale F(P) e sua topologia, pozzi di potenziale, legge / passo / simulazione GPU / probe CPU / parità dei traccianti, primitive dei traccianti e delle linee di campo: leggi in GLSL e in TS come la legge dei campi ([scene fisiche](physical-scenes.md)) |
 | Visual Systems | `render-systems/` | Vocabolario condiviso: `VisualMaterial` (mondo + morfologia), campi spaziali, legge dei campi e legge delle forme (GLSL + riferimento CPU), forme della materia (storia della waveform, rete dei parziali), onde datate, materia GPU e probe CPU, disegno a punti / legami / faccette, memoria visiva, osservatore; nessuno stato musicale, solo storia di rendering |
-| Scene | `visualizers/` | Sei scene legacy interpretano il mondo (`modulation.world`) in una forma propria: moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. In Tunnel e Particle Field la trasformazione della struttura è una funzione pura della `WorldView` (`tunnel/topology.ts`, `particle-field/regimes.ts`). Quattro sono recipe: Spectral Matter (la sola materia), Resonant Field (la sola membrana; `?legacy=resonant-field` in DEV monta la precedente), Matter Field (tutte le primitive), Field (traccianti e linee di un campo vettoriale) |
+| Scene | `visualizers/` | Sei scene legacy interpretano il mondo (`modulation.world`) in una forma propria: moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. In Tunnel e Particle Field la trasformazione della struttura è una funzione pura della `WorldView` (`tunnel/topology.ts`, `particle-field/regimes.ts`). Quattro sono recipe: Spectral Matter (la sola materia), Resonant Field (la sola membrana; `?legacy=resonant-field` in DEV monta la precedente), Matter Field (tutte le primitive), Vector Field (traccianti e linee di un campo vettoriale; già `field`), Spectral Shell (la membrana a disco di Matter Field con il proprio passato come gusci, [spectral-shell](spectral-shell.md)) |
 | Validazione | `validation/replay.ts`, overlay DEV | Replay di WAV locali sul percorso live (`npm run replay`), metriche comportamentali e tracce; Shift+T esporta la traccia di sessione |
 | Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, `direction` Auto/Manual risolta da `resolveDirection`, notifiche/salvataggi solo se un valore cambia |
 | Build | `package.json`, `vite.config.ts`, Cargo workspace, `.github/workflows/ci.yml` | Nessuna nuova dipendenza; CI su check frontend, core Rust, layout e WASM; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
@@ -155,7 +156,8 @@ in [visual-engine](visual-engine.md); il significato di ogni tratto in
 una funzione pura della `WorldView` e delle età degli eventi (`tunnelTopology`,
 `particleRegimes`, `deriveTopology`): a riposo vale zero (o la struttura canonica), è finita
 e limitata per qualunque ingresso, uguale a ogni frame rate. Lo stato proprio di una scena è
-solo storia di rendering (i traccianti di Field, le tracce): quando il campo si annulla
+solo storia di rendering (i traccianti di Vector Field, le tracce, la memoria dei modi di
+Spectral Shell, tenuta sul clock audio): quando il campo si annulla
 deve fermarsi. `vectorField`, `tracerLaw`, `tracerStep` e `wells` esistono in GLSL e in
 TypeScript: si cambiano insieme e la parità va riprovata con `runTracerParity()`
 (`render-systems/particles/tracerParity.ts`). Il tempo di un rilascio sceglie la struttura
@@ -263,9 +265,15 @@ Se `cargo test` segnala `layout.ts is stale` senza differenze in git, il binario
 test in `target/` è stato compilato sotto un altro percorso della repo (il percorso è
 incorporato a compile time): ricompilare con `touch native/analysis/tests/wire.rs`.
 
+Spectral Shell (7 ottobre 2026, dopo): nessuna modifica a DSP, wire, WASM, World Engine. Esiti,
+misure e limiti in [spectral-shell](spectral-shell.md) §5–7: **388 test frontend in 51 file**
+(19 nuovi), shader della membrana a 1 / 3 / 4 / 5 layer compilati su Intel UHD, Matter Field
+confrontata prima / dopo (stesso shader a meno di tre riscritture senza effetto numerico,
+stessi tempi); non provati musica reale, movimento nel tempo, app desktop.
+
 Scene fisiche (7 ottobre 2026, notte): nessuna modifica a DSP, wire, WASM, World Engine, UI.
 Esiti, misure e limiti in [physical-scenes](physical-scenes.md) §7–8: **370 test frontend in
-49 file** (47 nuovi), parità GPU ↔ CPU delle leggi di Field (media 1,07 · 10⁻⁵ unità) e
+49 file** (47 nuovi), parità GPU ↔ CPU delle leggi di Field (oggi Vector Field; media 1,07 · 10⁻⁵ unità) e
 della materia ripetuta invariata, shader di Field, Tunnel e Particle Field compilati su
 Intel UHD; non provati musica reale, movimento nel tempo, app desktop, replay su corpus.
 
@@ -304,7 +312,8 @@ I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 | Media | Unificazione graduale DSP TS/Rust | Corpus reale e sintetico, stessa waveform/pitch/presenza e latenza misurata; evitare doppia analisi senza spezzare i contratti |
 | Alta | Visual Engine: Matter Field su musica reale e a occhio | Affinità, costi, guadagno del budget ed esposizioni tarati su un corpus; ogni struttura leggibile da sola e insieme; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Parità GPU ↔ CPU delle leggi nuove | Un `runLawParity()` che valuta filamenti, nodi, membrana e anelli per texel e li confronta con il riferimento CPU, come `runParity()` per la materia |
-| Alta | Scene fisiche su musica reale e a occhio | Field, Tunnel e Particle Field con ambient, percussioni, basso elettronico, mix densi, stereo sbilanciato, silenzio, drop e build: ogni regime leggibile, nessun moto nel silenzio, tagli e pozzi tarati; costo a 1080p e in WebView2 su macchina scarica |
+| Alta | Spectral Shell su musica reale e a occhio | Gusci leggibili con ambient, voce, basso, mix densi e percussioni; età, apertura, chiusura e torsione tarate; polvere che vela senza coprire; costo a 1080p e in WebView2 su macchina scarica |
+| Alta | Scene fisiche su musica reale e a occhio | Vector Field, Tunnel e Particle Field con ambient, percussioni, basso elettronico, mix densi, stereo sbilanciato, silenzio, drop e build: ogni regime leggibile, nessun moto nel silenzio, tagli e pozzi tarati; costo a 1080p e in WebView2 su macchina scarica |
 | Media | Migrare le scene legacy a recipe e al modello fisico | Galaxy (orbite, `wells` a spirale), Liquid (superficie fluida, fronti condivisi), Oscilloscope (`SignalTracePrimitive`); parete del Tunnel come primitiva che legge `uField` / `uWave*`; **Spectrum resta com'è** |
 | Alta | Matter Engine su musica reale | Tono, accordo, mix denso e percussioni danno corpi diversi e leggibili a occhio; quote delle forme, tempi dei nodi ed esposizione tarati su un corpus; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Spectral Matter su musica reale | Le nove domande percettive di [visual-systems](visual-systems.md) con un corpus vario e occhi; costo GPU a 1080p e in WebView2; poi riuso di `FeedbackPass`/`WaveField` nelle scene esistenti |

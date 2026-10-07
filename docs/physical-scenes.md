@@ -1,4 +1,11 @@
-# Scene fisiche — Field, Tunnel, Particle Field
+# Scene fisiche — Vector Field, Tunnel, Particle Field
+
+> **Nota del 7 ottobre 2026 (dopo).** La scena qui chiamata **Field** si chiama ora **Vector Field** (id
+> `vector-field`, cartella `src/visualizers/vector-field/`; le impostazioni salvate con `field` vengono seguite).
+> Il nome diceva "il campo dentro Matter Field", ma ciò che questa scena mostra è il campo vettoriale dei
+> flussi, non il grafico circolare che si vede dentro Matter Field: quello è la membrana a disco, estratta in
+> [Spectral Shell](spectral-shell.md). Nel resto del documento "Field" indica Vector Field; codice, leggi e
+> misure sono invariati.
 
 Data: 7 ottobre 2026 (notte). Continua [world-engine](world-engine.md) e
 [visual-engine](visual-engine.md). Tre interventi con una sola regola:
@@ -11,7 +18,8 @@ analisi audio → WorldState persistente → risposta fisica → trasformazione 
 World Engine
 ├── Spectral Matter  → materia / massa                 (recipe, invariata)
 ├── Matter Field     → materia + campo accoppiati      (recipe, invariata)
-├── Field            → campo vettoriale / forze        (recipe, NUOVA)
+├── Vector Field     → campo vettoriale / forze        (recipe, NUOVA; già "Field")
+├── Spectral Shell   → membrana risonante e il suo passato (recipe, vedi spectral-shell.md)
 ├── Spectrum         → frequenza / memoria spettrale   (invariata: riferimento)
 ├── Resonant Field   → vibrazione / risonanza          (recipe, invariata)
 ├── Tunnel           → spazio / architettura           (legacy, RIVISTA)
@@ -56,9 +64,9 @@ il campo. Riusati senza modifiche: `fieldHeaderGlsl`, `flowLawGlsl` / `flowAt`, 
 
 ## 2. Field: il mondo come campo vettoriale
 
-`src/visualizers/field/` è una **recipe** (regola del progetto: una scena nuova è una recipe,
+`src/visualizers/vector-field/` è una **recipe** (regola del progetto: una scena nuova è una recipe,
 non un visualizer monolitico; il `FieldVisualizer` del piano è `RecipeVisualizer` +
-`fieldRecipe`). Non è Matter Field senza il guscio: è un sistema suo, F(P), e nella scena
+`vectorFieldRecipe`). Non è Matter Field senza il guscio: è un sistema suo, F(P), e nella scena
 non c'è altro che ciò che lo rende visibile.
 
 ```text
@@ -217,7 +225,7 @@ Test unitari / mock (Vitest), 47 nuovi in 3 file:
 - `render-systems/fields/vectorField.test.ts` (12): pozzi; campo nullo a riposo; uguale a
   `flowAt` senza topologia; sorgente / vortice; gusci; vortici a divergenza nulla, continui,
   limitati, che ruotano con la struttura; parete; topologia dal mondo; linee di campo.
-- `visualizers/field/Field.test.ts` (16): traccianti sul riferimento CPU (semi, quiete,
+- `visualizers/vector-field/VectorField.test.ts` (16): traccianti sul riferimento CPU (semi, quiete,
   circolazione / sorgente / pozzo, vortici e lamine, fronti mai prima del loro tempo,
   silenzio, 30 / 60 / 144 fps, determinismo, mondi rotti) e scena montata su renderer
   simulato (registry, buio senza suono, un solo campo per traccianti e linee, luce ≠ moto,

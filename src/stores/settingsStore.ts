@@ -87,6 +87,9 @@ export const DEFAULT_SETTINGS: Settings = {
   direction: DEFAULT_DIRECTION_MODE,
 };
 
+/** Scenes that changed id: a saved choice follows the scene to its new name. */
+const RENAMED_SCENES: Readonly<Record<string, string>> = { field: 'vector-field' };
+
 /** Validate persisted data before it can reach audio math or quality profiles. */
 export function normalizeSettings(value: unknown): Settings {
   const saved = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -98,7 +101,7 @@ export function normalizeSettings(value: unknown): Settings {
 
   settings.source = choice(saved.source, ['system', 'microphone', 'fake'], settings.source);
   if (settings.source === 'system' && !supportsSystemAudio) settings.source = DEFAULT_SETTINGS.source;
-  if (typeof saved.scene === 'string' && saved.scene.trim()) settings.scene = saved.scene;
+  if (typeof saved.scene === 'string' && saved.scene.trim()) settings.scene = RENAMED_SCENES[saved.scene] ?? saved.scene;
   settings.preset = choice(saved.preset, PALETTES.map((p) => p.id), settings.preset);
   settings.quality = choice(saved.quality, ['auto', 'low', 'medium', 'high'], settings.quality);
   settings.mood = choice(saved.mood, MOODS.map((m) => m.id), settings.mood);

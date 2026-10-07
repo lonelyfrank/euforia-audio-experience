@@ -1,0 +1,31 @@
+{
+  "name": "Spectral Shell",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 50,
+    "distance": 6.2,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.55,
+    "radius": 0.5,
+    "threshold": 0.12
+  },
+  "visual": {
+    "seed": 20261009,
+    "tilt": 0.5,
+    "rings": 36,
+    "shells": 4,
+    "span": 1.4,
+    "count": 16000,
+    "pointSize": 1.4,
+    "exposure": 0.32,
+    "links": 0,
+    "facets": 0
+  }
+}

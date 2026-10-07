@@ -3,7 +3,7 @@ import { ConnectionGraphPrimitive, graphNodes, type GraphParams } from '../../vi
 import { FilamentPrimitive, filamentQuality, type FilamentParams } from '../../visual-engine/primitives/FilamentPrimitive';
 import { MatterPrimitive, matterQuality, type MatterParams } from '../../visual-engine/primitives/MatterPrimitive';
 import { ShockwavePrimitive } from '../../visual-engine/primitives/ShockwavePrimitive';
-import { surfaceResolution, WaveSurfacePrimitive } from '../../visual-engine/primitives/WaveSurfacePrimitive';
+import { RESONANT_DISC, surfaceResolution, WaveSurfacePrimitive } from '../../visual-engine/primitives/WaveSurfacePrimitive';
 import type { RecipeBuilder } from '../../visual-engine/RecipeVisualizer';
 
 export interface MatterFieldParams extends MatterParams, FilamentParams, GraphParams {
@@ -54,10 +54,8 @@ export const matterFieldRecipe: RecipeBuilder<MatterFieldParams> = (p, quality) 
       {
         id: 'surface', cost: 1,
         affinity: (g) => unit(0.15 + 1.3 * g.elasticity + 0.8 * g.surfaceDisplacement),
-        create: (context) => new WaveSurfacePrimitive(context, {
-          topology: 'polar', style: 'wire', plane: 'axial', size: 1.35, follow: 1, turn: true, grammar: 1, relief: 1.2, pointSize: 2, exposure: 0.6,
-          resolution: p.surface,
-        }, surfaceResolution(p.surface, quality)),
+        // The resonant disc: the circular graph inside the matter (Spectral Shell is this membrane on its own, with its past round it).
+        create: (context) => new WaveSurfacePrimitive(context, { ...RESONANT_DISC, resolution: p.surface }, surfaceResolution(p.surface, quality)),
       },
       {
         id: 'graph', cost: 1,

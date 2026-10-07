@@ -34,10 +34,23 @@ const EASE_IN = 'cubic-bezier(0.4, 0, 1, 1)';
 /** Rotation (deg) of the curved path items travel along. */
 const ROOT_SWING = -42;
 const SUB_SWING = -64;
+/**
+ * A full ring starts at the top, so one with an odd number of items ends with two of them side by side at its foot:
+ * it grows until their labels have this much room between the two centres (px).
+ */
+const LABEL_ROOM = 78;
+
+/** Radius of a menu's ring (px): the dial's own (`base`), or what an odd full ring needs for the two labels at its foot. */
+export function ringRadius(count: number, layout: DialMenu['layout'], base: number): number {
+  if (layout === 'arc' || count < 3 || count % 2 === 0) return base;
+  return Math.max(base, LABEL_ROOM / (2 * Math.sin(Math.PI / count)));
+}
 
 interface ItemElement {
   el: HTMLElement;
   button: HTMLButtonElement;
+  /** Radius of the ring the item sits on (px). */
+  radius: number;
   angle: number;
   id: string;
 }
@@ -96,6 +109,8 @@ export class Dial {
     this.element.classList.toggle('is-sub', key !== 'root');
     this.items.setAttribute('aria-label', menu.caption ?? 'Controls');
     this.elements = this.build(menu);
+    // The guide circle passes through the items of the ring that is open.
+    this.element.style.setProperty('--wheel-r', `${ringRadius(menu.items.length, menu.layout, this.radius)}px`);
     this.enter(this.elements, key === 'root' ? ROOT_SWING : SUB_SWING, wasOpen ? SWAP_DELAY : 0);
     this.syncCore();
     // Focus moves into the ring only if it was already in the dock (keyboard use).
@@ -148,7 +163,7 @@ export class Dial {
   }
 
   private build(menu: DialMenu): ItemElement[] {
-    const angles = this.angles(menu.items.length, menu.layout);
+    const angles = this.angles(menu.items.length, menu.layout), radius = ringRadius(menu.items.length, menu.layout, this.radius);
     return menu.items.map((item, k) => {
       const button = h('button', {
         type: 'button',
@@ -168,15 +183,15 @@ export class Dial {
         h('span', { class: 'app-item__label', attrs: { 'aria-hidden': 'true' } }, item.label),
       );
       this.items.append(el);
-      return { el, button, angle: angles[k], id: item.id };
+      return { el, button, radius, angle: angles[k], id: item.id };
     });
   }
 
-  private keyframes(angle: number, swing: number): Keyframe[] {
+  private keyframes(angle: number, swing: number, radius: number): Keyframe[] {
     const frames: Keyframe[] = [];
     for (let k = 0; k <= 8; k++) {
       const t = k / 8;
-      const r = this.radius * (0.22 + 0.78 * t);
+      const r = radius * (0.22 + 0.78 * t);
       const a = ((angle + swing * (1 - t)) * Math.PI) / 180;
       frames.push({
         transform: `translate(${(Math.cos(a) * r).toFixed(2)}px, ${(Math.sin(a) * r).toFixed(2)}px) scale(${(0.5 + 0.5 * t).toFixed(3)})`,
@@ -189,7 +204,7 @@ export class Dial {
   private enter(list: ItemElement[], swing: number, delay: number): void {
     const instant = reducedMotion.matches;
     list.forEach((item, k) => {
-      item.el.animate(this.keyframes(item.angle, swing), {
+      item.el.animate(this.keyframes(item.angle, swing, item.radius), {
         duration: instant ? 0 : EXPAND_MS,
         delay: instant ? 0 : delay + k * EXPAND_STAGGER,
         easing: EASE_OUT,
@@ -202,7 +217,7 @@ export class Dial {
     const instant = reducedMotion.matches;
     list.forEach((item, k) => {
       item.button.disabled = true;
-      const animation = item.el.animate(this.keyframes(item.angle, -24).reverse(), {
+      const animation = item.el.animate(this.keyframes(item.angle, -24, item.radius).reverse(), {
         duration: instant ? 0 : COLLAPSE_MS,
         delay: instant ? 0 : (list.length - 1 - k) * COLLAPSE_STAGGER,
         easing: EASE_IN,
