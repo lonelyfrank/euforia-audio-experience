@@ -160,6 +160,29 @@ describe('ShowDirector', () => {
     for (const d of director.log) expect(d.what.includes('mirror') && d.what.includes('asymmetric')).toBe(false);
   });
 
+  it('decides how much structure each fixture may carry: everything in a drop, less in quiet sections and for supports, as designed in preset', () => {
+    const structures = (mode: RigMode) => {
+      const director = new ShowDirector();
+      director.setBudget(3.4);
+      const sink: ShowSink = { target: () => {}, impulse: () => {}, snap: () => {} };
+      const seen = new Map<number, number[]>();
+      for (const input of inputs()) {
+        director.update(input, { mode, scene: 'galaxy' }, sink);
+        seen.set(input.section, director.slots.map((slot) => (slot.fixture ? slot.structure : -1)));
+      }
+      return seen;
+    };
+    const free = structures('free');
+    // Intro, build, drop, break: the protagonist's ceiling follows the section and is full only in the drop.
+    expect([0, 1, 2, 3].map((section) => free.get(section)![0])).toEqual([0.55, 0.8, 1, 0.6]);
+    // A supporting fixture carries half the protagonist's structure.
+    const drop = free.get(2)!;
+    expect(drop[1]).toBe(0.5);
+    for (const slots of free.values()) for (let slot = 1; slot < 3; slot++) if (slots[slot] >= 0) expect(slots[slot]).toBe(slots[0] / 2);
+    // Preset plays the scene as designed: its world decides for itself.
+    for (const slots of structures('preset').values()) expect(slots[0]).toBe(1);
+  });
+
   it('respects the GPU budget and the mode', () => {
     const tight = run('free', 1);
     expect(tight.intensities.every((s) => s[1] === 0 && s[2] === 0)).toBe(true);

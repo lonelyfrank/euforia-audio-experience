@@ -5,7 +5,8 @@
   conserva decisioni e misure del motore musicale. `docs/realtime-analysis.md`
   (thread, clock, stati, eventi, confidence, benchmark), `docs/refactor-report.md`,
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
-  `docs/world-engine.md`, `docs/visual-systems.md` e `docs/matter-engine.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md` e
+  `docs/visual-grammar.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -41,6 +42,14 @@
   una forma la **reclama** con un'àncora e una molla, non crea né sposta elementi; niente tabelle
   suono → forma né classificatori. Gli slot dei parziali sul wire sono ordinati per livello, non
   tracciati. `matterLab` e il blocco Matter dell'overlay sono solo DEV.
+- Visual Engine (`docs/visual-engine.md`, `docs/visual-grammar.md`): una scena nuova è una **recipe**
+  (`defineRecipe`) di primitive in un `VisualWorld`, non un visualizer monolitico. Le primitive leggono
+  solo `frame.geometry`, `frame.fields`, `frame.look` e gli uniform condivisi: mai bande, beat o spettri,
+  mai rilevamento di eventi. `GeometryState` / `MaterialState` sono letture per frame: una proprietà
+  musicale nuova entra a monte (morfologia, Experience, World). Le primitive restano montate e sfumano con
+  la presenza (niente create/dispose per mostrare una struttura); la recipe non contiene sequenze né rami
+  su eventi. Leggi delle primitive in GLSL e in TS come la legge dei campi; `fieldHeaderGlsl` è testo
+  della legge dei campi. `worldLab`, `?primitives=` e `?legacy=` sono solo DEV.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente, non hop/beat.
   Il wire e il WASM versionato devono corrispondere al backend.
 - La cattura nativa è condivisa: non sovrapporre stop/start o creare AudioEngine

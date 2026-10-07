@@ -49,7 +49,7 @@ function setup() {
   const layers = [];
   for (let slot = 0; slot < 3; slot++) {
     engine.setSlot(slot, source());
-    engine.setSlotParams(slot, { weight: 1, size: 1, offset: 0, mirror: false, flash: 0, tint: 0 });
+    engine.setSlotParams(slot, { weight: 1, size: 1, offset: 0, mirror: false, flash: 0, tint: 0, structure: 1 });
     layers.push(engine['slots'][slot].current!);
     engine.setSlot(slot, source());
     layers.push(engine['slots'][slot].current!);
@@ -71,7 +71,7 @@ describe('render composition budget', () => {
 
   it('does not spend a GPU pass or composition slot on invisible fixtures', () => {
     const { engine, layers } = setup();
-    engine.setSlotParams(0, { weight: 0, size: 1, offset: 0, mirror: false, flash: 0, tint: 0 });
+    engine.setSlotParams(0, { weight: 0, size: 1, offset: 0, mirror: false, flash: 0, tint: 0, structure: 1 });
     tick(performance.now() + 16);
     expect(layers[0].render).not.toHaveBeenCalled();
     expect(layers[1].render).not.toHaveBeenCalled();

@@ -21,6 +21,7 @@ import definition from './index';
 import { matterQuality, type SpectralMatterParams } from './mapping';
 import preset from './preset.json';
 import { SpectralMatterVisualizer } from './SpectralMatterVisualizer';
+import type { MatterPrimitive } from '../../visual-engine/primitives/MatterPrimitive';
 
 const params: SpectralMatterParams = preset.visual;
 
@@ -52,9 +53,11 @@ function mount(quality: QualityProfile) {
   };
   /** Layer.dispose: the scene, then the passes it was given. */
   const dispose = () => { scene.dispose(); for (const pass of passes) pass.dispose(); };
-  const internals = scene as unknown as { simulation: { material: { uniforms: Record<string, { value: Float32Array }> } } };
-  const field = (key: keyof typeof FIELD) => internals.simulation.material.uniforms.uField.value[FIELD[key]];
-  return { scene, renderer, passes, world, events, clock, update, dispose, field, response };
+  /** The world's body: the matter primitive (its simulation, forms and emission). */
+  const matter = scene.world.primitive<MatterPrimitive>('matter')!;
+  const uniforms = (matter.simulation as unknown as { material: { uniforms: Record<string, { value: Float32Array & { version: number; image: { data: Float32Array } } }> } }).material.uniforms;
+  const field = (key: keyof typeof FIELD) => uniforms.uField.value[FIELD[key]];
+  return { scene, renderer, passes, world, events, clock, update, dispose, field, response, matter, uniforms };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -91,7 +94,7 @@ describe('Spectral Matter', () => {
     expect(mounted[0].scene.debug.particles).toBeGreaterThan(mounted[1].scene.debug.particles);
     expect(mounted[1].scene.debug.particles).toBeGreaterThan(mounted[2].scene.debug.particles);
     // Bonds and facets are drawn at High and Medium only: at Low the matter and its forms are points.
-    expect(mounted.map((m) => m.scene.scene.children[0].children.length)).toEqual([3, 3, 1]);
+    expect(mounted.map((m) => m.matter.object.children.length)).toEqual([3, 3, 1]);
     expect(mounted[0].scene.debug.vertices).toBeGreaterThan(mounted[1].scene.debug.vertices);
     expect(mounted[2].scene.debug.vertices).toBe(mounted[2].scene.debug.particles);
     for (const m of mounted) m.dispose();
@@ -126,7 +129,7 @@ describe('Spectral Matter', () => {
     r.world.illumination = 0.8;
     r.update(1);
     expect(r.scene.debug.waves).toBe(0);
-    const emission = (r.scene as unknown as { mapping: { emission: { wave: number } } }).mapping.emission;
+    const emission = r.matter.emission;
     const quiet = emission.wave;
     r.events.push('impact', r.world.time + 0.05, 0.9, 1, 1, 0.7);
     r.update(0.03);
@@ -152,7 +155,7 @@ describe('Spectral Matter', () => {
     r.update(0.5);
     r.events.push('impact', r.world.time, 0.9, 1, 1, 0.7);
     r.update(0.1);
-    const waveB = (r.scene as unknown as { simulation: { material: { uniforms: Record<string, { value: Float32Array }> } } }).simulation.material.uniforms.uWaveB.value;
+    const waveB = r.uniforms.uWaveB.value;
     expect(Math.max(...waveB.filter((_, i) => i % 4 === 0))).toBeGreaterThan(0.2);
     // The capture stalls: no clock, no experience. The matter must not keep being pushed by the last front seen.
     r.update(0.1, false);
@@ -165,7 +168,7 @@ describe('Spectral Matter', () => {
     r.update(0.5, false);
     // One sub-step per 60 Hz frame (plus nothing else: no feedback at Low).
     expect(r.renderer.render).toHaveBeenCalledTimes(30);
-    const emission = (r.scene as unknown as { mapping: { emission: { base: number; spark: number; surface: number } } }).mapping.emission;
+    const emission = r.matter.emission;
     expect(emission.base).toBe(0);
     expect(emission.spark).toBe(0);
     expect(r.field('surge')).toBe(0);
@@ -175,11 +178,7 @@ describe('Spectral Matter', () => {
 
   it('gives the simulation the forms of the sound: shares, the signal\'s history and the partials\' network, uploaded only when they change', () => {
     const r = mount(QUALITY_PROFILES.high);
-    const internals = r.scene as unknown as {
-      simulation: { material: { uniforms: Record<string, { value: Float32Array & { version: number; image: { data: Float32Array } } }> } };
-      mapping: { forms: { state: { wave: number; harmonic: number }; signal: { head: number }; harmonic: { active: number } }; emission: { waveShare: number; harmonicShare: number } };
-    };
-    const u = internals.simulation.material.uniforms, forms = internals.mapping.forms;
+    const u = r.uniforms, forms = r.matter.forms!;
     r.update(0.5);
     // Nothing periodic, nothing tonal: free matter, and the law is told so.
     expect(u.uForm.value[FORM.wave]).toBe(0); expect(u.uForm.value[FORM.harmonic]).toBe(0);
@@ -198,7 +197,7 @@ describe('Spectral Matter', () => {
     // The textures are the forms' own arrays: no copy per frame, and the draw knows the shares too.
     expect(u.tSignal.value.image.data[(SIGNAL_ROWS + forms.signal.head) * SIGNAL_SIZE + 96]).toBeCloseTo(0.5, 5);
     expect(u.tHarmonic.value.image.data[3]).toBeGreaterThan(0);
-    expect(internals.mapping.emission.waveShare).toBe(forms.state.wave);
+    expect(r.matter.emission.waveShare).toBe(forms.state.wave);
     expect(r.scene.debug.wave).toBeCloseTo(forms.state.wave, 6); expect(r.scene.debug.nodes).toBe(4);
     expect(r.scene.debug.free).toBeCloseTo(1 - forms.state.wave - forms.state.harmonic, 6);
     const uploaded = u.tSignal.value.version;
@@ -220,13 +219,9 @@ describe('Spectral Matter', () => {
       r.world.spin = 1; r.world.turbulence = 0.7; r.world.shimmer = 0.5; r.world.illumination = 0.6;
       r.events.push('impact', 0.2, 0.9, 1, 3, 0.7);
       r.update(1);
-      const internals = r.scene as unknown as {
-        simulation: { seeds: { home: Float32Array; trait: Float32Array; form: Float32Array }; material: { uniforms: Record<string, { value: Float32Array }> } };
-        mapping: { emission: object; memory: object };
-      };
-      const u = internals.simulation.material.uniforms;
-      const state = [internals.simulation.seeds.home, internals.simulation.seeds.trait, internals.simulation.seeds.form, u.uField.value, u.uForm.value, u.uWaveA.value, u.uWaveB.value].map((v) => Array.from(v));
-      const out = JSON.stringify([state, internals.mapping.emission, internals.mapping.memory, r.scene.camera.position.toArray()]);
+      const u = r.uniforms, seeds = r.matter.simulation.seeds;
+      const state = [seeds.home, seeds.trait, seeds.form, u.uField.value, u.uForm.value, u.uWaveA.value, u.uWaveB.value].map((v) => Array.from(v));
+      const out = JSON.stringify([state, r.matter.emission, r.scene.world.memory, r.scene.world.mapper.state, r.scene.camera.position.toArray()]);
       r.dispose();
       vi.restoreAllMocks();
       return out;
@@ -248,8 +243,8 @@ describe('Spectral Matter', () => {
       r.dispose();
       // Simulation ping-pong targets (+ the memory's two).
       expect(targets).toHaveBeenCalledTimes(feedback ? 4 : 2);
-      // The three seed textures and the two forms' data (render-target textures go with their targets).
-      expect(textures.mock.contexts.filter((texture) => (texture as Texture & { isDataTexture?: boolean }).isDataTexture)).toHaveLength(5);
+      // The three seed textures, the two forms' data and the world's voice cycles (render-target textures go with their targets).
+      expect(textures.mock.contexts.filter((texture) => (texture as Texture & { isDataTexture?: boolean }).isDataTexture)).toHaveLength(6);
       // Simulation, points (+ bonds, facets), and the memory's two materials.
       expect(materials).toHaveBeenCalledTimes(2 + (links ? 1 : 0) + (facets ? 1 : 0) + (feedback ? 2 : 0));
       // Points (+ bonds, facets) draw counts; full-screen triangles of the simulation (+ memory).

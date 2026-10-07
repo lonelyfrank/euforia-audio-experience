@@ -296,6 +296,11 @@ export class ParticleMatter {
     (u.uColorA.value as Color).copy(a); (u.uColorB.value as Color).copy(b); (u.uColorC.value as Color).copy(c);
   }
 
+  /** Size of an element (device-independent pixels at the rest distance): heavy matter is large and soft. */
+  setSize(size: number): void {
+    this.points.uniforms.uSize.value = size;
+  }
+
   /** Point sizes are in device pixels. */
   setPixelRatio(ratio: number): void {
     this.points.uniforms.uPixelRatio.value = ratio;

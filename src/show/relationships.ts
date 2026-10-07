@@ -4,6 +4,7 @@ const CHARACTER: Readonly<Record<string, readonly number[]>> = {
   'particle-field': [0.75, 0.9, 0.4, 0.9], liquid: [0.4, 0.65, 0.9, 0.4],
   spectrum: [0.7, 0.35, 0.6, 0.5], oscilloscope: [0.45, 0.3, 0.8, 0.2],
   'resonant-field': [0.5, 0.55, 0.85, 0.6], 'spectral-matter': [0.65, 0.8, 0.7, 0.85],
+  'matter-field': [0.7, 0.85, 0.75, 0.85],
 };
 export function relationship(from: string | null, to: string): number {
   if (!from || !CHARACTER[from] || !CHARACTER[to]) return 0.5;

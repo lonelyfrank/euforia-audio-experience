@@ -6,7 +6,8 @@ L'app **non dipende da nessun player**: cattura l'audio che il computer sta ripr
 
 ```
 LIVE AUDIO → AUDIO CLOCK → ANALISI MULTI-RATE (Rust/WASM fuori dal RAF) → ACOUSTIC / CONTEXT
-  → EXPERIENCE / MEMORIA / EVENTI → PREVISIONE → PLANNER → INTENTI → FISICA → GPU
+  → EXPERIENCE / MEMORIA / EVENTI → PREVISIONE → PLANNER → INTENTI → MONDO (FISICA)
+  → GEOMETRIA → PRIMITIVE → GPU
 ```
 
 > Il visualizer è l'interfaccia. Oltre alla scena si vedono solo le informazioni sulla sorgente, a sinistra, e un pulsante circolare in basso al centro. Tutto il resto compare quando serve e si richiude da solo.
@@ -26,7 +27,8 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 - Direction **Auto / Manual**: Auto lascia la regia al sistema; Manual espone 8 mood, 5 modalità Experience, intensità e rig **Preset / Hybrid / Free**. Fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
 - **Visual Systems** (sperimentale): primitive grafiche condivise — campi spaziali derivati dal mondo, materia particellare simulata su GPU, onde datate sugli eventi, memoria visiva — e la scena-laboratorio **Spectral Matter**, la cui forma emerge dai campi invece di essere disegnata in anticipo
 - **Matter Engine** (sperimentale, prima milestone): la morfologia del suono (periodicità, ricchezza di parziali, rumore, transienti…) decide che materia è, e la stessa materia persistente passa da particelle a filamenti, nastri, superfici e poligoni senza essere ricreata: si condensa sulla curva 3D tracciata dalla waveform reale e sulla rete dei parziali, si frattura su un rilascio e si richiude
-- 8 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**
+- **Visual Engine** (sperimentale): un mondo visuale persistente fatto di primitive che condividono campi, fronti e materiale. `SonicGeometryMapper` traduce suono e mondo in una geometria (curvatura, spigoli, gradini, connessioni, onde, massa…), anche dalla forma reale dei cicli delle voci; le strutture si formano, si rompono e si sciolgono con la musica senza che nulla venga ricreato. La scena **Matter Field** ne è la prova: particelle, filamenti che vibrano come corde, una membrana, una gabbia di connessioni e fronti d'urto mossi dalle stesse forze
+- 9 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**, **Matter Field**
 - Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
 - Qualità Auto / Low / Medium / High, fullscreen, auto-hide di controlli e cursore
@@ -41,7 +43,7 @@ Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `pre
 |---|---|---|
 | 01 | Idle | Scena, now playing, core chiuso |
 | 02 | Control active | Il core sale e si apre la ruota: Scene, Audio, Palette, Settings, Direction, Fullscreen |
-| 03 | Scene | Anello delle 7 scene |
+| 03 | Scene | Anello delle 9 scene |
 | 04 | Audio | Arco con System Audio e Microphone |
 | 05 | Presets | Arco con le 4 palette |
 | 06 | Direction | Arco con due scelte: Auto e Manual. Manual apre Mood, Experience e Rig |
@@ -97,9 +99,14 @@ Live capture (system / microphone / test)
             └─ ShowDirector / grafo scene / GpuBudget (rappresentazione, composizione)
                      ↓
        Layer: VisualDirector (luce, camera, guadagni del mood) + WorldView (adattatore) → scena + pass
-            └─ render-systems (vocabolario condiviso): morfologia + mondo → materiale → campi spaziali
-               e forme (curva della waveform, rete dei parziali), onde datate (EventStream),
-               materia GPU persistente (punti, legami, faccette), memoria visiva, osservatore
+            ├─ scena legacy: interpreta il mondo in una forma propria
+            └─ recipe (visual-engine): VisualWorld
+                 SonicGeometryMapper: morfologia + mondo + planner + forma delle voci → GeometryState
+                 → campi spaziali e fronti datati (una volta, condivisi) · MaterialState (luce)
+                 → budget strutturale (entropia del planner × tetto dello show) → presenza di ogni primitiva
+                 → primitive: materia GPU (punti, legami, faccette, forme), filamenti, membrana,
+                   grafo di connessioni, fronti d'urto · memoria visiva · osservatore
+               render-systems (leggi e risorse): legge dei campi e dei flussi, forme, materia, onde, memoria
                      ↓
        RenderEngine: 3 slot / 4 layer composti → composizione → Canvas
 ```
@@ -109,7 +116,8 @@ contratti, verifiche dell'audit e miglioramenti prioritari. Il rapporto di quest
 Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/realtime-analysis.md),
 [modello acustico](docs/acoustic-model.md), [planner](docs/experience-planner.md),
 [fisica](docs/physics-engine.md), [World Engine](docs/world-engine.md), [Visual Systems e Spectral Matter](docs/visual-systems.md),
-[Matter Engine: morfologia, materiale, forme](docs/matter-engine.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
+[Matter Engine: morfologia, materiale, forme](docs/matter-engine.md), [Visual Engine: mondo visuale, primitive, recipe](docs/visual-engine.md),
+[Visual Grammar: che cosa chiede il suono alla geometria](docs/visual-grammar.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
 
@@ -118,6 +126,7 @@ Principi:
 - **Analisi centralizzata per percorso**: nessun visualizer fa FFT per conto suo. TS e Rust/WASM oggi calcolano alcune misure sovrapposte: la loro unificazione richiede una migrazione verificata, non la rimozione di uno dei due.
 - **Il render engine non conosce l'audio engine** né la UI: riceve una callback `frameSource(dt)`.
 - **La musica modifica il mondo, non ogni frame**: il moto delle scene viene dal `WorldState` condiviso (forze, momento, smorzamento); le scene lo interpretano, non lo ricalcolano.
+- **Le primitive leggono geometria, non audio**: in un mondo visuale nessuna primitiva guarda bande, beat o spettri; legge `GeometryState`, i campi e il materiale del frame, gli stessi per tutte.
 - **Riutilizzo nel percorso continuo**: buffer, eventi e oggetti Three.js persistono fra frame. Mount, cambi di look, IPC/worklet e debug possono allocare; non è una garanzia di zero allocazioni sull’intera pipeline.
 
 ### Stack
@@ -214,9 +223,15 @@ src/
   dynamics/         molle/follower/inviluppi, scheduler, cronologia hit, FlashGuard
   show/             scelta fixture/effetti, budget GPU, affinità e seed deterministici
   renderer/         RenderEngine (slot, crossfade, loop), Layer, composizione finale, qualità
-  render-systems/   primitive visuali condivise (docs/visual-systems.md, docs/matter-engine.md)
+  visual-engine/    mondo visuale e primitive (docs/visual-engine.md, docs/visual-grammar.md)
+    geometry/       GeometryState, SonicGeometryMapper, forma dei cicli delle voci, texture delle voci
+    material/       MaterialState: come emette luce ciò che il mondo contiene
+    primitives/     materia, filamenti, membrana, grafo di connessioni, fronti d'urto (legge GLSL + riferimento CPU)
+    VisualWorld.ts  interpretazione una volta per frame, budget strutturale, presenze, lifecycle
+    WorldRecipe.ts, RecipeVisualizer.ts   recipe e adattatore verso Layer (defineRecipe)
+  render-systems/   leggi e risorse grafiche condivise (docs/visual-systems.md, docs/matter-engine.md)
     materials/      VisualMaterial: materiale derivato da mondo e morfologia (continuità, connettività, angolarità, …)
-    fields/         WorldView → campi spaziali; legge dei campi (GLSL + riferimento CPU)
+    fields/         WorldView → campi spaziali; legge dei campi e legge dei flussi per ciò che non è materia (GLSL + riferimento CPU)
     forms/          forme della materia: storia della waveform, rete dei parziali, legge delle forme (GLSL + CPU)
     waves/          fronti d'onda datati sugli eventi dell'Experience Engine
     particles/      semi deterministici, simulazione GPU (ping-pong), probe CPU, disegno (punti, legami, faccette), prova di parità
@@ -228,7 +243,9 @@ src/
     shared/         BaseVisualizer, dispose, defineVisualizer
     tunnel/ spectrum/ particle-field/ galaxy/ liquid/ oscilloscope/ resonant-field/
                     index.ts + <Nome>Visualizer.ts + preset.json
-    spectral-matter/ scena-laboratorio del Matter Engine: orchestrazione dei render-systems + mapping.ts
+    spectral-matter/ recipe con la sola materia (laboratorio del Matter Engine)
+    matter-field/   recipe del Visual Engine: materia + fronti + filamenti + membrana + grafo
+    resonant-field/ recipe con la sola membrana (la scena precedente resta per il confronto in DEV)
   ui/               Dial (core + ruota), NowPlaying, SettingsPanel, icone, tokens.css, app.css
   stores/           store osservabile, impostazioni persistenti
   platform/         differenze desktop/browser (fullscreen, disponibilità delle sorgenti)
@@ -320,7 +337,7 @@ Forme delle voci, tracce e spettri disegnati restano su questo percorso grafico;
 
 Architettura, mood/modalità, Director, capacità e istruzioni di estensione: [docs/visual-director.md](docs/visual-director.md).
 
-Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). L'overlay è solo di sviluppo (`?debug` o Shift+D), con dieci secondi di history; il blocco Matter mostra morfologia, materiale, stato della materia e lavoro della GPU, e può bloccare la materia in uno stato (`?matter=wave|harmonic|particles`).
+Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). L'overlay è solo di sviluppo (`?debug` o Shift+D), con dieci secondi di history; il blocco Matter mostra morfologia, materiale, stato della materia e lavoro della GPU, e può bloccare la materia in uno stato (`?matter=wave|harmonic|particles`). Il blocco Visual World mostra budget di entropia, geometria, presenza e vertici di ogni primitiva e campi attivi; `?primitives=matter,surface` blocca un mondo su alcune primitive, `?legacy=resonant-field` monta la scena precedente alla migrazione.
 
 ## Aggiungere una scena
 
@@ -412,7 +429,7 @@ interface Visualizer {
 
 `context.addPass(pass, 'pre-bloom' | 'post-bloom')` permette di aggiungere pass di post-processing (l'Oscilloscope lo usa per la persistenza dei fosfori); vengono smaltiti automaticamente quando la scena viene smontata.
 
-Una scena può anche comporre le primitive di `src/render-systems/` (campi dal mondo, materia GPU, onde, memoria visiva) invece di disegnare una forma propria: esempio completo e regole in [docs/visual-systems.md](docs/visual-systems.md). Gli eventi discreti arrivano in `clock.events` (lo stream dell'Experience Engine, da leggere con un `EventCursor` fino a `clock.time`); `clock.light` è la luce degli impatti già ammessa dal FlashGuard. Riflesso e orizzonte li aggiunge il render engine: la scena deve solo disegnare ciò che sta sopra l'orizzonte.
+Una scena può anche essere una **recipe**: una lista di primitive condivise in un mondo visuale, invece di una forma propria. Si dichiara con `defineRecipe` al posto di `defineVisualizer` (esempio: `src/visualizers/matter-field/`); regole, primitive disponibili e come scriverne una nuova in [docs/visual-engine.md](docs/visual-engine.md). I sistemi di base (campi, materia GPU, onde, memoria visiva) sono descritti in [docs/visual-systems.md](docs/visual-systems.md). Gli eventi discreti arrivano in `clock.events` (lo stream dell'Experience Engine, da leggere con un `EventCursor` fino a `clock.time`); `clock.light` è la luce degli impatti già ammessa dal FlashGuard. Riflesso e orizzonte li aggiunge il render engine: la scena deve solo disegnare ciò che sta sopra l'orizzonte.
 
 ## Qualità
 
@@ -423,7 +440,7 @@ Una scena può anche comporre le primitive di `src/render-systems/` (campi dal m
 | Low | 0,5× (DPR max 1,5) | 35% | no |
 | Auto | parte da 1× (DPR max 1,5) | 100% | sì |
 
-Spectral Matter interpreta la densità come quantità di materia (circa 96.000 / 62.000 / 34.000 elementi) e riduce con essa legami e faccette disegnati (assenti a Low, dove materia e forme restano punti), risoluzione della memoria visiva (assente a Low) e dettaglio della turbolenza.
+Spectral Matter interpreta la densità come quantità di materia (circa 96.000 / 62.000 / 34.000 elementi) e riduce con essa legami e faccette disegnati (assenti a Low, dove materia e forme restano punti), risoluzione della memoria visiva (assente a Low) e dettaglio della turbolenza. Matter Field scala ogni primitiva (materia 60.000 / 39.000 / 21.000 elementi, filamenti, anelli della membrana, nodi) e tiene la memoria visiva a metà risoluzione.
 
 **Auto** riduce prima la sola risoluzione a 0,85×, poi passa a Medium, riduce bloom/risoluzione e infine a Low. Soglia di discesa: 3 s sotto 51 fps. Recupera un passo dopo almeno 30 s a 58 fps e cooldown di 60 s. Gli stalli non costituiscono evidenza. I cambi di sola risoluzione non ricreano la scena.
 
@@ -449,6 +466,7 @@ Spectral Matter interpreta la densità come quantità di materia (circa 96.000 /
 - La qualità grafica Auto misura RAF, non il tempo GPU; il budget DSP misura separatamente CPU/durata audio.
 - Metro: ipotesi 3/4/5/7 con confidence, non analisi completa delle segnature; frase 4/8 battute euristica. Il corpus sintetico conserva il limite delle sezioni (4/12 entro una battuta).
 - **Spectral Matter e i Visual Systems sono sperimentali**: verificati con test automatici, parità GPU ↔ riferimento CPU e segnale sintetico su una Intel UHD; non ancora con musica reale, né su WebView2/WebKitGTK. A High la memoria visiva a piena risoluzione pesa su GPU integrate (Auto può scendere a Medium); senza render target float lo stato usa half float, percorso non provato. Tempi GPU non misurati per pass.
+- **Visual Engine e Matter Field sono sperimentali**: leggi delle primitive verificate sul riferimento CPU, shader compilati e fotogrammi guardati su una Intel UHD con segnali sintetici; **nessuna prova con musica reale né del movimento nel tempo**, e la taratura (quando compare ogni struttura, quanto è luminosa) è un punto di partenza che richiede gli occhi. Le leggi nuove non hanno ancora una prova di parità GPU ↔ CPU con lettura dei risultati. Tunnel, Galaxy, Particle Field, Liquid, Oscilloscope e Spectrum restano scene con una forma propria; fra scene diverse la transizione è ancora un crossfade ([dettagli](docs/visual-engine.md)).
 - **Matter Engine**: prima milestone. Morfologia tarata sui segnali di prova attraverso il DSP reale, forme verificate sul riferimento CPU e a schermo con segnali sintetici (fotogrammi, non il movimento); **nessuna prova con musica reale**. Con mix densi e armonia che cambia in fretta la rete dei parziali è poco leggibile; i poligoni sono tratteggiati, non riempiti; geometria spettrale, volume e illuminazione direzionale non esistono ancora. Misure di costo prese su una macchina carica ([dettagli](docs/matter-engine.md)).
 - Il World Engine è un modello fisico visivo, non meccanica calibrata; coefficienti tarati su segnali sintetici, non ancora su musica reale né con prova percettiva.
 - ERB, roughness, armonicità, H/P/R e range di loudness sono approssimazioni live, non strumenti certificati o separazione di sorgenti. La taratura percettiva su un corpus reale resta da eseguire.
@@ -461,7 +479,8 @@ Spectral Matter interpreta la densità come quantità di materia (circa 96.000 /
 - Preset specifici per scena e caricamento di preset esterni
 - Consolidare gradualmente TS e Rust/WASM senza perdere waveform, spettro, voci e fallback; misurare cattura→display su hardware reale
 - Estendere i test dalla macchina a stati dei menu (coperta) al DOM della UI e ai dispositivi audio reali
-- Matter Engine: taratura su musica reale e a occhio; forma "membrana" dai modi di Resonant Field; geometria spettrale da ERB; Particle Field e Galaxy come stati della materia invece che scene; transizioni fra scene come trasformazioni invece che crossfade ([piano](docs/matter-engine.md))
+- Visual Engine: taratura di Matter Field su musica reale e a occhio; prova di parità per le leggi nuove; Particle Field e Galaxy come recipe; anelli del Tunnel dai fronti condivisi; traccia del segnale e superficie fluida come primitive; transizioni fra recipe dentro lo stesso mondo ([percorso](docs/visual-engine.md))
+- Matter Engine: taratura su musica reale e a occhio; forma "membrana" dai modi di Resonant Field (fatta: `WaveSurfacePrimitive`); geometria spettrale da ERB; Particle Field e Galaxy come stati della materia invece che scene; transizioni fra scene come trasformazioni invece che crossfade ([piano](docs/matter-engine.md))
 - Visual Systems: taratura percettiva di Spectral Matter su musica reale; riuso graduale di memoria visiva, onde e materia nelle scene esistenti; reaction-diffusion, geometria implicita, densità volumetrica e backend compute restano da fare ([nota](docs/visual-systems.md))
 - Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; tarare il World Engine su un corpus reale e a occhio; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)
 

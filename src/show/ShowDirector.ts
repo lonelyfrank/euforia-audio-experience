@@ -19,6 +19,9 @@ const PHRASE_CONFIDENCE = 0.4;
 const CEILING: Readonly<Record<SectionName, number>> = { intro: 0.6, build: 0.7, drop: 1, break: 0.45, outro: 0.5 };
 /** Supporting fixtures stay this far below the protagonist. */
 const SUPPORT = 0.45;
+/** Structure the protagonist may carry per section (everything is kept for the peaks), and a support's share of it. */
+const STRUCTURE: Readonly<Record<SectionName, number>> = { intro: 0.55, build: 0.8, drop: 1, break: 0.6, outro: 0.5 };
+const SUPPORT_STRUCTURE = 0.5;
 /** Intensity of the breath (near blackout) on the last beat before an expected drop. */
 const BREATH = 0.1;
 /** A build expects its drop at the phrase end above this. */
@@ -67,7 +70,7 @@ const EFFECT_IDS: readonly EffectId[] = ['none', 'pulse', 'chase', 'sweep', 'fan
  * Pure logic: no rendering, no DOM; commands go out through a ShowSink.
  */
 export class ShowDirector {
-  readonly slots: SlotPlan[] = [0, 1, 2].map(() => ({ fixture: null, intensity: 0, size: 1, offset: 0, mirror: false, hue: 0, tint: 0 }));
+  readonly slots: SlotPlan[] = [0, 1, 2].map(() => ({ fixture: null, intensity: 0, size: 1, offset: 0, mirror: false, hue: 0, tint: 0, structure: 1 }));
   effect: EffectId = 'none';
   /** The effect actually running (none while the grid is weak). */
   activeEffect: EffectId = 'none';
@@ -210,6 +213,8 @@ export class ShowDirector {
       slot.fixture = chosen[s] ?? null;
       slot.hue = (hue + s) % 3;
       slot.intensity = slot.fixture ? (s === 0 ? ceiling : ceiling * SUPPORT) : 0;
+      // Preset plays the scene as designed; otherwise the section decides how much structure a fixture may carry.
+      slot.structure = this.mode === 'preset' ? 1 : STRUCTURE[this.section] * (s === 0 ? 1 : SUPPORT_STRUCTURE);
       slot.mirror = s > 0 && !asymmetric;
       slot.offset = s === 0 ? 0 : asymmetric ? (s === 1 ? 0.18 : -0.08) : s === 1 ? 0.15 : -0.15;
       slot.size = s === 0 ? 1 : 0.8;

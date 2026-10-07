@@ -32,6 +32,12 @@ export interface SlotPlan {
   hue: number;
   /** 0..1: lean toward the fixture's second hue, varied per phrase. */
   tint: number;
+  /**
+   * 0..1: how much structure the fixture may carry (how many of a visual world's primitive systems, how complex): the
+   * protagonist of a drop everything, a quiet section or a supporting fixture less. A ceiling, not a command: what
+   * shows under it is the sound's doing.
+   */
+  structure: number;
 }
 
 /** What the show reads each frame (capture-clock times; see the analysis frame). */

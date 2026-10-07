@@ -13,6 +13,7 @@ export const FIXTURES: readonly FixtureSpec[] = [
   { id: 'particle-field', cost: 1, affinity: { intro: 0.5, build: 0.8, drop: 0.9, break: 0.5, outro: 0.6 } },
   { id: 'oscilloscope', cost: 0.9, affinity: { intro: 0.9, build: 0.6, drop: 0.5, break: 0.7, outro: 0.7 } },
   { id: 'spectral-matter', cost: 1.2, affinity: { intro: 0.7, build: 0.9, drop: 0.9, break: 0.7, outro: 0.7 } },
+  { id: 'matter-field', cost: 1.2, affinity: { intro: 0.75, build: 0.9, drop: 0.95, break: 0.75, outro: 0.7 } },
   { id: 'spectrum', cost: 0.9, affinity: { intro: 0.7, build: 0.7, drop: 0.8, break: 0.6, outro: 0.6 } },
 ];
 

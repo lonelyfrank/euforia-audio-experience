@@ -71,13 +71,11 @@ export function packWaves(a: Float32Array, b: Float32Array, waves: WaveField, no
 const defines = ORDER.map((key, i) => `#define F_${key.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()} uField[${i}]`).join('\n');
 
 /**
- * GLSL ES 3.00. Needs `uniform float uField[FIELD_VALUES]; uniform vec4 uWaveA[MAX_WAVES], uWaveB[MAX_WAVES];`
- * (declared here) and `DETAIL` defined to 1 for the second turbulence octave.
- * `home` = seeded direction × layer (xyz) + band affinity (w); `phase` = the particle's seed 0..1.
- * `prev`/`next` are the strand neighbours' positions, `links` whether each exists.
- * `anchor` = where the element's form wants it (xyz) and how firmly (w, 0 = free matter).
+ * GLSL ES 3.00: what every reader of the fields shares — the packed uniforms (`uField`, `uWaveA`, `uWaveB`, declared
+ * here), their names (`F_*`), the disordered flow and the radius a layer is held at. The field law below and the laws
+ * of what is not simulated matter (fields/flowLaw.ts) both start from it, so they read the same world.
  */
-export const fieldLawGlsl = /* glsl */ `
+export const fieldHeaderGlsl = /* glsl */ `
 uniform float uField[${FIELD_VALUES}];
 uniform vec4 uWaveA[${MAX_WAVES}];
 uniform vec4 uWaveB[${MAX_WAVES}];
@@ -94,7 +92,15 @@ float layerRadius(float layer) {
   float shell = 0.55 + 0.3 * min(floor(layer * 3.0), 2.0);
   return F_RADIUS * mix(0.3 + 0.95 * layer, shell, F_GATHER);
 }
+`;
 
+/**
+ * GLSL ES 3.00. Needs `DETAIL` defined to 1 for the second turbulence octave.
+ * `home` = seeded direction × layer (xyz) + band affinity (w); `phase` = the particle's seed 0..1.
+ * `prev`/`next` are the strand neighbours' positions, `links` whether each exists.
+ * `anchor` = where the element's form wants it (xyz) and how firmly (w, 0 = free matter).
+ */
+export const fieldLawGlsl = /* glsl */ `${fieldHeaderGlsl}
 vec3 bondPull(vec3 P, vec3 neighbour) {
   vec3 d = neighbour - P;
   float len = length(d);

@@ -1,0 +1,32 @@
+{
+  "name": "Matter Field",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 50,
+    "distance": 4.6,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.55,
+    "radius": 0.5,
+    "threshold": 0.12
+  },
+  "visual": {
+    "count": 60000,
+    "seed": 20261007,
+    "pointSize": 1.6,
+    "exposure": 0.2,
+    "links": 0.25,
+    "facets": 0.5,
+    "tilt": 0.5,
+    "filaments": 112,
+    "segments": 24,
+    "nodes": 132,
+    "surface": 36
+  }
+}

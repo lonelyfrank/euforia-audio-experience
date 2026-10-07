@@ -9,6 +9,9 @@ import { WorldTrace } from '../../world/WorldTrace';
 import type { ExperienceSnapshot } from '../../experience/types';
 import { MORPHOLOGY_KEYS } from '../../morphology/SoundMorphology';
 import { matterLab, type FormPin } from '../../render-systems/forms/MatterForms';
+import { GEOMETRY_KEYS, SIGNED_TRAITS } from '../../visual-engine/geometry/GeometryState';
+import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
+import { worldLab } from '../../visual-engine/VisualWorld';
 import { createMaterial, deriveMaterial, MATERIAL_KEYS } from '../../render-systems/materials/VisualMaterial';
 
 /*
@@ -151,7 +154,12 @@ const MATTER_TOP = WORLD_TOP + WORLD_ROWS * ROW + 6;
 const MORPHOLOGY_ROWS = Math.ceil(MORPHOLOGY_KEYS.length / 2);
 const MATERIAL_ROWS = Math.ceil(MATERIAL_KEYS.length / 2);
 const MATTER_ROWS = 1 + MORPHOLOGY_ROWS + 1 + MATERIAL_ROWS + 4;
-const HEIGHT = MATTER_TOP + MATTER_ROWS * ROW;
+const WORLD_ENGINE_TOP = MATTER_TOP + MATTER_ROWS * ROW + 6;
+/** Visual World block: title, the geometry traits beyond the material as paired bars, the primitives, the fields. */
+const GEOMETRY_TRAITS = GEOMETRY_KEYS.filter((key) => !(MATERIAL_KEYS as readonly string[]).includes(key));
+const GEOMETRY_ROWS = Math.ceil(GEOMETRY_TRAITS.length / 2);
+const WORLD_ENGINE_ROWS = 1 + GEOMETRY_ROWS + 3;
+const HEIGHT = WORLD_ENGINE_TOP + WORLD_ENGINE_ROWS * ROW;
 const FORM_PINS: readonly FormPin[] = ['auto', 'particles', 'wave', 'harmonic'];
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
@@ -192,12 +200,16 @@ export function installDebugOverlay(app: App): () => void {
   const query = new URLSearchParams(location.search);
   const pin = query.get('matter') as FormPin | null;
   if (pin && FORM_PINS.includes(pin)) matterLab.form = pin;
+  // ?primitives=matter,surface: a visual world shows exactly these primitive systems, whatever the sound.
+  const only = query.get('primitives');
+  if (only) worldLab.only = new Set(only.split(',').filter(Boolean));
   if (query.has('debug')) toggle();
   return () => {
     window.clearInterval(record);
     window.removeEventListener('keydown', onKey);
     overlay?.dispose();
     matterLab.form = 'auto';
+    worldLab.only = null;
   };
 }
 
@@ -517,6 +529,7 @@ class DebugOverlay {
 
     this.drawWorld(e);
     this.drawMatter(e);
+    this.drawVisualWorld();
 
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(
@@ -591,6 +604,38 @@ class DebugOverlay {
       `GPU frame: ${d.calls} draw calls · ${d.triangles} triangles · ${d.points} points · ${d.lines} lines · ${memory.geometries} geometries · ${memory.textures} textures` +
         ` · ${this.app.directionDebug.renderer.info.programs?.length ?? 0} programs · quality ${this.app.directionDebug.qualityTier}`,
       0, MATTER_TOP + ROW * row);
+  }
+
+  /**
+   * The protagonist's visual world, when it is one (docs/visual-engine.md): its structural budget, the geometry the
+   * sound asks for, how present each primitive is and what it submits, and the fields they all share.
+   */
+  private drawVisualWorld(): void {
+    const { ctx } = this;
+    const scene = this.app.directionDebug.current?.visualizer;
+    ctx.fillStyle = COLORS.dim;
+    if (!(scene instanceof RecipeVisualizer)) {
+      ctx.fillText('Visual World · the protagonist is a legacy scene (no world, no primitives)', 0, WORLD_ENGINE_TOP);
+      return;
+    }
+    const world = scene.world, d = world.debug, g = world.mapper.state;
+    ctx.fillText(
+      `Visual World · recipe ${world.recipe.id} · entropy budget ${d.budget.toFixed(2)} (ceiling ${d.ceiling.toFixed(2)}) · ${d.present}/${d.primitives} primitives` +
+        ` · ${d.elements} elements · ${d.vertices} vertices${worldLab.only ? ` · pinned to ${[...worldLab.only].join(', ')}` : ''}`,
+      0, WORLD_ENGINE_TOP);
+    let row = 1;
+    GEOMETRY_TRAITS.forEach((key, i) => this.bar(SIGNED_TRAITS.includes(key) ? `± ${key}` : key, COLORS.tempo, g[key], (i % 2) * (COLUMN + GAP), WORLD_ENGINE_TOP + ROW * (row + (i >> 1))));
+    row += GEOMETRY_ROWS;
+    ctx.fillStyle = COLORS.level;
+    ctx.fillText(
+      `Primitives ${world.mounted.map((m) => `${m.slot.id} ${m.presence.value > 0.004 ? `${Math.round(m.presence.value * 100)}%` : 'off'} ${m.primitive.vertices}v`).join(' · ')}`,
+      0, WORLD_ENGINE_TOP + ROW * row++);
+    const f = world.fields;
+    const active = (Object.keys(f) as (keyof typeof f)[]).filter((key) => key !== 'turn' && !key.endsWith('Scale') && Math.abs(f[key]) > 0.01).map((key) => `${key} ${f[key].toFixed(1)}`);
+    const half = Math.ceil(active.length / 2);
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(`Fields ${active.slice(0, half).join(' · ')}`, 0, WORLD_ENGINE_TOP + ROW * row++);
+    ctx.fillText(`       ${active.slice(half).join(' · ')} · fronts ${d.waves} · GPU budget ${this.app.show.budget.toFixed(1)} units`, 0, WORLD_ENGINE_TOP + ROW * row);
   }
 
   private trace(values: Float32Array, color: string): void {

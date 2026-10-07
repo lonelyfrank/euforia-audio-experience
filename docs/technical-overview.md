@@ -1,6 +1,6 @@
 # Euforia-Audio-Experience — scheda tecnica e audit
 
-Aggiornata il **7 ottobre 2026**. Il [README](../README.md) è la fonte di verità per
+Aggiornata il **7 ottobre 2026** (Visual Engine). Il [README](../README.md) è la fonte di verità per
 funzionalità, avvio e architettura; questa scheda contiene i dettagli operativi per
 chi modifica il progetto. [experience-engine.md](experience-engine.md) conserva
 le decisioni e misure delle fasi precedenti. Il prodotto usa solo sorgenti live;
@@ -11,12 +11,15 @@ il vecchio supporto file non esiste più.
 Capture stereo → DSP fisico/percettivo/musicale Rust → tutti gli hop del wire →
 ExperienceEngine → memoria/narrativa → ExperiencePlanner → VisualIntent →
 **WorldEngine → WorldState persistente** (forze, impulsi, energia; estrapolato al
-tempo udito) → ShowDirector (rappresentazione) / VisualDirector + WorldView (per layer)
-→ scene che interpretano il mondo (anche componendo i [Visual Systems](visual-systems.md)) → composizione GPU.
+tempo udito) → ShowDirector (rappresentazione, struttura per fixture) / VisualDirector + WorldView (per layer)
+→ scene che interpretano il mondo: forme proprie (legacy) oppure **recipe** di un mondo visuale
+(`SonicGeometryMapper` → `GeometryState` → primitive che condividono campi, fronti e materiale:
+[Visual Engine](visual-engine.md)) → composizione GPU.
 
 Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-planner.md),
 [fisica](physics-engine.md), [World Engine](world-engine.md), [integrazione scene](visual-director.md),
-[Visual Systems e Spectral Matter](visual-systems.md), [Matter Engine](matter-engine.md).
+[Visual Systems e Spectral Matter](visual-systems.md), [Matter Engine](matter-engine.md),
+[Visual Engine](visual-engine.md), [Visual Grammar](visual-grammar.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
 indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
@@ -41,11 +44,12 @@ frontend, backend e WASM della stessa revisione.
 | Fisica | `physics/ResonantPhysics.ts`, `physics/primitives.ts`, `dynamics/` | Dodici modi smorzati e otto impulsi propaganti (campo modale condiviso); primitive esatte (oscillatore, momento, inviluppo); riuso della matrice delle molle, separazione luce/geometria |
 | Interpretazione grafica | `audio/interpretation/`, `audio/visual-response/` | Un solo MusicInterpreter, import storico VisualResponse compatibile; ruoli, presenza, memoria e contesto |
 | Tempo / dinamica | `timing/`, `dynamics/` | Capture→host→tempo percepito; molle/follower 240 Hz, impulsi analitici, gate e rate limit condivisi |
-| Scelte dello show | `show/` | Preset/Hybrid/Free, affinità tra otto scene, ritorni di motivo, tetto del planner e limiti GPU |
+| Scelte dello show | `show/` | Preset/Hybrid/Free, affinità tra nove scene, ritorni di motivo, tetto del planner e limiti GPU; struttura per fixture (`SlotPlan.structure` → `SceneClock.structure`): un tetto per sezione, mai una scelta di primitive |
 | Direzione della scena | `director/` | Intenti e fisica × Mood × Experience × capacità; un VisualDirector per Layer, separato da ShowDirector |
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
+| Visual Engine | `visual-engine/` | Mondo visuale persistente: `SonicGeometryMapper` (morfologia, mondo, planner, forma dei cicli delle voci → `GeometryState`, 36 tratti continui), `MaterialSystem` (luce comune), `VisualWorld` (campi e fronti impacchettati una volta, budget strutturale, presenze, memoria, osservatore), cinque primitive con legge GLSL + riferimento CPU, `WorldRecipe` e `RecipeVisualizer` (adattatore verso `Layer`: recipe e scene legacy convivono) |
 | Visual Systems | `render-systems/` | Vocabolario condiviso: `VisualMaterial` (mondo + morfologia), campi spaziali, legge dei campi e legge delle forme (GLSL + riferimento CPU), forme della materia (storia della waveform, rete dei parziali), onde datate, materia GPU e probe CPU, disegno a punti / legami / faccette, memoria visiva, osservatore; nessuno stato musicale, solo storia di rendering |
-| Scene | `visualizers/` | Sette scene interpretano il mondo (`modulation.world`): moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. Spectral Matter (sperimentale) non ha forma propria: orchestra i Visual Systems |
+| Scene | `visualizers/` | Sei scene legacy interpretano il mondo (`modulation.world`) in una forma propria: moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. Tre sono recipe: Spectral Matter (la sola materia), Resonant Field (la sola membrana; `?legacy=resonant-field` in DEV monta la precedente), Matter Field (tutte le primitive) |
 | Validazione | `validation/replay.ts`, overlay DEV | Replay di WAV locali sul percorso live (`npm run replay`), metriche comportamentali e tracce; Shift+T esporta la traccia di sessione |
 | Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, `direction` Auto/Manual risolta da `resolveDirection`, notifiche/salvataggi solo se un valore cambia |
 | Build | `package.json`, `vite.config.ts`, Cargo workspace, `.github/workflows/ci.yml` | Nessuna nuova dipendenza; CI su check frontend, core Rust, layout e WASM; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
@@ -128,6 +132,22 @@ identità nel tempo li riconosce per altezza, come `HarmonicForm`. Le sorgenti d
 forme (storia del segnale, nodi) sono storia di rendering: avanzano col frame, con
 follower esatti, e non decidono nulla di musicale. `matterLab` esiste solo in DEV.
 Dettagli, misure e limiti in [matter-engine](matter-engine.md).
+
+**Visual Engine.** Una recipe è una configurazione (quali primitive, in che ordine la
+complessità le fa comparire), mai una sequenza né un ramo su un evento. Una primitiva
+legge solo `frame.geometry`, `frame.fields`, `frame.look` e gli uniform condivisi
+(`uField`, `uWaveA`, `uWaveB`, `tVoices`): niente bande, beat, spettri, niente rilevamento.
+`GeometryState` e `MaterialState` sono letture per layer e per frame, non stato del
+mondo: nuove proprietà musicali entrano a monte (morfologia, Experience, World), mai lì.
+Le primitive restano montate e sfumano con la loro presenza: non si creano né si
+distruggono risorse GPU per mostrare o nascondere una struttura. Le leggi delle primitive
+senza stato (`flowLaw.ts`, `filamentPoint`, `nodePoint`, `surfaceHeight`, `ringPoint`)
+esistono in GLSL e in TypeScript come la legge dei campi: si cambiano insieme e il
+riferimento CPU è ciò che i test provano. `fieldHeaderGlsl` è un pezzo del testo della
+legge dei campi: modificarlo significa modificare la legge (parità da ripetere).
+`worldLab` e `?primitives=` / `?legacy=` esistono solo in DEV. Dettagli, misure e limiti
+in [visual-engine](visual-engine.md); il significato di ogni tratto in
+[visual-grammar](visual-grammar.md).
 
 **Visual Systems.** `render-systems/` non contiene significato musicale: legge
 `WorldView`, snapshot, intenti e lo stream di eventi, e tiene solo storia di rendering
@@ -230,6 +250,12 @@ Se `cargo test` segnala `layout.ts is stale` senza differenze in git, il binario
 test in `target/` è stato compilato sotto un altro percorso della repo (il percorso è
 incorporato a compile time): ricompilare con `touch native/analysis/tests/wire.rs`.
 
+Visual Engine (7 ottobre 2026, sera): nessuna modifica a DSP, wire o WASM. Esiti, misure e
+limiti in [visual-engine](visual-engine.md) §7 e §9: **323 test frontend in 46 file** (51
+nuovi), shader delle cinque primitive compilati a High / Medium / Low su Intel UHD,
+Resonant Field migrata confrontata con la precedente su otto fotogrammi; non provati
+musica reale, movimento nel tempo, parità GPU ↔ CPU delle leggi nuove, app desktop.
+
 Visual Systems / Spectral Matter (6 ottobre 2026): esiti, misure e limiti in
 [visual-systems](visual-systems.md) §8–9. Matter Engine (7 ottobre 2026): parziali sul
 wire (record frame 295 → 343 valori, WASM ricostruito con rustc 1.98.1 upstream, lo stesso
@@ -257,6 +283,9 @@ I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 | Alta | Benchmark CPU/GPU ripetibile, a qualità e risoluzione fisse | Tempi separati cattura/DSP TS/WASM/Director/pass GPU, p50/p95/p99 e memoria, confronto prima/dopo sullo stesso dispositivo |
 | Alta | Recupero dopo tab nascosta o backlog browser in WebView reali | La politica esiste (silenzio ≤ 1 s, poi epoch; staging ~3 s): verificarla in WebView2/WebKitGTK con stalli 0,5–10 s e timer dei worker in background |
 | Media | Unificazione graduale DSP TS/Rust | Corpus reale e sintetico, stessa waveform/pitch/presenza e latenza misurata; evitare doppia analisi senza spezzare i contratti |
+| Alta | Visual Engine: Matter Field su musica reale e a occhio | Affinità, costi, guadagno del budget ed esposizioni tarati su un corpus; ogni struttura leggibile da sola e insieme; costo a 1080p e in WebView2 su macchina scarica |
+| Alta | Parità GPU ↔ CPU delle leggi nuove | Un `runLawParity()` che valuta filamenti, nodi, membrana e anelli per texel e li confronta con il riferimento CPU, come `runParity()` per la materia |
+| Media | Migrare le scene legacy a recipe | Particle Field e Galaxy con `MatterPrimitive`; anelli del Tunnel dai fronti condivisi; `SignalTracePrimitive` dall'Oscilloscope; superficie fluida dal Liquid; **Spectrum resta com'è** |
 | Alta | Matter Engine su musica reale | Tono, accordo, mix denso e percussioni danno corpi diversi e leggibili a occhio; quote delle forme, tempi dei nodi ed esposizione tarati su un corpus; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Spectral Matter su musica reale | Le nove domande percettive di [visual-systems](visual-systems.md) con un corpus vario e occhi; costo GPU a 1080p e in WebView2; poi riuso di `FeedbackPass`/`WaveField` nelle scene esistenti |
 | Alta | Taratura del World Engine su musica reale | `npm run replay` su un corpus locale vario (casi difficili inclusi), poi prova visiva per scena; nessun priore di genere |

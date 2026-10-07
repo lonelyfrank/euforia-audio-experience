@@ -52,6 +52,14 @@ export const createFormState = (): FormState => ({
 const unit = (x: number): number => (x > 0 ? (x < 1 ? x : 1) : 0);
 
 /**
+ * 0..1: how far the world's last release still holds structures open. A release is the world's own fact (its
+ * strength and age): everything that has a structure opens by this much and closes again, together.
+ */
+export function releaseFracture(view: Readonly<WorldView>): number {
+  return unit(1.6 * view.releaseStrength * Math.exp(-Math.max(0, view.releaseAge) / FRACTURE_TAU));
+}
+
+/**
  * The forms a body of matter can take, their sources and how much of the
  * matter each claims. Sound → material → form: a continuous material makes the
  * signal's own curve (the more periodic, the more closed; the steadier, the
@@ -94,7 +102,7 @@ export class MatterForms {
     s.depth = radius * (0.5 + 1.3 * unit(view.openness) + 0.5 * unit(view.speed));
     s.scale = 1;
     // What a release gave the world is still its own fact (strength and age): the forms open by it and close again.
-    s.fracture = unit(1.6 * view.releaseStrength * Math.exp(-Math.max(0, view.releaseAge) / FRACTURE_TAU));
+    s.fracture = releaseFracture(view);
     for (const key of KEYS) if (!Number.isFinite(s[key])) s[key] = REST[key];
   }
 

@@ -6,10 +6,12 @@ import { EventStream } from '../../experience/EventStream';
 import { ExperienceEngine } from '../../experience/ExperienceEngine';
 import { createIntents, createSnapshot, createState, type ExperienceSnapshot } from '../../experience/types';
 import type { SceneClock } from '../../types/visualizer';
-import { SpectralMatterMapping } from '../../visualizers/spectral-matter/mapping';
+import { SonicGeometryMapper } from '../../visual-engine/geometry/SonicGeometryMapper';
 import { WorldEngine } from '../../world/WorldEngine';
 import type { WorldState } from '../../world/WorldState';
 import { WorldView } from '../../world/WorldView';
+import { createFields, deriveFields } from '../fields/SpatialFields';
+import { MatterForms } from '../forms/MatterForms';
 import { WaveField } from '../waves/WaveField';
 import { MAX_VELOCITY, substeps } from './matterLaw';
 import { MatterProbe, type MatterMeasure } from './MatterProbe';
@@ -21,13 +23,27 @@ const differing = (a: Float32Array, b: Float32Array): number => a.reduce((n, val
 const NEUTRAL = { motion: 1, expansion: 1, turbulence: 1 };
 const SEED = 7;
 
+/** What a visual world derives for its matter each frame (VisualWorld + MatterPrimitive), without anything of the GPU. */
+function worldMapping() {
+  const mapper = new SonicGeometryMapper(), fields = createFields(), forms = new MatterForms();
+  return {
+    fields, forms, material: mapper.state,
+    update(dt: number, view: WorldView, audio: AudioAnalyzer['frame'], response: VisualResponse['frame'], _modulation: undefined, clock: SceneClock): void {
+      const snapshot = clock.experience;
+      const geometry = mapper.update(dt, view, audio, response, snapshot);
+      deriveFields(fields, view, geometry, snapshot?.intents);
+      forms.update(dt, view, geometry, fields.radius, audio, response, snapshot);
+    },
+  };
+}
+
 /**
  * The scene's CPU path without a GPU: presented world → view → mapping (fields)
  * → dated fronts → the matter (reference laws). `frame` advances everything by
  * one rendered frame at heard time `now`.
  */
 function stage(count = 256, seed = SEED) {
-  const view = new WorldView(), mapping = new SpectralMatterMapping(), waves = new WaveField(), probe = new MatterProbe(count, seed, true, mapping.forms);
+  const view = new WorldView(), mapping = worldMapping(), waves = new WaveField(), probe = new MatterProbe(count, seed, true, mapping.forms);
   const audio = new AudioAnalyzer().frame, response = new VisualResponse().frame;
   const clock: SceneClock = { time: 0, hits: { times: new Float64Array(8), strengths: new Float64Array(8), count: 0, size: 8 } as never, hitScale: 1 };
   const frame = (now: number, dt: number, snapshot: ExperienceSnapshot | undefined, events: EventStream): MatterMeasure => {

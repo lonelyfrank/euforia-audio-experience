@@ -3,6 +3,13 @@
 Data: 6 ottobre 2026 (aggiornato il 7: vedi nota). Estende [world-engine](world-engine.md) e
 [visual-director](visual-director.md).
 
+> **Nota del 7 ottobre 2026 (sera).** L'orchestrazione descritta ai §2, §7 e §11 è ora del
+> [Visual Engine](visual-engine.md): `VisualWorld` deriva campi, fronti, materiale e memoria
+> una volta per frame e li dà a primitive con un'interfaccia comune; Spectral Matter è una
+> recipe. I sistemi di base descritti qui sono gli stessi; `fieldLaw.ts` espone in più
+> `fieldHeaderGlsl` e, accanto, `flowLaw.ts` legge gli stessi campi per ciò che non è
+> materia simulata.
+>
 > **Nota del 7 ottobre 2026.** Il [Matter Engine](matter-engine.md) estende questi sistemi:
 > `VisualMaterial` è diventato `VisualMaterial` (tre proprietà in più, dalla morfologia del
 > suono), la legge dei campi riceve un'àncora dalla nuova legge delle forme (`forms/`), la

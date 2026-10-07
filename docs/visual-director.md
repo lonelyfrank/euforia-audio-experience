@@ -1,5 +1,13 @@
 # Visual Director e grammatica dell’esperienza
 
+> **Nota del 7 ottobre 2026.** Il tratto finale della pipeline ha un livello in più: una
+> scena può essere una *recipe* di un mondo visuale ([Visual Engine](visual-engine.md)),
+> in cui `SonicGeometryMapper` traduce suono e mondo in `GeometryState`
+> ([grammatica](visual-grammar.md)) e primitive condivise la interpretano. Il
+> `VisualDirector` non cambia: resta uno per layer, e una recipe riceve da lui la stessa
+> `ModulationState` (luce, camera, persistenza, emissione, `WorldView`). Resonant Field e
+> Spectral Matter sono recipe; le altre scene restano come descritto qui.
+
 ## Contratto corrente — 5 ottobre 2026
 
 `ExperienceEngine` interpreta ogni hop acustico e conserva snapshot propri.
@@ -174,6 +182,7 @@ Auto osserva comportamento: ritmo affidabile e percussione → Pulse/Reactive; c
 1. **Mood:** aggiungere l'id in `director/types.ts` e una definizione in `director/profiles.ts`. Partire da `NEUTRAL`, cambiare solo le proprietà significative. Compare automaticamente nel ring; oltre gli otto mood iniziali valutare paginazione/spaziatura.
 2. **Experience:** aggiungere id e definizione nella stessa coppia di file. Definire moltiplicatori, attack/release e gate Minimal. Nessun nuovo ramo nelle scene.
 3. **Scena:** seguire README; dichiarare `direction.capabilities` in `index.ts` e consumare il quinto parametro opzionale `ModulationState` in `update`. Convertire 0–1 in unità della scena. Non ricomputare FFT, presenza o classificazioni musicali. Lasciare un fallback per gli host a quattro argomenti.
+   Per una scena fatta di primitive condivise invece che di una forma propria: `defineRecipe` ([Visual Engine](visual-engine.md) §12); la recipe non legge `ModulationState` da sé, lo fa il `VisualWorld` (gate della luce, emissione, moto della camera, persistenza).
 4. **Mapping:** aggiungere route in `direction.mappings`, oppure in `DEFAULT_ROUTES` per un default comune. Un target custom sostituisce le sue route predefinite, non si somma accidentalmente ad esse. Per una nuova feature aggiungere la misura/interpretazione una sola volta a monte e un test deterministico.
 
 ## Prestazioni e verifica

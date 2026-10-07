@@ -109,6 +109,11 @@ export interface SceneClock {
   hits: HitLog;
   /** How much this scene (and the mood) takes transients: multiplies hit strengths. */
   hitScale: number;
+  /**
+   * 0..1: how much structure the show lets this fixture carry (the protagonist of a drop everything, a supporting
+   * fixture or a quiet section less). A visual world takes it as the ceiling of its structural budget; absent = 1.
+   */
+  structure?: number;
 }
 
 /** What the engine hands to a visualizer when it is mounted. */

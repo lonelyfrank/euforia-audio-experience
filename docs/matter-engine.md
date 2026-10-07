@@ -5,6 +5,15 @@ onde, memoria visiva) e [world-engine](world-engine.md). È la prima milestone d
 refactor "3D Audio-Matter Rendering": non una scena nuova, ma tre strati nuovi fra il
 DSP e la GPU, provati dentro la scena-laboratorio **Spectral Matter**.
 
+> **Nota del 7 ottobre 2026 (sera).** Il [Visual Engine](visual-engine.md) generalizza
+> questa milestone: `SpectralMatterMapping` non esiste più (materiale, campi ed emissione
+> li derivano `SonicGeometryMapper`, `VisualWorld` e `MaterialSystem`; la materia è la
+> `MatterPrimitive`), Spectral Matter è una recipe con la sola materia e il suo
+> comportamento è invariato (stessi test, stessi uniform). `matterQuality` vive in
+> `visual-engine/primitives/MatterPrimitive.ts`. Leggi, forme, misure e limiti descritti
+> qui restano validi; al §9 la colonna "componente riusabile" è ora in parte realizzata
+> (membrana di Resonant Field → `WaveSurfacePrimitive`).
+
 > La musica non controlla una scena: modifica un mondo. Ciò che si vede emerge dal
 > comportamento di una materia persistente in uno spazio 3D.
 

@@ -151,6 +151,15 @@ interpreta il mondo che continua a evolvere. I supporti dello `ShowDirector` (fi
 slot) leggono lo stesso mondo: sono manifestazioni causalmente legate, non visualizzatori
 indipendenti che reagiscono separatamente allo stesso beat.
 
+### Dentro un mondo visuale (7 ottobre 2026)
+
+Il crossfade vale fra scene diverse. Dentro una recipe del [Visual Engine](visual-engine.md)
+non c'è taglio da nascondere: lo stesso `WorldState` muove primitive che restano montate
+(particelle, filamenti, membrana, grafo, fronti) e ne cambia la presenza con il budget
+strutturale; una struttura si forma, si rompe su un rilascio e si richiude senza che
+nulla venga ricreato. Il mondo non ha ricevuto campi nuovi: `GeometryState` è una lettura
+per layer (come `WorldView`), non stato del `WorldEngine`.
+
 ## ShowDirector e VisualDirector
 
 `ShowDirector` decide rappresentazione, composizione, contrasto e continuità; non fabbrica
@@ -159,6 +168,12 @@ composizione con la pressione al downbeat (target, non impulsi). Strobe/chase/pu
 impulsi **luminosi** e passano tutti dal `FlashGuard`. `VisualDirector` è il direttore della
 fotografia: luce, bloom, camera, persistenza, emissione, deformazione delle voci e guadagni
 del mood sul mondo.
+
+Dal 7 ottobre 2026 `ShowDirector` decide anche quanta **struttura** può portare ogni
+fixture (`SlotPlan.structure`: 0,55 / 0,8 / 1 / 0,6 / 0,5 per intro / build / drop / break /
+outro, la metà ai supporti, 1 in Preset). È un tetto, non un comando: arriva alla scena
+come `SceneClock.structure` e un mondo visuale lo usa come limite del suo budget; quali
+primitive compaiano sotto quel tetto lo decide il suono. Le scene legacy lo ignorano.
 
 ## Silenzio, accessibilità, qualità
 

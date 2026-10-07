@@ -46,7 +46,7 @@ export class RigController {
   /** The fixture mounted in each slot, and one source object per scene (stable, so slots can compare). */
   private readonly mounted: (string | null)[] = Array.from({ length: SLOTS }, () => null);
   private readonly sources = new Map<string, SceneSource>();
-  private readonly slotParams: SlotParams = { weight: 1, size: 1, offset: 0, mirror: false, flash: 0, tint: 0 };
+  private readonly slotParams: SlotParams = { weight: 1, size: 1, offset: 0, mirror: false, flash: 0, tint: 0, structure: 1 };
   private session = -1;
   /** Position in the experience event stream (heard time, arrivals seen). */
   private readonly eventCursor: EventCursor = { time: -Infinity, seq: 0 };
@@ -160,6 +160,7 @@ export class RigController {
       p.mirror = plan.mirror;
       p.flash = this.dynamics.value(c.strobe);
       p.tint = Math.max(0, this.dynamics.value(c.tint));
+      p.structure = plan.structure;
       this.render.setSlotParams(s, p);
     }
   }

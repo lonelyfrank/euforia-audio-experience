@@ -41,6 +41,8 @@ export interface SlotParams {
   flash: number;
   /** 0..1: how far the fixture's colours lean toward its second hue (the phrase's colour). */
   tint: number;
+  /** 0..1: how much structure the show lets the fixture carry (handed to the scene, not to the composition). */
+  structure: number;
 }
 
 /** A slot of the rig: its fixture (with the previous one while they crossfade) and parameters. */
@@ -49,7 +51,7 @@ class Slot {
   previous: Layer | null = null;
   mix = 1;
   hue = 0;
-  readonly params: SlotParams = { weight: 0, size: 1, offset: 0, mirror: false, flash: 0, tint: 0 };
+  readonly params: SlotParams = { weight: 0, size: 1, offset: 0, mirror: false, flash: 0, tint: 0, structure: 1 };
   /** The palette in this slot's hue order (the lead hue first). */
   readonly palette: [Color, Color, Color] = [new Color(), new Color(), new Color()];
 
@@ -207,7 +209,7 @@ export class RenderEngine {
   /** Updates and renders one layer and gives it a place in the composition; returns the places used. */
   private drawLayer(layer: Layer | null, slot: Slot, amount: number, used: number, input: SceneInput, direction: DirectionSettings, dt: number): number {
     if (!layer) return used;
-    if (!this.paused) layer.update(input, direction, dt, this.time + dt);
+    if (!this.paused) layer.update(input, direction, dt, this.time + dt, slot.params.structure);
     // Keep CPU state in sync, but spend GPU time only on layers the compositor can see.
     if (used >= MAX_LAYERS || amount * slot.params.weight <= 0) return used;
     layer.render(dt);

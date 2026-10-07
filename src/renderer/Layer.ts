@@ -102,7 +102,8 @@ export class Layer {
     }
   }
 
-  update(input: SceneInput, settings: DirectionSettings, dt: number, time: number): void {
+  /** `structure` 0..1: how much structure the show lets this fixture carry (see SceneClock.structure). */
+  update(input: SceneInput, settings: DirectionSettings, dt: number, time: number, structure = 1): void {
     const rig = input.rig;
     if (rig?.timed) {
       this.clock.time = rig.time;
@@ -120,6 +121,7 @@ export class Layer {
       clock.experience = rig.experience;
       clock.events = rig.events;
       clock.light = rig.experienceLight ?? 0;
+      clock.structure = structure;
     }
     this.visualizer.update(input.audio, dt, time, this.director.response!, modulation, clock);
     if (this.bloom) this.bloom.strength = this.source.preset.bloom.strength * (0.25 + 1.5 * modulation.bloom);
