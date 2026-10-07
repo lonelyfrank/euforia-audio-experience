@@ -7,6 +7,9 @@ import { SECTION_NAMES } from '../../audio/features/decode';
 import type { AudioEvent, EventCursor } from '../../experience/EventStream';
 import { WorldTrace } from '../../world/WorldTrace';
 import type { ExperienceSnapshot } from '../../experience/types';
+import { MORPHOLOGY_KEYS } from '../../morphology/SoundMorphology';
+import { matterLab, type FormPin } from '../../render-systems/forms/MatterForms';
+import { createMaterial, deriveMaterial, MATERIAL_KEYS } from '../../render-systems/materials/VisualMaterial';
 
 /*
  * Development-only audio/visual debug overlay. Shows the analyzer output
@@ -17,6 +20,12 @@ import type { ExperienceSnapshot } from '../../experience/types';
  * never ships in production. While installed it records a session trace
  * (experience, prediction, intents, world at 20 Hz, last 10 minutes);
  * Shift+T downloads it as CSV for inspection after playback.
+ *
+ * The Matter block is the matter engine's laboratory view (docs/matter-engine.md):
+ * the sound's morphology, the visual material derived from it, the state the
+ * protagonist's matter is in, what it submits to the GPU and what the renderer
+ * drew this frame. The second menu (or ?matter=wave|harmonic|particles) pins
+ * the matter to one state, so each experiment can be looked at on its own.
  */
 
 const COLUMN = 310;
@@ -137,7 +146,13 @@ const EXPERIENCE_LINES = 16;
 const WORLD_TOP = EXPERIENCE_TOP + (EXPERIENCE_LINES + 1) * ROW + 6;
 /** World block: title, six rows of paired bars, forces, adapter. */
 const WORLD_ROWS = 9;
-const HEIGHT = WORLD_TOP + WORLD_ROWS * ROW;
+const MATTER_TOP = WORLD_TOP + WORLD_ROWS * ROW + 6;
+/** Matter block: title, morphology and material as paired bars, prediction, the scene's own numbers (two lines), the renderer. */
+const MORPHOLOGY_ROWS = Math.ceil(MORPHOLOGY_KEYS.length / 2);
+const MATERIAL_ROWS = Math.ceil(MATERIAL_KEYS.length / 2);
+const MATTER_ROWS = 1 + MORPHOLOGY_ROWS + 1 + MATERIAL_ROWS + 4;
+const HEIGHT = MATTER_TOP + MATTER_ROWS * ROW;
+const FORM_PINS: readonly FormPin[] = ['auto', 'particles', 'wave', 'harmonic'];
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -174,11 +189,15 @@ export function installDebugOverlay(app: App): () => void {
     if (event.code === 'KeyT') download(`euforia-audio-experience-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, trace.toCsv());
   };
   window.addEventListener('keydown', onKey);
-  if (new URLSearchParams(location.search).has('debug')) toggle();
+  const query = new URLSearchParams(location.search);
+  const pin = query.get('matter') as FormPin | null;
+  if (pin && FORM_PINS.includes(pin)) matterLab.form = pin;
+  if (query.has('debug')) toggle();
   return () => {
     window.clearInterval(record);
     window.removeEventListener('keydown', onKey);
     overlay?.dispose();
+    matterLab.form = 'auto';
   };
 }
 
@@ -216,6 +235,10 @@ class DebugOverlay {
   private readonly tension = new Float32Array(HISTORY);
   private historyTime = 0;
   private head = 0;
+  /** The protagonist's material, derived here from the same world view and snapshot the scene uses. */
+  private readonly material = createMaterial();
+  /** What the renderer drew last frame (its counters are summed over the frame's passes while the overlay is open). */
+  private readonly drawn = { calls: 0, triangles: 0, points: 0, lines: 0 };
 
   constructor(private readonly app: App) {
     this.root = document.createElement('div');
@@ -240,13 +263,25 @@ class DebugOverlay {
     this.ctx = this.canvas.getContext('2d')!;
     this.ctx.scale(dpr, dpr);
 
-    this.root.append(select, this.canvas);
+    const pin = document.createElement('select');
+    pin.style.cssText = select.style.cssText;
+    for (const form of FORM_PINS) pin.append(new Option(`Matter: ${form}`, form));
+    pin.value = matterLab.form;
+    pin.addEventListener('change', () => {
+      matterLab.form = pin.value as FormPin;
+      pin.blur();
+    });
+
+    this.root.append(select, pin, this.canvas);
     document.body.append(this.root);
+    // Per-frame totals instead of the last pass only: the overlay resets the counters itself, once a frame.
+    app.directionDebug.renderer.info.autoReset = false;
     this.rafId = requestAnimationFrame(this.draw);
   }
 
   dispose(): void {
     cancelAnimationFrame(this.rafId);
+    this.app.directionDebug.renderer.info.autoReset = true;
     this.root.remove();
   }
 
@@ -257,6 +292,9 @@ class DebugOverlay {
     this.lastTime = now;
 
     const { ctx } = this;
+    const info = this.app.directionDebug.renderer.info;
+    Object.assign(this.drawn, info.render);
+    info.reset();
     const audio = this.app.audio.frame;
     const response = this.app.audio.visual;
     const music = response.music;
@@ -478,6 +516,7 @@ class DebugOverlay {
     for (let b = 0; b < 24; b++) ctx.fillRect(40 + b * 12, EXPERIENCE_TOP + EXPERIENCE_LINES * ROW - 10, 8, a.erb[b] * 10);
 
     this.drawWorld(e);
+    this.drawMatter(e);
 
     ctx.fillStyle = COLORS.dim;
     ctx.fillText(
@@ -513,6 +552,45 @@ class DebugOverlay {
     );
     const view = this.app.directionDebug.current?.director.world;
     if (view) ctx.fillText(`Adapter (protagonist) travel ${view.travel.toFixed(1)} turn ${view.turn.toFixed(2)} · per frame ${view.dTravel.toFixed(3)} / ${view.dTurn.toFixed(4)} · disorder ${view.disorder.toFixed(2)}`, 0, WORLD_TOP + ROW * 8);
+  }
+
+  /** Sound → material → matter: the morphology heard, the material derived from it, the protagonist's matter and the GPU's work. */
+  private drawMatter(e: ExperienceSnapshot): void {
+    const { ctx } = this;
+    const layer = this.app.directionDebug.current, scene = layer?.visualizer.debug;
+    const state = e.state, m = e.morphology;
+    const share = (key: string) => (scene && key in scene ? `${Math.round(scene[key] * 100)}%` : '–');
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(
+      `Matter · state ${matterLab.form === 'auto' ? 'auto' : `pinned ${matterLab.form}`}: wave ${share('wave')} · harmonic ${share('harmonic')} · particles ${share('free')}` +
+        ` · ${scene?.particles ?? '–'} elements · ${this.frameMs.toFixed(1)} ms (${this.app.directionDebug.measuredFps.toFixed(0)} fps)`,
+      0, MATTER_TOP);
+    let row = 1;
+    MORPHOLOGY_KEYS.forEach((key, i) => this.bar(key, COLORS.mid, m[key], (i % 2) * (COLUMN + GAP), MATTER_TOP + ROW * (row + (i >> 1))));
+    row += MORPHOLOGY_ROWS;
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText('Material (what kind of matter could stand for this sound)', 0, MATTER_TOP + ROW * row++);
+    const view = layer?.director.world;
+    if (view) deriveMaterial(this.material, view, e);
+    MATERIAL_KEYS.forEach((key, i) => this.bar(key, COLORS.high, this.material[key], (i % 2) * (COLUMN + GAP), MATTER_TOP + ROW * (row + (i >> 1))));
+    row += MATERIAL_ROWS;
+    ctx.fillStyle = COLORS.level;
+    ctx.fillText(
+      `Prediction conf ${state.predictionConfidence.toFixed(2)} · build ${state.likelyBuild.toFixed(2)} release ${state.likelyRelease.toFixed(2)} boundary ${state.likelyBoundary.toFixed(2)}` +
+        ` · anticipation ${state.anticipation.toFixed(2)} × ${state.anticipationConfidence.toFixed(2)} → charge ${e.world.forces.charge.toFixed(3)}/s → potential ${e.world.potential.toFixed(2)}`,
+      0, MATTER_TOP + ROW * row++);
+    // What the protagonist reports about its render systems (Spectral Matter: state, forms, fields, fronts, memory, simulation).
+    const entries = scene ? Object.entries(scene).map(([key, value]) => `${key} ${Number.isInteger(value) ? value : value.toFixed(2)}`) : [];
+    const half = Math.ceil(entries.length / 2);
+    ctx.fillText(entries.length ? `Scene ${entries.slice(0, half).join(' · ')}` : 'Scene –', 0, MATTER_TOP + ROW * row++);
+    if (entries.length > 1) ctx.fillText(`      ${entries.slice(half).join(' · ')}`, 0, MATTER_TOP + ROW * row);
+    row++;
+    const d = this.drawn, memory = this.app.directionDebug.renderer.info.memory;
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(
+      `GPU frame: ${d.calls} draw calls · ${d.triangles} triangles · ${d.points} points · ${d.lines} lines · ${memory.geometries} geometries · ${memory.textures} textures` +
+        ` · ${this.app.directionDebug.renderer.info.programs?.length ?? 0} programs · quality ${this.app.directionDebug.qualityTier}`,
+      0, MATTER_TOP + ROW * row);
   }
 
   private trace(values: Float32Array, color: string): void {

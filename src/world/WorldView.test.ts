@@ -66,6 +66,17 @@ describe('world views (scene adapters)', () => {
     expect(view.travel).toBeGreaterThan(1);
   });
 
+  it('exposes the radial velocity as a surge, scaled like the pressure by the mood', () => {
+    const view = new WorldView();
+    const w = { ...new ExperienceEngine().world.state };
+    w.time = 1; w.radius = 0.4; w.radialVelocity = 1.5;
+    view.update(w, { ...NEUTRAL, expansion: 0.5 });
+    expect(view.surge).toBeCloseTo(0.75, 9);
+    expect(view.pressure).toBeCloseTo(0.2, 9);
+    view.update(undefined, NEUTRAL);
+    expect(view.surge).toBe(0);
+  });
+
   it('a new session restarts the deltas instead of jumping across worlds', () => {
     const view = new WorldView();
     const w = { ...new ExperienceEngine().world.state };

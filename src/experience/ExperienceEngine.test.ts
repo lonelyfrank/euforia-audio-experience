@@ -253,3 +253,29 @@ describe('prediction and planner', () => {
     expect(e.planner.intents[INTENT.contract].confidence).toBe(e.state.anticipationConfidence);
   });
 });
+
+describe('sound morphology in the experience', () => {
+  it('is advanced per hop and presented at the heard time, never ahead of it; a new session starts it over', () => {
+    const e = new ExperienceEngine();
+    // 2 s of a clear harmonic tone, then noise.
+    feed(e, 4, (a, t) => {
+      const noise = t > 2;
+      a.harmonicity = noise ? 0.02 : 0.95; a.phaseCoherence = noise ? 0.5 : 0.98; a.phaseDeviation = noise ? 0.5 : 0.02;
+      a.flatness = noise ? 0.95 : 0.02; a.complexChange = noise ? 1 : 0.02; a.timbreConfidence = 1;
+      a.partialLevel.fill(0);
+      if (!noise) for (let i = 0; i < 5; i++) { a.partialHz[i] = 220 * (i + 1); a.partialLevel[i] = 0.9 / (i + 1); }
+    });
+    // The engine has heard the noise; the listener, 2.2 s behind, is still in the tone.
+    expect(e.morphology.state.noisiness).toBeGreaterThan(0.8);
+    const then = e.present(1.8)!.morphology;
+    expect(then.periodicity).toBeGreaterThan(0.8); expect(then.richness).toBeGreaterThan(0.3); expect(then.noisiness).toBeLessThan(0.1);
+    // The presented snapshot is a copy: presenting a later time does not rewrite what a scene still holds by value.
+    const held = { ...then };
+    const now = e.present(4)!.morphology;
+    expect(now.noisiness).toBeGreaterThan(0.8); expect(now.periodicity).toBeLessThan(0.1); expect(now.stability).toBeLessThan(0.2);
+    expect(held.periodicity).toBeGreaterThan(0.8);
+    e.reset();
+    expect(e.morphology.state).toMatchObject({ periodicity: 0, noisiness: 0, stability: 1, confidence: 0 });
+    expect(e.presented.morphology).toMatchObject({ periodicity: 0, noisiness: 0, stability: 1 });
+  });
+});

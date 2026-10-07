@@ -21,10 +21,12 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 - Solo audio dal vivo: niente file né tracce precaricate; in sviluppo c'è un segnale di test sintetico
 - Rust nativo/WASM: analisi stereo multi-risoluzione 512/2048/8192, ERB, loudness con percentili, noise floor per banda, fase, H/P/R, note e ritmo con ipotesi di metro e downbeat previsto; nel browser gira in un worker, mai sul frame loop; TS conserva spettro/waveform/voci grafiche
 - Memoria multiscala, ricorrenza di motivi, narrativa probabilistica con isteresi, trajectory, anticipazione causale, previsione con confidence ed event stream datato sui campioni; grammatica di 14 intenti
-- **World Engine**: un mondo fisico persistente (pressione, momento angolare, avanzamento, bias stereo, eccitazione, turbolenza, coerenza, potenziale, luce) che la musica spinge con forze e impulsi; tutte le sette scene lo interpretano, il cambio di scena non lo azzera, il silenzio lo lascia decadere
+- **World Engine**: un mondo fisico persistente (pressione, momento angolare, avanzamento, bias stereo, eccitazione, turbolenza, coerenza, potenziale, luce) che la musica spinge con forze e impulsi; tutte le scene lo interpretano, il cambio di scena non lo azzera, il silenzio lo lascia decadere
 - Resonant Field: modi di una membrana e onde propagate/riflesse, con intensità distinta dalla complessità; budget DSP indipendente dalla qualità grafica
 - Direction **Auto / Manual**: Auto lascia la regia al sistema; Manual espone 8 mood, 5 modalità Experience, intensità e rig **Preset / Hybrid / Free**. Fino a tre scene simultanee entro il budget grafico, direzione automatica del mood con isteresi
-- 7 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**
+- **Visual Systems** (sperimentale): primitive grafiche condivise — campi spaziali derivati dal mondo, materia particellare simulata su GPU, onde datate sugli eventi, memoria visiva — e la scena-laboratorio **Spectral Matter**, la cui forma emerge dai campi invece di essere disegnata in anticipo
+- **Matter Engine** (sperimentale, prima milestone): la morfologia del suono (periodicità, ricchezza di parziali, rumore, transienti…) decide che materia è, e la stessa materia persistente passa da particelle a filamenti, nastri, superfici e poligoni senza essere ricreata: si condensa sulla curva 3D tracciata dalla waveform reale e sulla rete dei parziali, si frattura su un rilascio e si richiude
+- 8 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**
 - Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
 - Qualità Auto / Low / Medium / High, fullscreen, auto-hide di controlli e cursore
@@ -78,10 +80,11 @@ Live capture (system / microphone / test)
   ├─ PCM mono → AudioAnalyzer TS → AudioFrame + ruoli/voci grafiche
   └─ PCM stereo → Analyzer Rust (thread di cattura) / WASM (worker browser, hop 256)
        ├─ 512: transienti; 2048: timbro, ERB, fase, HPSS, stereo
-       └─ 8192: chroma, pitch bins, parziali
+       └─ 8192: chroma, pitch bins, parziali (frequenza, livello, pan, fase: sul wire)
        ├─ contesto: floor per banda, percentili loudness, derivate, downbeat previsto
             ↓ ogni frame hop datato + record clock per batch, senza folding
        RecordStage → AnalysisDecoder → ExperienceEngine (frame + onset/beat/sezioni)
+            ├─ SoundMorphology: che tipo di suono è (proprietà continue, per hop)
             ├─ memoria multiscala / motivi / narrativa / trajectory / previsione
             ├─ EventStream ordinato per tempo audio
             ├─ ExperiencePlanner → VisualIntent / contrasto / entropia
@@ -94,6 +97,9 @@ Live capture (system / microphone / test)
             └─ ShowDirector / grafo scene / GpuBudget (rappresentazione, composizione)
                      ↓
        Layer: VisualDirector (luce, camera, guadagni del mood) + WorldView (adattatore) → scena + pass
+            └─ render-systems (vocabolario condiviso): morfologia + mondo → materiale → campi spaziali
+               e forme (curva della waveform, rete dei parziali), onde datate (EventStream),
+               materia GPU persistente (punti, legami, faccette), memoria visiva, osservatore
                      ↓
        RenderEngine: 3 slot / 4 layer composti → composizione → Canvas
 ```
@@ -102,7 +108,8 @@ La [scheda tecnica per gli agenti](docs/technical-overview.md) descrive responsa
 contratti, verifiche dell'audit e miglioramenti prioritari. Il rapporto di questo refactor e le misure sono in [docs/refactor-report.md](docs/refactor-report.md).
 Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/realtime-analysis.md),
 [modello acustico](docs/acoustic-model.md), [planner](docs/experience-planner.md),
-[fisica](docs/physics-engine.md), [World Engine](docs/world-engine.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
+[fisica](docs/physics-engine.md), [World Engine](docs/world-engine.md), [Visual Systems e Spectral Matter](docs/visual-systems.md),
+[Matter Engine: morfologia, materiale, forme](docs/matter-engine.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
 
@@ -200,18 +207,28 @@ src/
   director/         mood, Experience, matrice, VisualDirector, AutoDirection
   timing/           clock capture→host, cue percepiti, gate del ritmo, calibrazione
   experience/       memoria, narrativa, trajectory, previsione, event stream, planner, intenti, history
+  morphology/       SoundMorphology: proprietà continue del suono dalle misure del DSP (docs/matter-engine.md)
   world/            WorldState, WorldEngine (forze, impulsi, energia), WorldView (adattatore per layer), WorldTrace
   physics/          modi risonanti, onde causali, primitive esatte (oscillatore, momento, inviluppo)
   validation/       replay di registrazioni locali sul percorso live, metriche e tracce
   dynamics/         molle/follower/inviluppi, scheduler, cronologia hit, FlashGuard
   show/             scelta fixture/effetti, budget GPU, affinità e seed deterministici
   renderer/         RenderEngine (slot, crossfade, loop), Layer, composizione finale, qualità
+  render-systems/   primitive visuali condivise (docs/visual-systems.md, docs/matter-engine.md)
+    materials/      VisualMaterial: materiale derivato da mondo e morfologia (continuità, connettività, angolarità, …)
+    fields/         WorldView → campi spaziali; legge dei campi (GLSL + riferimento CPU)
+    forms/          forme della materia: storia della waveform, rete dei parziali, legge delle forme (GLSL + CPU)
+    waves/          fronti d'onda datati sugli eventi dell'Experience Engine
+    particles/      semi deterministici, simulazione GPU (ping-pong), probe CPU, disegno (punti, legami, faccette), prova di parità
+    feedback/       memoria visiva: legge per pixel e pass di post-processing
+    camera/         osservatore con inerzia propria
   visualizers/
     registry.ts     auto-discovery delle scene
     palettes.ts     i 4 preset di colore
     shared/         BaseVisualizer, dispose, defineVisualizer
     tunnel/ spectrum/ particle-field/ galaxy/ liquid/ oscilloscope/ resonant-field/
                     index.ts + <Nome>Visualizer.ts + preset.json
+    spectral-matter/ scena-laboratorio del Matter Engine: orchestrazione dei render-systems + mapping.ts
   ui/               Dial (core + ruota), NowPlaying, SettingsPanel, icone, tokens.css, app.css
   stores/           store osservabile, impostazioni persistenti
   platform/         differenze desktop/browser (fullscreen, disponibilità delle sorgenti)
@@ -285,7 +302,7 @@ causali, non riconoscimento di genere o previsione certa della struttura.
 
 Il **World Engine** dà a questo cervello un corpo: intenti, eventi e misure
 acustiche diventano forze e impulsi su uno stato persistente che nessuna scena
-possiede. Le sette scene lo interpretano tramite un `WorldView` per layer (momento
+possiede. Le scene lo interpretano tramite un `WorldView` per layer (momento
 angolare → orbita della Galaxy, torsione del Tunnel, vortice delle particelle,
 taglio del Liquid…); un cambio di scena non azzera il mondo, la previsione carica
 potenziale che solo un rilascio reale libera, il silenzio lo lascia decadere.
@@ -303,7 +320,7 @@ Forme delle voci, tracce e spettri disegnati restano su questo percorso grafico;
 
 Architettura, mood/modalità, Director, capacità e istruzioni di estensione: [docs/visual-director.md](docs/visual-director.md).
 
-Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). L'overlay è solo di sviluppo (`?debug` o Shift+D), con dieci secondi di history.
+Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). L'overlay è solo di sviluppo (`?debug` o Shift+D), con dieci secondi di history; il blocco Matter mostra morfologia, materiale, stato della materia e lavoro della GPU, e può bloccare la materia in uno stato (`?matter=wave|harmonic|particles`).
 
 ## Aggiungere una scena
 
@@ -393,7 +410,9 @@ interface Visualizer {
 }
 ```
 
-`context.addPass(pass, 'pre-bloom' | 'post-bloom')` permette di aggiungere pass di post-processing (l'Oscilloscope lo usa per la persistenza dei fosfori); vengono smaltiti automaticamente quando la scena viene smontata. Riflesso e orizzonte li aggiunge il render engine: la scena deve solo disegnare ciò che sta sopra l'orizzonte.
+`context.addPass(pass, 'pre-bloom' | 'post-bloom')` permette di aggiungere pass di post-processing (l'Oscilloscope lo usa per la persistenza dei fosfori); vengono smaltiti automaticamente quando la scena viene smontata.
+
+Una scena può anche comporre le primitive di `src/render-systems/` (campi dal mondo, materia GPU, onde, memoria visiva) invece di disegnare una forma propria: esempio completo e regole in [docs/visual-systems.md](docs/visual-systems.md). Gli eventi discreti arrivano in `clock.events` (lo stream dell'Experience Engine, da leggere con un `EventCursor` fino a `clock.time`); `clock.light` è la luce degli impatti già ammessa dal FlashGuard. Riflesso e orizzonte li aggiunge il render engine: la scena deve solo disegnare ciò che sta sopra l'orizzonte.
 
 ## Qualità
 
@@ -403,6 +422,8 @@ interface Visualizer {
 | Medium | 0,75× (DPR max 1,5) | 65% | sì |
 | Low | 0,5× (DPR max 1,5) | 35% | no |
 | Auto | parte da 1× (DPR max 1,5) | 100% | sì |
+
+Spectral Matter interpreta la densità come quantità di materia (circa 96.000 / 62.000 / 34.000 elementi) e riduce con essa legami e faccette disegnati (assenti a Low, dove materia e forme restano punti), risoluzione della memoria visiva (assente a Low) e dettaglio della turbolenza.
 
 **Auto** riduce prima la sola risoluzione a 0,85×, poi passa a Medium, riduce bloom/risoluzione e infine a Low. Soglia di discesa: 3 s sotto 51 fps. Recupera un passo dopo almeno 30 s a 58 fps e cooldown di 60 s. Gli stalli non costituiscono evidenza. I cambi di sola risoluzione non ricreano la scena.
 
@@ -427,6 +448,8 @@ interface Visualizer {
 - Il tracker TS delle scene resta basato sulla cassa; la regia usa gli onset multi-banda Rust con confidence e fallback. Musica senza ritmo affidabile o molto sincopata resta un limite. La calibrazione suggerisce un ritardo, ma non misura end-to-end il display e ogni uscita: verificare *Audio delay* a orecchio.
 - La qualità grafica Auto misura RAF, non il tempo GPU; il budget DSP misura separatamente CPU/durata audio.
 - Metro: ipotesi 3/4/5/7 con confidence, non analisi completa delle segnature; frase 4/8 battute euristica. Il corpus sintetico conserva il limite delle sezioni (4/12 entro una battuta).
+- **Spectral Matter e i Visual Systems sono sperimentali**: verificati con test automatici, parità GPU ↔ riferimento CPU e segnale sintetico su una Intel UHD; non ancora con musica reale, né su WebView2/WebKitGTK. A High la memoria visiva a piena risoluzione pesa su GPU integrate (Auto può scendere a Medium); senza render target float lo stato usa half float, percorso non provato. Tempi GPU non misurati per pass.
+- **Matter Engine**: prima milestone. Morfologia tarata sui segnali di prova attraverso il DSP reale, forme verificate sul riferimento CPU e a schermo con segnali sintetici (fotogrammi, non il movimento); **nessuna prova con musica reale**. Con mix densi e armonia che cambia in fretta la rete dei parziali è poco leggibile; i poligoni sono tratteggiati, non riempiti; geometria spettrale, volume e illuminazione direzionale non esistono ancora. Misure di costo prese su una macchina carica ([dettagli](docs/matter-engine.md)).
 - Il World Engine è un modello fisico visivo, non meccanica calibrata; coefficienti tarati su segnali sintetici, non ancora su musica reale né con prova percettiva.
 - ERB, roughness, armonicità, H/P/R e range di loudness sono approssimazioni live, non strumenti certificati o separazione di sorgenti. La taratura percettiva su un corpus reale resta da eseguire.
 - Test automatici su analisi, presenza, semantica temporale e grammatica delle scene; la cattura reale WASAPI richiede ancora una verifica su Windows.
@@ -438,6 +461,8 @@ interface Visualizer {
 - Preset specifici per scena e caricamento di preset esterni
 - Consolidare gradualmente TS e Rust/WASM senza perdere waveform, spettro, voci e fallback; misurare cattura→display su hardware reale
 - Estendere i test dalla macchina a stati dei menu (coperta) al DOM della UI e ai dispositivi audio reali
+- Matter Engine: taratura su musica reale e a occhio; forma "membrana" dai modi di Resonant Field; geometria spettrale da ERB; Particle Field e Galaxy come stati della materia invece che scene; transizioni fra scene come trasformazioni invece che crossfade ([piano](docs/matter-engine.md))
+- Visual Systems: taratura percettiva di Spectral Matter su musica reale; riuso graduale di memoria visiva, onde e materia nelle scene esistenti; reaction-diffusion, geometria implicita, densità volumetrica e backend compute restano da fare ([nota](docs/visual-systems.md))
 - Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; tarare il World Engine su un corpus reale e a occhio; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)
 
 ## Licenza

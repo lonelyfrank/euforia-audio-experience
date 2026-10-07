@@ -120,7 +120,8 @@ saturazione incontrollata dei parametri.
 Un `WorldView` per layer, posseduto dal `VisualDirector`, esposto come `modulation.world`.
 I guadagni del mood (`Character.motion`, `.expansion`, `.turbulence`) scalano le
 **velocità**: `travel` e `turn` integrano lo spostamento del mondo dal frame precedente ×
-guadagno. Un cambio di mood o una scena montata durante un crossfade continuano quindi il
+guadagno (`pressure` e `surge`, la velocità radiale, sono scalati dal guadagno di espansione).
+Un cambio di mood o una scena montata durante un crossfade continuano quindi il
 moto senza salti; la nuova scena eredita momento, pressione ed eccitazione dal primo frame.
 Senza clock sincronizzato la vista è `REST_VIEW`: niente si muove da solo.
 

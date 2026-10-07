@@ -1,6 +1,6 @@
 # Euforia-Audio-Experience — scheda tecnica e audit
 
-Aggiornata il **6 ottobre 2026**. Il [README](../README.md) è la fonte di verità per
+Aggiornata il **7 ottobre 2026**. Il [README](../README.md) è la fonte di verità per
 funzionalità, avvio e architettura; questa scheda contiene i dettagli operativi per
 chi modifica il progetto. [experience-engine.md](experience-engine.md) conserva
 le decisioni e misure delle fasi precedenti. Il prodotto usa solo sorgenti live;
@@ -12,10 +12,11 @@ Capture stereo → DSP fisico/percettivo/musicale Rust → tutti gli hop del wir
 ExperienceEngine → memoria/narrativa → ExperiencePlanner → VisualIntent →
 **WorldEngine → WorldState persistente** (forze, impulsi, energia; estrapolato al
 tempo udito) → ShowDirector (rappresentazione) / VisualDirector + WorldView (per layer)
-→ scene che interpretano il mondo → composizione GPU.
+→ scene che interpretano il mondo (anche componendo i [Visual Systems](visual-systems.md)) → composizione GPU.
 
 Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-planner.md),
-[fisica](physics-engine.md), [World Engine](world-engine.md), [integrazione scene](visual-director.md).
+[fisica](physics-engine.md), [World Engine](world-engine.md), [integrazione scene](visual-director.md),
+[Visual Systems e Spectral Matter](visual-systems.md), [Matter Engine](matter-engine.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
 indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
@@ -34,15 +35,17 @@ frontend, backend e WASM della stessa revisione.
 | Analisi musicale | `native/analysis/`, `native/analysis-wasm/` | Hop 256; finestre 512/2048/8192, ERB, fase, H/P/R, loudness, note, stereo e ipotesi metriche; stesso DSP nativo/WASM |
 | Analisi browser | `audio/features/BrowserAnalysis.ts`, `AnalysisHost.ts`, `analysis.worker.ts`, `PcmRing.ts`, `RecordStage.ts` | WASM nel worker, fuori dal RAF; batch con record clock, pool di buffer, epoch dopo perdite lunghe; fallback sul main thread solo senza `Worker` |
 | Trasporto feature | `audio/features/` | ABI Rust ampliata; ogni hop raggiunge ExperienceEngine, senza folding per batch; decoder riusa frame/eventi; record troncati o sconosciuti interrompono il batch senza scritture parziali |
+| Morfologia | `morphology/SoundMorphology.ts` | Undici proprietà continue del suono (periodicità, armonicità, rumore, ricchezza, transienti, stabilità…) da misure Rust già esportate; per hop dentro ExperienceEngine, negli snapshot; nessun classificatore |
 | Esperienza | `experience/` | Memoria multiscala, ricorrenze, narrativa probabilistica, trajectory, previsione, event stream ordinato e planner sul clock audio; snapshot posseduti presentati al tempo percepito |
 | Mondo | `world/WorldEngine.ts`, `WorldState.ts`, `WorldView.ts`, `WorldTrace.ts` | Stato fisico persistente per sessione (4 corpi, 7 campi, bilancio energetico); avanzato per hop dentro ExperienceEngine, snapshot ed estrapolazione esatta al tempo udito; un `WorldView` per layer (guadagni del mood sulle velocità); nessuna scena lo possiede né lo azzera |
 | Fisica | `physics/ResonantPhysics.ts`, `physics/primitives.ts`, `dynamics/` | Dodici modi smorzati e otto impulsi propaganti (campo modale condiviso); primitive esatte (oscillatore, momento, inviluppo); riuso della matrice delle molle, separazione luce/geometria |
 | Interpretazione grafica | `audio/interpretation/`, `audio/visual-response/` | Un solo MusicInterpreter, import storico VisualResponse compatibile; ruoli, presenza, memoria e contesto |
 | Tempo / dinamica | `timing/`, `dynamics/` | Capture→host→tempo percepito; molle/follower 240 Hz, impulsi analitici, gate e rate limit condivisi |
-| Scelte dello show | `show/` | Preset/Hybrid/Free, affinità tra sette scene, ritorni di motivo, tetto del planner e limiti GPU |
+| Scelte dello show | `show/` | Preset/Hybrid/Free, affinità tra otto scene, ritorni di motivo, tetto del planner e limiti GPU |
 | Direzione della scena | `director/` | Intenti e fisica × Mood × Experience × capacità; un VisualDirector per Layer, separato da ShowDirector |
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
-| Scene | `visualizers/` | Sette scene interpretano il mondo (`modulation.world`): moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti |
+| Visual Systems | `render-systems/` | Vocabolario condiviso: `VisualMaterial` (mondo + morfologia), campi spaziali, legge dei campi e legge delle forme (GLSL + riferimento CPU), forme della materia (storia della waveform, rete dei parziali), onde datate, materia GPU e probe CPU, disegno a punti / legami / faccette, memoria visiva, osservatore; nessuno stato musicale, solo storia di rendering |
+| Scene | `visualizers/` | Sette scene interpretano il mondo (`modulation.world`): moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. Spectral Matter (sperimentale) non ha forma propria: orchestra i Visual Systems |
 | Validazione | `validation/replay.ts`, overlay DEV | Replay di WAV locali sul percorso live (`npm run replay`), metriche comportamentali e tracce; Shift+T esporta la traccia di sessione |
 | Persistenza | `stores/` | Validazione dei dati letti, migrazione Auto→Hybrid, `direction` Auto/Manual risolta da `resolveDirection`, notifiche/salvataggi solo se un valore cambia |
 | Build | `package.json`, `vite.config.ts`, Cargo workspace, `.github/workflows/ci.yml` | Nessuna nuova dipendenza; CI su check frontend, core Rust, layout e WASM; WASM versionato per sviluppare il browser senza toolchain Rust; COOP/COEP `credentialless` solo nel server browser (SharedArrayBuffer) |
@@ -114,6 +117,27 @@ guidati dall'audio né da posizioni obiettivo. Nuove misure entrano come forze i
 `WorldEngine.setForces` o impulsi datati (`impact`, `release`); i guadagni del mood
 scalano velocità, non posizioni. Il mondo si azzera solo col reset di sessione e non
 legge qualità GPU né FlashGuard.
+
+**Matter Engine.** La materia di una scena è una sola e persistente: una forma
+(`render-systems/forms/`) la reclama filamento per filamento con un'àncora e una molla, e
+la lascia tornare libera; non si creano, spostano o azzerano elementi per mostrare una
+figura. `SoundMorphology` non ricalcola misure (usa quelle del wire) e non classifica;
+`VisualMaterial` è l'unico punto in cui il suono diventa carattere della materia. Gli
+slot dei parziali (`partialHz/Level/Pan/Phase`) sono ordinati per livello: chi vuole
+identità nel tempo li riconosce per altezza, come `HarmonicForm`. Le sorgenti delle
+forme (storia del segnale, nodi) sono storia di rendering: avanzano col frame, con
+follower esatti, e non decidono nulla di musicale. `matterLab` esiste solo in DEV.
+Dettagli, misure e limiti in [matter-engine](matter-engine.md).
+
+**Visual Systems.** `render-systems/` non contiene significato musicale: legge
+`WorldView`, snapshot, intenti e lo stream di eventi, e tiene solo storia di rendering
+(particelle, fronti, buffer di memoria, inerzia dell'osservatore). Le onde nascono
+dagli eventi datati (`SceneClock.events`, un `EventCursor` per consumatore), mai da un
+rilevamento locale; la luce dei fronti è scalata da `SceneClock.light` (FlashGuard).
+`fieldLaw`, `formLaw` e `matterStep` esistono in GLSL e in TypeScript: si cambiano insieme e la
+parità GPU ↔ CPU va riprovata con `runParity()` (`render-systems/particles/parity.ts`; procedura
+in [matter-engine](matter-engine.md) §11).
+I semi usano `show/rng.ts`: niente `Math.random` nelle scene nuove.
 
 **Direction.** `Settings.direction` (`auto` \| `manual`) decide chi dirige; rig, App e
 renderer leggono mood, Experience, intensità, `autoDirection` e `rigMode` solo tramite
@@ -206,6 +230,14 @@ Se `cargo test` segnala `layout.ts is stale` senza differenze in git, il binario
 test in `target/` è stato compilato sotto un altro percorso della repo (il percorso è
 incorporato a compile time): ricompilare con `touch native/analysis/tests/wire.rs`.
 
+Visual Systems / Spectral Matter (6 ottobre 2026): esiti, misure e limiti in
+[visual-systems](visual-systems.md) §8–9. Matter Engine (7 ottobre 2026): parziali sul
+wire (record frame 295 → 343 valori, WASM ricostruito con rustc 1.98.1 upstream, lo stesso
+toolchain che riproduce byte per byte il binario di HEAD), morfologia, materiale, forme;
+esiti e limiti in [matter-engine](matter-engine.md) §8 e §11: **271 test frontend in 41 file**,
+**59 Rust + 1 doctest**, parità GPU ↔ CPU e compilazione degli shader su Intel UHD; non provata
+l'app desktop con il nuovo backend né musica reale.
+
 Esiti della seconda fase (analisi realtime): **171 test frontend in 30 file**, **56 Rust
 + 1 doctest**, 5 test di benchmark, smoke Chromium (worker, SAB, tre scene) riusciti;
 [analisi realtime](realtime-analysis.md). Fase precedente: 151 test frontend, 53 Rust + 1 doctest,
@@ -225,6 +257,8 @@ I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 | Alta | Benchmark CPU/GPU ripetibile, a qualità e risoluzione fisse | Tempi separati cattura/DSP TS/WASM/Director/pass GPU, p50/p95/p99 e memoria, confronto prima/dopo sullo stesso dispositivo |
 | Alta | Recupero dopo tab nascosta o backlog browser in WebView reali | La politica esiste (silenzio ≤ 1 s, poi epoch; staging ~3 s): verificarla in WebView2/WebKitGTK con stalli 0,5–10 s e timer dei worker in background |
 | Media | Unificazione graduale DSP TS/Rust | Corpus reale e sintetico, stessa waveform/pitch/presenza e latenza misurata; evitare doppia analisi senza spezzare i contratti |
+| Alta | Matter Engine su musica reale | Tono, accordo, mix denso e percussioni danno corpi diversi e leggibili a occhio; quote delle forme, tempi dei nodi ed esposizione tarati su un corpus; costo a 1080p e in WebView2 su macchina scarica |
+| Alta | Spectral Matter su musica reale | Le nove domande percettive di [visual-systems](visual-systems.md) con un corpus vario e occhi; costo GPU a 1080p e in WebView2; poi riuso di `FeedbackPass`/`WaveField` nelle scene esistenti |
 | Alta | Taratura del World Engine su musica reale | `npm run replay` su un corpus locale vario (casi difficili inclusi), poi prova visiva per scena; nessun priore di genere |
 | Media | Ring nativo proporzionato al sample rate | Verificare delay 400 ms e finestra voci a 44,1/48/96/192 kHz; il buffer nativo è ancora fisso a 48.000 campioni |
 | Media | Regressioni DOM e GPU in browser | Focus trap, ARIA, fullscreen, idle, chiusura/rimontaggio, snapshot per tutte le scene; lo smoke Chromium corrente compila gli shader, ma non sostituisce test di cattura e WebView desktop |

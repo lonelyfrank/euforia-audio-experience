@@ -30,6 +30,8 @@ export class WorldView {
   spin = 0;
   /** Radial pressure (signed: + expanded, − drawn in), × expansion gain. */
   pressure = 0;
+  /** Radial velocity of the world (units/s; + outwards), × expansion gain. */
+  surge = 0;
   /** Lateral force origin −1 (left) … 1 (right). */
   lateral = 0;
   /** 0..1 fields. */
@@ -64,6 +66,7 @@ export class WorldView {
     this.speed = Math.min(1, (w.speed / MAX_SPEED) * gains.motion);
     this.spin = Math.max(-1, Math.min(1, (w.spin / MAX_SPIN) * gains.motion));
     this.pressure = w.radius * gains.expansion;
+    this.surge = w.radialVelocity * gains.expansion;
     this.lateral = w.bias;
     this.disorder = Math.min(1, w.turbulence * gains.turbulence);
     this.coherence = w.coherence;

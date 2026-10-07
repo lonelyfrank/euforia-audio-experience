@@ -88,6 +88,7 @@ export class RigController {
       this.session = this.audio.session;
     }
     this.rig.experience = clock.ready ? this.audio.experience.present(timing.heardTime) : undefined;
+    this.rig.events = this.audio.experience.events;
     if (!clock.ready) {
       this.rig.timed = false;
       this.rig.glowPulse = 0;

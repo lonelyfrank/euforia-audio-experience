@@ -1,3 +1,4 @@
+import type { EventStream } from '../experience/EventStream';
 import type { ExperienceSnapshot } from '../experience/types';
 import type { ModulationState, SceneDirection } from '../director/types';
 import type { Camera, Color, Scene, WebGLRenderer } from 'three';
@@ -73,6 +74,8 @@ export interface SceneInput {
 /** Fixture parameters driven by the Dynamics layer (migrated one at a time). */
 export interface RigValues {
   experience?: ExperienceSnapshot;
+  /** The session's discrete events on the capture clock (read with an EventCursor up to `time`). */
+  events?: EventStream;
   /** Guarded brightness response; geometric excitation remains independent. */
   experienceLight?: number;
   /** Audio clock (s) heard when this frame is seen: the Dynamics clock. */
@@ -94,6 +97,13 @@ export interface RigValues {
  */
 export interface SceneClock {
   experience?: ExperienceSnapshot;
+  /**
+   * The session's dated events (impact, drop, onset …). A scene that starts something on an event reads
+   * them with its own EventCursor up to `time`; it never detects events from an envelope.
+   */
+  events?: EventStream;
+  /** 0..1: the light of the heard impacts as the shared FlashGuard admitted it (scale luminous responses by it). */
+  light?: number;
   /** Audio time (s) heard when this frame is seen. */
   time: number;
   hits: HitLog;
@@ -134,6 +144,8 @@ export interface Visualizer {
   setLayout?(layout: SceneLayout): void;
   resize(width: number, height: number): void;
   dispose(): void;
+  /** Optional: numbers for the development overlay (a stable object, updated in place). */
+  readonly debug?: Readonly<Record<string, number>>;
 }
 
 /** Icons available for scenes in the Scene ring (see ui/icons.ts). */

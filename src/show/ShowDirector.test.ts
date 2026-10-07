@@ -86,7 +86,8 @@ describe('ShowDirector', () => {
     const sink: ShowSink = { target: () => {}, impulse: () => {}, snap: () => {} };
     const frames = inputs();
     const drop = frames.find((f) => f.section === 2)!;
-    director.setBudget(3);
+    // Room for any three fixtures (the two heaviest cost 1.2 each).
+    director.setBudget(3.4);
     director.update(drop, { mode: 'free', scene: 'galaxy' }, sink);
     expect(director.slots.filter((s) => s.fixture)).toHaveLength(3);
     director.setBudget(1);
@@ -162,7 +163,7 @@ describe('ShowDirector', () => {
   it('respects the GPU budget and the mode', () => {
     const tight = run('free', 1);
     expect(tight.intensities.every((s) => s[1] === 0 && s[2] === 0)).toBe(true);
-    const wide = run('free', 3);
+    const wide = run('free', 3.4);
     expect(wide.intensities.some((s) => s[1] > 0 && s[2] > 0)).toBe(true);
     const preset = run('preset', 3);
     expect(preset.director.slots[0].fixture).toBe('galaxy');

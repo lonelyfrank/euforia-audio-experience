@@ -4,8 +4,8 @@
   (mappa dei moduli, invarianti, audit e backlog). `docs/experience-engine.md`
   conserva decisioni e misure del motore musicale. `docs/realtime-analysis.md`
   (thread, clock, stati, eventi, confidence, benchmark), `docs/refactor-report.md`,
-  `docs/acoustic-model.md`, `docs/experience-planner.md` e `docs/physics-engine.md`
-  descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
+  `docs/world-engine.md`, `docs/visual-systems.md` e `docs/matter-engine.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -26,6 +26,21 @@
   Grammatica geometrica e impulsi luminosi sono distinti: usare FlashGuard condiviso.
   Eventi discreti: `ExperienceEngine.events` con `EventCursor`, datati sui campioni.
   Intenti per nome (`INTENT.x`), pesati con la loro confidence; niente indici fissi.
+- `render-systems/` è il vocabolario grafico condiviso (`docs/visual-systems.md`): campi
+  dal mondo, materia GPU, onde, memoria visiva. Nessuno stato musicale lì né nelle scene:
+  le onde leggono `SceneClock.events` con un `EventCursor`, la loro luce passa da
+  `SceneClock.light`. `fieldLaw`/`formLaw`/`matterStep` sono scritti in GLSL e in TS: cambiarli
+  insieme e ripetere la prova di parità GPU ↔ CPU (`runParity()` in
+  `render-systems/particles/parity.ts`). Semi da `show/rng.ts`, mai `Math.random`.
+- La scena **Spectrum** va preservata così com'è in ogni intervento: non modificarla, sostituirla
+  o rimuoverla, e non cambiare il significato di ciò che legge (`AudioFrame`, voci `music.*`,
+  `WorldView`, `VoiceTextures`, `SignalTexture`, `audibleGlsl`). È il riferimento di fedeltà a
+  ritmo e melodia; il nuovo si costruisce accanto.
+- Matter Engine (`docs/matter-engine.md`): suono → `SoundMorphology` (per hop in ExperienceEngine,
+  solo misure già esportate dal DSP) → `VisualMaterial` → forme. La materia è una e persistente:
+  una forma la **reclama** con un'àncora e una molla, non crea né sposta elementi; niente tabelle
+  suono → forma né classificatori. Gli slot dei parziali sul wire sono ordinati per livello, non
+  tracciati. `matterLab` e il blocco Matter dell'overlay sono solo DEV.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente, non hop/beat.
   Il wire e il WASM versionato devono corrispondere al backend.
 - La cattura nativa è condivisa: non sovrapporre stop/start o creare AudioEngine

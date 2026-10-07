@@ -118,6 +118,8 @@ export class Layer {
       clock.hits = rig.hits;
       clock.hitScale = this.director.impactScale;
       clock.experience = rig.experience;
+      clock.events = rig.events;
+      clock.light = rig.experienceLight ?? 0;
     }
     this.visualizer.update(input.audio, dt, time, this.director.response!, modulation, clock);
     if (this.bloom) this.bloom.strength = this.source.preset.bloom.strength * (0.25 + 1.5 * modulation.bloom);
