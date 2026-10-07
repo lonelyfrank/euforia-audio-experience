@@ -9,15 +9,22 @@ import {
   Mesh,
   Points,
   ShaderMaterial,
+  Vector2,
+  Vector3,
+  Vector4,
   type WebGLRenderer,
 } from 'three';
 import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/spectrum';
+import { MODE_SHAPES, MODES } from '../../physics/ResonantPhysics';
+import { Rng, seedOf } from '../../show/rng';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
 import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
+import { Reorganization } from '../../world/Reorganization';
 import { REST_VIEW } from '../../world/WorldView';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
+import { CONFIGURATIONS, createTopology, tunnelTopology } from './topology';
 
 export interface TunnelParams {
   radius: number;
@@ -37,6 +44,12 @@ export interface TunnelParams {
   sparkCount: number;
   /** Sample-and-hold stepping of the drawn voices, scaled by how percussive the style is. */
   digital: number;
+  /** How far the mids squeeze the section into an oval (× radius). */
+  oval: number;
+  /** Depth of the fine corrugation the highs put on the wall (× radius). */
+  ripple: number;
+  /** How far the shared modal field moves the wall (× radius per unit of modal displacement). */
+  waveguide: number;
 }
 
 /** Trace rows: what the low, mid and high parts of the spectrum did over the last 8 beats. */
@@ -62,30 +75,117 @@ const bendChunk = /* glsl */ `
   }
 `;
 
+/** Half-waves of the first axial mode fit in this length of tunnel (units), and the release front is this deep (units). */
+const WAVEGUIDE_SPAN = 24;
+const FRONT_WIDTH = 5;
+/** How far the wall bulges where a full release front passes (× radius). */
+const FRONT_BULGE = 0.3;
+/** The modal sum on a cylinder: one cosine per order round the wall, one sine per order along it, a product per mode. */
+const ORDERS = Math.max(...MODE_SHAPES.flat());
+const modalSum = MODE_SHAPES.map(([m, n], i) => `uModes[${i}] * across[${m - 1}] * along[${n - 1}]`).join(' + ');
+
+/**
+ * The wall as architecture: rings along the tunnel, panels round it. Where the world's forces open gaps the wall is
+ * cut there (the fragment shader) and each panel moves as a rigid piece (the vertex shader): both read this.
+ */
+const panelChunk = /* glsl */ `
+  // x: gap between panels round the wall, y: gap between rings along it (shares of a cell)
+  uniform vec2 uGap;
+  // Sides of the section and panels round the wall: xy after the last release, zw before it
+  uniform vec4 uConfig;
+  // Length of a ring (units): x after the last release, y before it
+  uniform vec2 uRings;
+  // The last release: how deep its front is (units) and how strong it still is
+  uniform float uFront;
+  uniform float uRelease;
+
+  // The pressure front of a release, where it is now.
+  float frontBand(float d) {
+    float x = (d - uFront) / ${FRONT_WIDTH}.0;
+    return exp(-x * x) * uRelease;
+  }
+  // The wall opens further where the front is passing.
+  vec2 gapsAt(float d) {
+    return min(uGap + vec2(0.22, 0.3) * frontBand(d), vec2(0.6));
+  }
+  // The front has passed here: the tunnel has its new configuration behind it and still the old one ahead.
+  // x: sides, y: panels, z: ring length
+  vec3 configAt(float d) {
+    return d < uFront ? vec3(uConfig.x, uConfig.y, uRings.x) : vec3(uConfig.z, uConfig.w, uRings.y);
+  }
+  // Cell coordinates of a point of the wall, shifted by half a gap: a gap opens evenly about the line between two
+  // cells and is the start of the shifted cell.
+  vec2 panelCoord(float turn, float coord, vec3 config, vec2 gap) {
+    return vec2(turn * config.y, coord / config.z) + 0.5 * gap;
+  }
+  float panelHash(vec2 c) {
+    return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+`;
+
 const tunnelVertex = /* glsl */ `
   ${bendChunk}
   ${voiceGlsl}
   ${traceGlsl}
+  ${panelChunk}
   uniform float uRadius;
   uniform float uLength;
   uniform float uShape;
   uniform float uLobes;
   uniform float uShapePhase;
   uniform float uRing;
-  uniform float uRelease;
   uniform float uDigital;
+  // Torsion: turns per unit of depth (deeper sections are turned further)
+  uniform float uTwist;
+  // The shared modal field (ResonantPhysics) and how far it moves the wall
+  uniform float uModes[${MODES}];
+  uniform float uWaveguide;
+  // x: oval of the mids, y: corrugation of the highs, z: lobes of the corrugation
+  uniform vec3 uBreath;
+  // x: how polygonal the section is, y: constriction ahead, z: how far panels float, w: how far rings turn against each other
+  uniform vec4 uForm;
 
   varying float vDepth;
   varying float vCoord;
   varying float vAngle;
   varying float vAge;
 
+  // The wall as a waveguide: the modes the audio engine keeps ringing, standing round the wall and along the tunnel.
+  float waveguide(float turn, float coord) {
+    float across[${ORDERS}];
+    float along[${ORDERS}];
+    for (int k = 0; k < ${ORDERS}; k++) {
+      across[k] = cos(float(k + 1) * turn * 6.2831853);
+      along[k] = sin(float(k + 1) * coord * ${(Math.PI / WAVEGUIDE_SPAN).toFixed(6)});
+    }
+    float w = (${modalSum}) * uWaveguide;
+    // Soft limit: however hard the modes ring, the wall stays a wall.
+    return w / (1.0 + abs(w) * 2.5);
+  }
+
+  // A value each panel has for itself: constant across it, blended to its neighbours' inside the gaps (which are not drawn).
+  float panelValue(vec2 q, vec2 gap, float panels) {
+    vec2 c = floor(q);
+    vec2 e = smoothstep(vec2(0.0), max(gap, vec2(1e-3)), fract(q));
+    float x0 = mod(c.x - 1.0, panels), x1 = mod(c.x, panels);
+    return mix(
+      mix(panelHash(vec2(x0, c.y - 1.0)), panelHash(vec2(x1, c.y - 1.0)), e.x),
+      mix(panelHash(vec2(x0, c.y)), panelHash(vec2(x1, c.y)), e.x),
+      e.y
+    );
+  }
+  float ringValue(float q, float gap) {
+    float c = floor(q);
+    return mix(panelHash(vec2(7.0, c - 1.0)), panelHash(vec2(7.0, c)), smoothstep(0.0, max(gap, 1e-3), fract(q)));
+  }
+
   void main() {
     float d = -position.z;
-    float angle = uv.x * 6.2831853;
+    float coord = d + uTravel;
     // The section is the bass line's cycle wrapped around the wall (a saw bass makes a cog,
     // a sub a soft lobe); hits roll away from the camera as swelling rings.
     float age = d / (uLength * ${TRACE_REACH});
+    float heard = step(age, 1.0);
     // Whole numbers of lobes (no seam where the wall closes), blended so the count can glide.
     float lobes = floor(uLobes);
     float section = mix(
@@ -93,16 +193,35 @@ const tunnelVertex = /* glsl */ `
       voiceAt(0.0, uv.x * (lobes + 1.0) + uShapePhase, uDigital),
       fract(uLobes)
     );
-    float ring = traceAt(${LOW}.0, 3.0, age) * step(age, 1.0);
-    float r = uRadius * (1.0 + uShape * section * smoothstep(2.0, 12.0, d) + uRing * ring);
-    // The drop opens a pressure front that rolls away from the camera.
-    float shock = max(0.0, 1.0 - abs(age - (1.0 - uRelease)) * 10.0) * uRelease;
-    r *= 1.0 + shock * 0.22;
+    // Breathing is not uniform: the lows swell whole rings, the mids squeeze the section into an oval whose axis
+    // turns along the tunnel, the highs corrugate the wall finely. Each rolls away with the part that made it.
+    float ring = traceAt(${LOW}.0, 3.0, age) * heard;
+    float squeeze = traceAt(${MID}.0, 3.0, age) * heard * cos(2.0 * (uv.x * 6.2831853 + coord * 0.05));
+    float corrugation = traceAt(${HIGH}.0, 3.0, age) * heard * cos(uBreath.z * uv.x * 6.2831853);
+    float r = uRadius * (1.0 + uShape * section * smoothstep(2.0, 12.0, d) + uRing * ring + uBreath.x * squeeze + uBreath.y * corrugation);
+    r *= 1.0 + waveguide(uv.x, coord);
+
+    // Architecture: under held potential the section takes edges and the far tunnel is drawn in.
+    vec3 config = configAt(d);
+    float side = 6.2831853 / config.x;
+    r *= mix(1.0, cos(0.5 * side) / cos(mod(uv.x * 6.2831853, side) - 0.5 * side), uForm.x);
+    r *= 1.0 - uForm.y * smoothstep(6.0, 70.0, d);
+    // A release is a pressure front that travels down the tunnel: the wall bulges where it is.
+    r *= 1.0 + ${FRONT_BULGE} * frontBand(d);
+
+    // Where the wall has opened, each panel is a piece of its own: it floats off the wall and its ring turns.
+    vec2 gap = gapsAt(d);
+    vec2 q = panelCoord(uv.x, coord, config, gap);
+    float open = smoothstep(0.0, 0.08, gap.x + gap.y);
+    r *= 1.0 + (panelValue(q, gap, config.y) - 0.5) * 2.0 * uForm.z * open;
+    // Torsion is geometry: every section is turned by its depth, so the wall, its lines and its panels wind together.
+    float angle = (uv.x - d * uTwist + (ringValue(q.y, gap.y) - 0.5) * 2.0 * uForm.w * open) * 6.2831853;
+
     vec2 offset = bendAt(d);
     // Same (sin, cos) orientation as CylinderGeometry so BackSide keeps the inner faces.
     vec3 p = vec3(sin(angle) * r + offset.x, cos(angle) * r + offset.y, -d);
     vDepth = d;
-    vCoord = d + uTravel;
+    vCoord = coord;
     vAngle = uv.x;
     vAge = age;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -112,16 +231,15 @@ const tunnelVertex = /* glsl */ `
 const tunnelFragment = /* glsl */ `
   ${voiceGlsl}
   ${traceGlsl}
+  ${panelChunk}
   uniform float uRingDensity;
   uniform float uSegments;
   uniform float uFog;
   uniform float uDetail;
   uniform float uDensity;
-  uniform float uRelease;
   uniform float uLeadWobble;
   uniform float uLeadCycles;
   uniform float uLeadPhase;
-  uniform float uTwist;
   uniform float uDigital;
   uniform vec3 uColor0;
   uniform vec3 uColor1;
@@ -146,7 +264,16 @@ const tunnelFragment = /* glsl */ `
   }
 
   void main() {
-    // Ring lines follow the lead's shape around the wall; the long lines twist with the mids.
+    // Where the wall has opened there is no wall: the gaps between rings and panels are not drawn.
+    vec2 gap = gapsAt(vDepth);
+    vec2 panel = panelCoord(vAngle, vCoord, configAt(vDepth), gap);
+    vec2 pixel = max(fwidth(panel), vec2(1e-5));
+    vec2 cell = fract(panel);
+    if (cell.x < gap.x || cell.y < gap.y) discard;
+    // The cut edges of a piece are lit: it reads as architecture, not as a tear.
+    vec2 cut = (1.0 - smoothstep(vec2(0.0), vec2(1.6), min(cell - gap, 1.0 - cell) / pixel)) * smoothstep(vec2(0.0), vec2(0.05), gap);
+
+    // Ring lines follow the lead's shape around the wall; the long lines wind with the wall's own torsion.
     float cycles = floor(uLeadCycles);
     float lead = mix(
       voiceAt(1.0, vAngle * cycles + uLeadPhase, uDigital),
@@ -154,10 +281,10 @@ const tunnelFragment = /* glsl */ `
       fract(uLeadCycles)
     ) * uLeadWobble;
     float rings = gridLine((vCoord + lead) * uRingDensity, 1.5);
-    float lines = gridLine((vAngle + vDepth * uTwist) * uSegments, 1.2);
+    float lines = gridLine(vAngle * uSegments, 1.2);
     // Highs reveal a finer secondary grid.
     float detail = max(gridLine(vCoord * uRingDensity * 4.0, 1.0), gridLine(vAngle * uSegments * 4.0, 1.0)) * uDetail;
-    float intensity = max(rings, lines * 0.5) + detail * 0.18;
+    float intensity = max(max(rings, lines * 0.5), max(cut.x, cut.y) * 0.7) + detail * 0.18;
 
     // Snares and hats light the stretch of tunnel they are rolling through.
     float inReach = step(vAge, 1.0);
@@ -166,7 +293,7 @@ const tunnelFragment = /* glsl */ `
     vec3 color = palette(vCoord * 0.004);
     float fog = exp(-vDepth * uFog);
     vec3 base = color * 0.015;
-    float shock = max(0.0, 1.0 - abs(vAge - (1.0 - uRelease)) * 10.0) * uRelease;
+    float shock = frontBand(vDepth);
     vec3 outColor = (base + color * intensity * (0.22 + uDensity * 0.35 + hits + shock * 0.8)) * fog;
     gl_FragColor = vec4(outColor, 1.0);
   }
@@ -209,8 +336,15 @@ const sparkFragment = /* glsl */ `
  * Forward travel follows motion while the history rings retain the tempo.
  * The tunnel stops advancing in silence.
  * bass line → shape of the wall section, kicks → rings rolling down the
- * tunnel, lead → shape of the ring lines, mids → bend and twist,
- * highs → fine grid and sparks, drop → opening pressure front and acceleration.
+ * tunnel, lead → shape of the ring lines, mids → bend and an oval squeeze,
+ * highs → fine grid, corrugation and sparks.
+ *
+ * The wall is architecture under the world's forces (topology.ts), not a fixed
+ * tube: its angular momentum twists it section by section, the shared modal
+ * field stands in it as in a waveguide, held potential gives it edges, draws
+ * the far end in and, with disorder, opens it into rings and floating panels
+ * that still line the same path; a release is a pressure front that travels
+ * down it and leaves another structure behind. At rest it is the plain corridor.
  */
 export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   private tunnelMaterial!: ShaderMaterial;
@@ -218,6 +352,10 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   private renderer!: WebGLRenderer;
   private readonly voices = new VoiceTextures();
   private readonly traces = new RollingTraces(3);
+  /** What the world's forces do to the wall right now, and which structure its releases have left. */
+  readonly topology = createTopology();
+  private readonly structure = new Reorganization(CONFIGURATIONS.length, 0x74756e);
+  private readonly modes = new Float32Array(MODES);
   private travel = 0;
   private sparkTravel = 0;
   private roll = 0;
@@ -239,11 +377,13 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
       uDigital: { value: 0 },
     };
 
+    // Enough of them round the wall at any quality for a polygon's sides and a panel's edges to be drawn.
+    const radial = Math.max(48, Math.round(p.radialSegments * quality.density));
     const geometry = new CylinderGeometry(
       p.radius,
       p.radius,
       p.length,
-      Math.max(24, Math.round(p.radialSegments * quality.density)),
+      radial,
       Math.max(64, Math.round(p.lengthSegments * quality.density)),
       true,
     )
@@ -269,6 +409,15 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
         uLeadCycles: { value: 3 },
         uLeadPhase: { value: 0 },
         uTwist: { value: 0 },
+        uModes: { value: this.modes },
+        uWaveguide: { value: 0 },
+        // The corrugation has as many lobes as the mesh can draw (four vertices to a lobe).
+        uBreath: { value: new Vector3(0, 0, Math.floor(radial / 8) * 2) },
+        uForm: { value: new Vector4() },
+        uGap: { value: new Vector2() },
+        uConfig: { value: new Vector4(CONFIGURATIONS[0][0], CONFIGURATIONS[0][1], CONFIGURATIONS[0][0], CONFIGURATIONS[0][1]) },
+        uRings: { value: new Vector2(CONFIGURATIONS[0][2], CONFIGURATIONS[0][2]) },
+        uFront: { value: this.topology.front },
         uColor0: { value: new Color() },
         uColor1: { value: new Color() },
         uColor2: { value: new Color() },
@@ -280,7 +429,8 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
 
     const count = Math.round(p.sparkCount * quality.density);
     const seeds = new Float32Array(count * 3);
-    for (let i = 0; i < seeds.length; i++) seeds[i] = Math.random();
+    const rng = new Rng(seedOf(count, 0x74756e));
+    for (let i = 0; i < seeds.length; i++) seeds[i] = rng.next();
     const sparkGeometry = new BufferGeometry();
     sparkGeometry.setAttribute('position', new BufferAttribute(new Float32Array(count * 3), 3));
     sparkGeometry.setAttribute('aSeed', new BufferAttribute(seeds, 3));
@@ -349,15 +499,33 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     u.uLeadWobble.value = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice) * response.midAudible;
     u.uLeadCycles.value = (2 + 3 * vary[3]) * (1 + 0.3 * Math.max(Math.log2(music.leadPitch / 180), 0));
     u.uLeadPhase.value = this.leadPhase;
-    // Torsion: the long lines wind with the world's angular velocity.
+    // Torsion: the tunnel winds with the world's angular velocity, every section further than the one before it.
     u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow + world.spin * 0.03;
     u.uBend.value = p.bend * (0.1 + 1.4 * world.disorder);
     u.uLateral.value = world.lateral;
     // Highs: fine grid; brightness from energy, hits and drops.
     u.uDetail.value = detail * response.highAudible;
     u.uDensity.value = world.light;
-    // A release of stored potential opens a pressure front that rolls away from the camera.
-    u.uRelease.value = Math.min(1, world.releaseStrength * 2) * Math.exp(-world.releaseAge / 1.2);
+    // Breathing by register: the mids squeeze the section, the highs corrugate the wall (each fades with its band).
+    const breath = u.uBreath.value as Vector3;
+    breath.x = p.oval * (0.4 + 0.6 * flow) * response.midAudible;
+    breath.y = p.ripple * detail * response.highAudible;
+    // Waveguide: the wall carries the modes the audio engine keeps ringing; a coherent world carries them cleanly.
+    const physics = modulation?.experienceState?.physics;
+    if (physics) this.modes.set(physics.modes); else this.modes.fill(0);
+    u.uWaveguide.value = p.waveguide * (0.4 + 0.6 * world.coherence);
+    // Architecture under force: held potential and disorder open the wall into rings and panels, draw the far tunnel
+    // in and give the section edges. A release is a front that travels down the tunnel and leaves another structure
+    // behind it: the one before the release is still ahead of the front.
+    const t = tunnelTopology(this.topology, world), structure = this.structure;
+    structure.update(world);
+    const after = CONFIGURATIONS[structure.current], before = CONFIGURATIONS[structure.previous];
+    (u.uGap.value as Vector2).set(t.gapAngular, t.gapAxial);
+    (u.uForm.value as Vector4).set(t.facet, t.throat, t.lift, t.shear);
+    (u.uConfig.value as Vector4).set(after[0], after[1], before[0], before[1]);
+    (u.uRings.value as Vector2).set(after[2], before[2]);
+    u.uFront.value = t.front;
+    u.uRelease.value = t.release;
     const s = this.sparkMaterial.uniforms;
     s.uSparkTravel.value = this.sparkTravel;
     s.uSparks.value = (modulation?.particleEmission ?? (detail * (0.3 + 0.7 * music.highPercussion))) * response.highAudible;

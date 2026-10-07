@@ -44,7 +44,7 @@ const TURN_GAIN = 0.15;
 export const BOND_REST = 0.03;
 const BOND_REACH = 0.6;
 /** Acceleration of a unit-amplitude front (units/s²). */
-const WAVE_PUSH = 9;
+export const WAVE_PUSH = 9;
 /** Spring (1/s²) that flattens the body at full squash, and how tightly full cohesion gathers it (< 1: sheets keep a thickness). */
 const SQUASH_STIFFNESS = 8;
 const TIGHTEST = 0.92;

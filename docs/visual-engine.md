@@ -101,6 +101,8 @@ TypeScript (riferimento per i test).
 | `WaveSurfacePrimitive` | una membrana: modi propri e impulsi causali di `ResonantPhysics`, più arco, increspature, terrazze, inclinazione delle creste; griglia o disco, punti o fili | ampiezza ← `elasticity`, `tension`; arco ← `surfaceDisplacement`, `curvature`; increspatura ← `surfaceRoughness`, `waveScale`, `waveVelocity`; terrazze ← `stepping`; creste ← `skew`; strappo ← `fracture` |
 | `ConnectionGraphPrimitive` | nodi su due gusci e giunti fra quelli vicini: una gabbia che si chiude, si rompe e si richiude | reticolo ↔ sparso ← `symmetry`, `coherence`; raggio dei giunti ← `connectionRadius`; apertura ← `fracture`; lampo dei nodi ← `impulse` |
 | `ShockwavePrimitive` | i fronti del `WaveField`, visibili: due anelli per fronte, tondi o poligonali | poligono ← `edgeHardness`; luce ← `look.wave` (FlashGuard) |
+| `FieldTracerPrimitive` | traccianti di un campo vettoriale (simulazione GPU propria): si vede il loro moto, non loro | topologia ← `disorder`, `coherence`, `fragmentation`, `energy`; scia ← `trailPersistence`; luce ← `look` |
+| `FieldLinePrimitive` | linee di campo istantanee, senza stato, dello stesso campo | lunghezza ← `viscosity`, `trailPersistence`; quante ← `density` |
 
 Nessuna connessione viene accesa o spenta per decisione: un giunto si vede finché tiene
 (la distanza fra i due nodi, mossi dai campi, resta sotto il raggio). Un filamento in un
@@ -158,7 +160,8 @@ export default defineRecipe({ id: 'matter-field', name: 'Matter Field', …, pre
 | **Matter Field** (nuova) | solo architettura nuova | materia + fronti + filamenti + membrana + grafo |
 | **Spectral Matter** | convertita, comportamento invariato (stessi test, stessi uniform) | la sola materia |
 | **Resonant Field** | convertita a parità di aspetto | la sola membrana (griglia di punti), `grammar` 0,6 |
-| Tunnel, Galaxy, Particle Field, Liquid, Oscilloscope | legacy (`Visualizer` diretto) | — |
+| **Field** (nuova, 7 ottobre notte) | solo architettura nuova | traccianti + linee di un campo vettoriale ([physical-scenes](physical-scenes.md)) |
+| Tunnel, Galaxy, Particle Field, Liquid, Oscilloscope | legacy (`Visualizer` diretto); Tunnel e Particle Field riviste come scene fisiche | — |
 | **Spectrum** | legacy, **da non toccare** | nessuna estrazione dal suo codice |
 
 Vecchie scene e recipe convivono: per `Layer`, show e menu sono tutte `Visualizer`

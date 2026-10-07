@@ -1,0 +1,29 @@
+{
+  "name": "Field",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 50,
+    "distance": 4.8,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.6,
+    "radius": 0.5,
+    "threshold": 0.1
+  },
+  "visual": {
+    "seed": 20261008,
+    "tilt": 0.45,
+    "tracers": 36000,
+    "streak": 0.5,
+    "pointSize": 1.5,
+    "exposure": 0.8,
+    "lines": 200,
+    "lineSegments": 24
+  }
+}

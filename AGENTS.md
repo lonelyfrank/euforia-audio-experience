@@ -5,8 +5,8 @@
   conserva decisioni e misure del motore musicale. `docs/realtime-analysis.md`
   (thread, clock, stati, eventi, confidence, benchmark), `docs/refactor-report.md`,
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
-  `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md` e
-  `docs/visual-grammar.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
+  `docs/visual-grammar.md` e `docs/physical-scenes.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -50,6 +50,13 @@
   la presenza (niente create/dispose per mostrare una struttura); la recipe non contiene sequenze né rami
   su eventi. Leggi delle primitive in GLSL e in TS come la legge dei campi; `fieldHeaderGlsl` è testo
   della legge dei campi. `worldLab`, `?primitives=` e `?legacy=` sono solo DEV.
+- Scene fisiche (`docs/physical-scenes.md`): una scena evolve perché cambia il mondo, mai perché passa il tempo.
+  Niente fasi o `uTime` decorativi; ciò che trasforma una scena è una funzione pura di `WorldView` e delle età
+  degli eventi (`tunnelTopology`, `particleRegimes`, `deriveTopology`): zero a riposo, limitata, uguale a ogni
+  frame rate. Uno stato proprio (i traccianti di Field) si ferma quando il campo si annulla. `vectorField`,
+  `tracerLaw`, `tracerStep`, `wells` sono scritti in GLSL e in TS: cambiarli insieme e ripetere `runTracerParity()`
+  (`render-systems/particles/tracerParity.ts`). La struttura lasciata da un rilascio la sceglie il suo tempo audio
+  (`world/Reorganization.ts`).
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente, non hop/beat.
   Il wire e il WASM versionato devono corrispondere al backend.
 - La cattura nativa è condivisa: non sovrapporre stop/start o creare AudioEngine

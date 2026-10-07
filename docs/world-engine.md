@@ -139,6 +139,16 @@ Senza clock sincronizzato la vista è `REST_VIEW`: niente si muove da solo.
 | release | fronte di pressione | fronte radiale | esplosione dei gusci | anello ampio | fronte | breve sovraccarico del fosforo | — |
 | illumination | luminosità della griglia | livello | energia | — | densità | — | luce |
 
+Dal 7 ottobre 2026 (notte) tre scene leggono il mondo come un sistema fisico proprio
+([physical-scenes](physical-scenes.md)): **Field** come campo vettoriale (surge = sorgente /
+pozzo, spin = vortice, travel = rollio, disorder = turbolenza e vortici locali, coerenza e
+potenziale = gusci, eventi = fronti, luce = sola visibilità); il **Tunnel** aggiunge
+torsione geometrica (spin), guida d'onda (modi di `ResonantPhysics`), tagli in anelli e
+pannelli (potenziale, disorder, impatti), strozzatura (potenziale) e un fronte di rilascio
+che lascia un'altra struttura; **Particle Field** aggiunge pozzi comuni attorno e lungo
+l'asse (potenziale, spin, eccitazione, coerenza), un fronte di densità sugli impatti e la
+riorganizzazione dopo un rilascio. Il mondo non ha ricevuto campi nuovi.
+
 Energia ≠ complessità: la luce e il potenziale seguono l'energia/la previsione, la
 turbolenza segue disordine e complessità senza ordine. Un drone forte è luminoso e calmo,
 un glitch quieto è scuro e turbolento (test).

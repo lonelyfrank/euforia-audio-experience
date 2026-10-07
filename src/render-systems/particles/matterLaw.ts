@@ -18,11 +18,11 @@ export const MAX_SUBSTEPS = 4;
 export const MAX_VELOCITY = 6;
 const BOUND = 4;
 /** Decay of the energy channel (s) and how fast a unit front charges it (1/s). */
-const ENERGY_TAU = 0.6;
-const WAVE_GLOW = 6;
+export const ENERGY_TAU = 0.6;
+export const WAVE_GLOW = 6;
 /** A newly formed element matures at least this fast (1/s) until it is visible, then ages with the fields. */
-const BIRTH_RATE = 0.35;
-const BORN = 0.1;
+export const BIRTH_RATE = 0.35;
+export const BORN = 0.1;
 
 /** Sub-steps for a frame of `dt` seconds, the same rule for every backend. */
 export function substeps(dt: number): number {
