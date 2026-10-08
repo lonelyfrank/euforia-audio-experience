@@ -1,5 +1,6 @@
 import { copyFrame, newFrame, type AnalysisFrame, type BeatEvent, type OnsetEvent, type SectionEvent } from '../audio/features/decode';
 import { copyMorphology, MorphologyEngine } from '../morphology/SoundMorphology';
+import { copyResonance, MultiscaleResonance } from '../physics/MultiscaleResonance';
 import { ResonantPhysics } from '../physics/ResonantPhysics';
 import { WorldEngine, WorldIntegrator } from '../world/WorldEngine';
 import { copyWorld } from '../world/WorldState';
@@ -23,6 +24,8 @@ export class ExperienceEngine {
   readonly memory = new TemporalMemory();
   readonly planner = new ExperiencePlanner();
   readonly physics = new ResonantPhysics();
+  /** The multiscale resonators differentiated matter answers (macro, meso, micro), per hop on the audio clock. */
+  readonly resonance = new MultiscaleResonance();
   /** What kind of sound is being heard, per hop on the audio clock (the layer between the DSP and the matter). */
   readonly morphology = new MorphologyEngine();
   /** The persistent world the music acts on (bodies and fields), advanced per hop on the audio clock. */
@@ -167,13 +170,14 @@ export class ExperienceEngine {
     this.predict(a);
     this.planner.update(s, a, dt);
     this.physics.update(a, s, dt);
+    this.resonance.update(a, s, dt);
     this.morphology.update(a, dt);
     this.world.setForces(a, s, this.planner.intents, presence);
     if (a.time - this.lastSnapshot >= 1 / 120 - 1e-9) {
       const snapshot = this.history[this.written++ % HISTORY];
       Object.assign(snapshot.state, s); Object.assign(snapshot.plan, this.planner.plan);
       for (let i = 0; i < snapshot.intents.length; i++) Object.assign(snapshot.intents[i], this.planner.intents[i]);
-      copyPhysics(snapshot.physics, this.physics.frame); copyFrame(snapshot.acoustic, a);
+      copyPhysics(snapshot.physics, this.physics.frame); copyResonance(snapshot.resonance, this.resonance.frame); copyFrame(snapshot.acoustic, a);
       copyWorld(snapshot.world, this.world.state); copyMorphology(snapshot.morphology, this.morphology.state);
       this.lastSnapshot = a.time;
     }
@@ -197,7 +201,7 @@ export class ExperienceEngine {
   }
 
   reset(): void {
-    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.world.reset(); this.events.reset(); this.morphology.reset();
+    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.resonance.reset(); this.world.reset(); this.events.reset(); this.morphology.reset();
     this.dEnergy.reset(); this.dComplexity.reset(); this.dTension.reset(); this.dOpenness.reset();
     this.shares.fill(0); this.scores.fill(0); this.trajectoryScores.fill(0);
     Object.assign(this.state, createState());
@@ -353,5 +357,5 @@ function copySnapshot(to: ExperienceSnapshot, from: ExperienceSnapshot): void {
   Object.assign(to.state, from.state); Object.assign(to.plan, from.plan);
   for (let i = 0; i < to.intents.length; i++) Object.assign(to.intents[i], from.intents[i]);
   copyPhysics(to.physics, from.physics); copyFrame(to.acoustic, from.acoustic); copyWorld(to.world, from.world);
-  copyMorphology(to.morphology, from.morphology);
+  copyMorphology(to.morphology, from.morphology); copyResonance(to.resonance, from.resonance);
 }

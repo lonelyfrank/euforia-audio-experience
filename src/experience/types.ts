@@ -1,5 +1,6 @@
 import type { AnalysisFrame } from '../audio/features/decode';
 import { createMorphology, type SoundMorphology } from '../morphology/SoundMorphology';
+import { createResonanceFrame, type ResonanceFrame } from '../physics/MultiscaleResonance';
 import { createPhysicsFrame, type PhysicsFrame } from '../physics/ResonantPhysics';
 import { createWorld, type WorldState } from '../world/WorldState';
 
@@ -122,6 +123,8 @@ export interface ExperienceSnapshot {
   plan: ExperiencePlan;
   intents: VisualIntent[];
   physics: PhysicsFrame;
+  /** What the sound sets ringing at three scales of one frequency axis (physics/MultiscaleResonance.ts): what differentiated matter answers. */
+  resonance: ResonanceFrame;
   /** The persistent world (bodies and fields); presented extrapolated to the heard time. */
   world: WorldState;
   /** What kind of sound is being heard (continuous properties, no classes); see morphology/SoundMorphology.ts. */
@@ -147,7 +150,7 @@ export const createPlan = (): ExperiencePlan => ({ currentIntent: 'flow', nextIn
   transitionStart: 0, transitionEnd: 0, transitionConfidence: 0, maxIntensity: 1, desiredEntropy: 0, sceneContinuity: 1, contrastTarget: 0, confidence: 0 });
 export const createIntents = (): VisualIntent[] => INTENTS.map(kind => ({ kind, strength: 0, duration: 1, attack: 0.1, release: 1, spatialBias: 0, confidence: 0, time: 0 }));
 export function createSnapshot(acoustic: AnalysisFrame): ExperienceSnapshot {
-  return { state: createState(), plan: createPlan(), intents: createIntents(), physics: createPhysicsFrame(), world: createWorld(), morphology: createMorphology(), acoustic };
+  return { state: createState(), plan: createPlan(), intents: createIntents(), physics: createPhysicsFrame(), resonance: createResonanceFrame(), world: createWorld(), morphology: createMorphology(), acoustic };
 }
 export const unit = (x: number): number => Math.min(1, Math.max(0, x));
 export const follow = (x: number, target: number, dt: number, tau: number): number => x + (target - x) * (1 - Math.exp(-dt / tau));

@@ -6,7 +6,7 @@
   (thread, clock, stati, eventi, confidence, benchmark), `docs/refactor-report.md`,
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
-  `docs/visual-grammar.md`, `docs/physical-scenes.md` e `docs/spectral-shell.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md` e `docs/structural-dynamics.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -62,6 +62,16 @@
   `shells`. Un guscio è la membrana nel passato: modi da `ModalMemory` (tick del clock audio, mai una riga per frame),
   impulsi rivalutati a `uTime − età`. Il suono dà la forma (modi, impulsi); il mondo solo come i gusci stanno nello
   spazio. `shellPoint` è scritto in GLSL e in TS: cambiarli insieme. Senza `shells` lo shader resta a un solo layer.
+- Structural Dynamics (`docs/structural-dynamics.md`): audio → eccitazione → ambiente → materia / struttura → topologia →
+  rendering. L'ambiente (lo stesso `fieldAt`, gli stessi fronti) decide **dove** va un elemento; la risonanza
+  (`MultiscaleResonance` per hop a monte → `ResonanceField` per (f0, Q)) decide **come** risponde: mai l'audio su una posizione.
+  Identità procedurale (`identityOf`, hash intero, distribuzioni continue: niente categorie di particelle né `if` per tipo);
+  pool a capacità fissa; vicinato in griglia limitata, mai O(n²); passo fisso sul clock udito con cadenze in passi, mai in frame.
+  Rompere un legame libera il legame, mai l'elemento (posizione, velocità, altezza, memoria restano). Ordine, temperatura e
+  ruoli sono continui con isteresi: nessun `if (armonia) poligono`. Coesione, vicinato, memoria e potenziale agiscono solo in
+  un mondo vivo: il silenzio non crea energia. `ResonantPhysics` resta com'è. `wirePoint` è scritto in GLSL e in TS: cambiarli
+  insieme. `structuralLab`, lo Structural Lab (fuori dal registry: `registerLaboratory`) e il cockpit (`?engine`, Shift+E) sono
+  solo DEV e non scrivono impostazioni; la UI cinematica non si tocca.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente, non hop/beat.
   Il wire e il WASM versionato devono corrispondere al backend.
 - La cattura nativa è condivisa: non sovrapporre stop/start o creare AudioEngine

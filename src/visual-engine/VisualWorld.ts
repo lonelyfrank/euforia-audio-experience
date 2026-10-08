@@ -15,6 +15,7 @@ import { SonicGeometryMapper } from './geometry/SonicGeometryMapper';
 import { VoiceCycles } from './geometry/VoiceCycles';
 import { MaterialSystem } from './material/MaterialState';
 import type { Primitive, PrimitiveContext, WorldFrame } from './Primitive';
+import { ResonanceField } from './structural/ResonanceField';
 import { DISSOLVE_TIME, FORM_TIME, type PrimitiveSlot, type WorldRecipe } from './WorldRecipe';
 
 /** The structural budget grows over about a bar and gives way more slowly (s): the picture breathes, it does not flicker. */
@@ -74,6 +75,8 @@ export class VisualWorld {
   readonly voices = new VoiceCycles();
   readonly observer = new Observer();
   readonly memory = createMemory();
+  /** The multiscale resonance as matter looks it up by its natural frequency; only when the recipe asks for it. */
+  readonly resonance: ResonanceField | null;
   /** Packed uniforms shared by every primitive that reads the fields (bound once; rewritten in place). */
   readonly uField = new Float32Array(FIELD_VALUES);
   readonly uWaveA = new Float32Array(MAX_WAVES * 4);
@@ -96,10 +99,12 @@ export class VisualWorld {
   private lastClock = -Infinity;
 
   constructor(readonly recipe: WorldRecipe) {
+    this.resonance = recipe.resonance ? new ResonanceField() : null;
     this.frame = {
       dt: 0, time: 0, timed: false, view: REST_VIEW, geometry: this.mapper.state, fields: this.fields, look: this.materials.state,
       waves: this.waves, audio: undefined as never, response: undefined as never,
     };
+    if (this.resonance) this.frame.resonance = this.resonance;
   }
 
   /** Mounts the recipe's primitives (GPU resources are created here, once). */
@@ -182,6 +187,8 @@ export class VisualWorld {
     if (clock) packWaves(this.uWaveA, this.uWaveB, this.waves, now);
     else this.uWaveB.fill(0);
     this.voices.update(response);
+    // Dated like the fronts: what rings is what has been heard, and without a clock nothing does.
+    this.resonance?.update(clock ? snapshot?.resonance : undefined);
     this.materials.update(dt, view, geometry, fields, response, snapshot, modulation, clock?.light ?? 0);
 
     const frame = this.frame;
@@ -248,7 +255,7 @@ export class VisualWorld {
    * matter relaxes by itself.
    */
   reset(): void {
-    this.mapper.reset(); this.materials.reset(); this.waves.reset(); this.voices.reset();
+    this.mapper.reset(); this.materials.reset(); this.waves.reset(); this.voices.reset(); this.resonance?.reset();
     this.lastClock = -Infinity;
     for (const m of this.mounted) m.primitive.reset();
   }

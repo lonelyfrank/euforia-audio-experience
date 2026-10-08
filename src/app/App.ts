@@ -86,6 +86,10 @@ export class App {
     if (import.meta.env.DEV) void import('./debug/DebugOverlay').then((m) => {
       if (!this.disposed) this.cleanup.push(m.installDebugOverlay(this));
     });
+    // Development-only engine cockpit (?engine or Shift+E): a technical view beside the cinematic one, never in production.
+    if (import.meta.env.DEV) void import('./engine/EngineCockpit').then((m) => {
+      if (!this.disposed) this.cleanup.push(m.installEngineCockpit(this));
+    });
   }
 
   async start(): Promise<void> {
@@ -267,6 +271,15 @@ export class App {
     window.clearTimeout(this.retryTimer);
     this.retriesLeft = 0;
     await this.audio.setSource('fake', { signal });
+  }
+
+  /**
+   * Holds a scene in the viewport whatever the settings say (development tools), or releases it with `null`; the
+   * persisted scene is left unchanged. Without a synchronized clock the show is not directing, so it is mounted at once.
+   */
+  pinScene(id: string | null): void {
+    this.rigController.pinned = id;
+    this.rigController.showScene(id ?? settingsStore.get().scene);
   }
 
   private onAudioState(state: AudioEngineState): void {

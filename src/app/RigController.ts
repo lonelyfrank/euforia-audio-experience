@@ -48,6 +48,11 @@ export class RigController {
   private readonly sources = new Map<string, SceneSource>();
   private readonly slotParams: SlotParams = { weight: 1, size: 1, offset: 0, mirror: false, flash: 0, tint: 0, structure: 1 };
   private session = -1;
+  /**
+   * A scene the host holds as the protagonist whatever the settings say, played as designed (rig Preset). Development
+   * tools set it (the engine cockpit); the stored scene and rig mode are left as they are.
+   */
+  pinned: string | null = null;
   /** Position in the experience event stream (heard time, arrivals seen). */
   private readonly eventCursor: EventCursor = { time: -Infinity, seq: 0 };
   /** Every heard impact gets its own impulse at its own audio time, even several between two frames. */
@@ -133,8 +138,8 @@ export class RigController {
     i.meterConfidence = f.meterConfidence;
     i.gridWeight = this.audio.timing.gridWeight;
     const s = this.settings();
-    this.showSettings.mode = resolveDirection(s).rigMode;
-    this.showSettings.scene = s.scene;
+    this.showSettings.mode = this.pinned ? 'preset' : resolveDirection(s).rigMode;
+    this.showSettings.scene = this.pinned ?? s.scene;
     this.show.setBudget(this.budget.update(this.render.measuredFps, dt, this.render.qualityTier));
     this.show.update(i, this.showSettings, this.showSink);
     const lead = this.show.slots[0];

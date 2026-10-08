@@ -1,6 +1,6 @@
 # Euforia-Audio-Experience — scheda tecnica e audit
 
-Aggiornata il **7 ottobre 2026** (scene fisiche: Field, Tunnel, Particle Field). Il [README](../README.md) è la fonte di verità per
+Aggiornata l'**8 ottobre 2026** (Structural Dynamics, cockpit del motore). Il [README](../README.md) è la fonte di verità per
 funzionalità, avvio e architettura; questa scheda contiene i dettagli operativi per
 chi modifica il progetto. [experience-engine.md](experience-engine.md) conserva
 le decisioni e misure delle fasi precedenti. Il prodotto usa solo sorgenti live;
@@ -20,7 +20,7 @@ Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-plann
 [fisica](physics-engine.md), [World Engine](world-engine.md), [integrazione scene](visual-director.md),
 [Visual Systems e Spectral Matter](visual-systems.md), [Matter Engine](matter-engine.md),
 [Visual Engine](visual-engine.md), [Visual Grammar](visual-grammar.md), [scene fisiche](physical-scenes.md),
-[Spectral Shell](spectral-shell.md).
+[Spectral Shell](spectral-shell.md), [Structural Dynamics](structural-dynamics.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
 indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
@@ -49,6 +49,8 @@ frontend, backend e WASM della stessa revisione.
 | Direzione della scena | `director/` | Intenti e fisica × Mood × Experience × capacità; un VisualDirector per Layer, separato da ShowDirector |
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
 | Visual Engine | `visual-engine/` | Mondo visuale persistente: `SonicGeometryMapper` (morfologia, mondo, planner, forma dei cicli delle voci → `GeometryState`, 36 tratti continui), `MaterialSystem` (luce comune), `VisualWorld` (campi e fronti impacchettati una volta, budget strutturale, presenze, memoria, osservatore), cinque primitive con legge GLSL + riferimento CPU, `WorldRecipe` e `RecipeVisualizer` (adattatore verso `Layer`: recipe e scene legacy convivono) |
+| Structural Dynamics | `physics/MultiscaleResonance.ts`, `visual-engine/structural/`, `visual-engine/primitives/WirePolygonPrimitive.ts` | Risonanza multiscala per hop in ExperienceEngine (`snapshot.resonance`; macro / meso / micro a conteggi configurabili; `ResonantPhysics` invariata). Elementi con identità procedurale, pool a capacità fissa, legami (campate, giunti, controventi), carico / danno / frattura, memoria strutturale, ordine / temperatura / ruoli continui, passo fisso sul clock udito, vicinato in griglia limitata. L'ambiente è quello del mondo (`fieldAt`, fronti, molla radiale); la primitiva lo disegna (fili istanziati, punti, facce). Esiste solo nello Structural Lab, fuori dal registry ([structural-dynamics](structural-dynamics.md)) |
+| Cockpit del motore | `app/engine/EngineCockpit.ts` | Solo DEV (`?engine`, Shift+E): moduli, viewport, ispettore, tracce. Fissa il mondo sul rig (`RigController.pinned`, `App.pinScene`), registra il laboratorio (`registerLaboratory`), scrive solo `structuralLab`; alla chiusura ripristina tutto. Nessuna impostazione utente toccata, UI cinematica invariata |
 | Scene fisiche | `render-systems/fields/vectorField.ts`, `wells.ts`, `particles/tracer*.ts`, `Tracer*.ts`, `visual-engine/primitives/Field*Primitive.ts` | Campo vettoriale F(P) e sua topologia, pozzi di potenziale, legge / passo / simulazione GPU / probe CPU / parità dei traccianti, primitive dei traccianti e delle linee di campo: leggi in GLSL e in TS come la legge dei campi ([scene fisiche](physical-scenes.md)) |
 | Visual Systems | `render-systems/` | Vocabolario condiviso: `VisualMaterial` (mondo + morfologia), campi spaziali, legge dei campi e legge delle forme (GLSL + riferimento CPU), forme della materia (storia della waveform, rete dei parziali), onde datate, materia GPU e probe CPU, disegno a punti / legami / faccette, memoria visiva, osservatore; nessuno stato musicale, solo storia di rendering |
 | Scene | `visualizers/` | Sei scene legacy interpretano il mondo (`modulation.world`) in una forma propria: moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. In Tunnel e Particle Field la trasformazione della struttura è una funzione pura della `WorldView` (`tunnel/topology.ts`, `particle-field/regimes.ts`). Quattro sono recipe: Spectral Matter (la sola materia), Resonant Field (la sola membrana; `?legacy=resonant-field` in DEV monta la precedente), Matter Field (tutte le primitive), Vector Field (traccianti e linee di un campo vettoriale; già `field`), Spectral Shell (la membrana a disco di Matter Field con il proprio passato come gusci, [spectral-shell](spectral-shell.md)) |
@@ -164,6 +166,23 @@ TypeScript: si cambiano insieme e la parità va riprovata con `runTracerParity()
 che lascia (`Reorganization`): non usare contatori di frame né `Math.random`. Dettagli,
 misure e limiti in [physical-scenes](physical-scenes.md).
 
+**Structural Dynamics.** La catena è audio → eccitazione → ambiente → materia / struttura →
+topologia → rendering: l'ambiente (lo stesso `fieldAt` dei traccianti, gli stessi fronti, la molla
+radiale del corpo) decide dove va un elemento, la sua risonanza (`ResonanceField`, per `f0` e `q`)
+come risponde; l'audio non scrive mai una posizione. L'identità è una funzione pura di seme, numero
+e popolazione (hash intero: uno shader calcola gli stessi bit); le proprietà sono distribuzioni
+continue lungo l'asse di frequenza, mai categorie. Rompere un legame libera il legame, non
+l'elemento: posizione, velocità, altezza restano, più una memoria che decade. Ordine, temperatura e
+ruoli sono quantità seguite con isteresi; il lifecycle è solo un nome per gli strumenti. Coesione,
+forza di vicinato, memoria e potenziale agiscono solo in un mondo vivo (`energy` > 0): nel silenzio
+nulla di nuovo si assesta né si muove. Il passo è fisso (1/120 s) sul clock che riceve e le cadenze
+interne sono contate in passi; pool e griglia hanno capacità fissa, quindi legami e vicinati sono
+limitati per costruzione. `wirePoint` esiste in GLSL e in TypeScript. `MultiscaleResonance` usa solo
+misure già esportate (`pitchBins`, `bandLevel`, `bandTransient`, `erb`, `sharpness`) e gira per hop
+in ogni sessione; `ResonantPhysics` non va toccata per essa. `structuralLab`, lo Structural Lab e il
+cockpit esistono solo in DEV; il lab non entra in `visualizers` (menu, show, impostazioni).
+Dettagli, misure e limiti in [structural-dynamics](structural-dynamics.md).
+
 **Visual Systems.** `render-systems/` non contiene significato musicale: legge
 `WorldView`, snapshot, intenti e lo stream di eventi, e tiene solo storia di rendering
 (particelle, fronti, buffer di memoria, inerzia dell'osservatore). Le onde nascono
@@ -265,6 +284,13 @@ Se `cargo test` segnala `layout.ts is stale` senza differenze in git, il binario
 test in `target/` è stato compilato sotto un altro percorso della repo (il percorso è
 incorporato a compile time): ricompilare con `touch native/analysis/tests/wire.rs`.
 
+Structural Dynamics (8 ottobre 2026): nessuna modifica a DSP, wire, WASM, World Engine, UI
+cinematica, scene esistenti. Aggiunta a `ExperienceSnapshot` (`resonance`). Esiti, misure e limiti in
+[structural-dynamics](structural-dynamics.md) §12–14: **422 test frontend in 54 file** (34 nuovi; 1 saltato come prima), core Rust invariato
+(**59 test + 1 doctest**, rieseguiti), shader della struttura compilati e undici scene montate senza errori su Intel UHD,
+cockpit aperto e richiuso a runtime; non provati musica reale, movimento nel tempo a occhio, app
+desktop, tempo GPU.
+
 Spectral Shell (7 ottobre 2026, dopo): nessuna modifica a DSP, wire, WASM, World Engine. Esiti,
 misure e limiti in [spectral-shell](spectral-shell.md) §5–7: **388 test frontend in 51 file**
 (19 nuovi), shader della membrana a 1 / 3 / 4 / 5 layer compilati su Intel UHD, Matter Field
@@ -312,6 +338,8 @@ I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 | Media | Unificazione graduale DSP TS/Rust | Corpus reale e sintetico, stessa waveform/pitch/presenza e latenza misurata; evitare doppia analisi senza spezzare i contratti |
 | Alta | Visual Engine: Matter Field su musica reale e a occhio | Affinità, costi, guadagno del budget ed esposizioni tarati su un corpus; ogni struttura leggibile da sola e insieme; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Parità GPU ↔ CPU delle leggi nuove | Un `runLawParity()` che valuta filamenti, nodi, membrana e anelli per texel e li confronta con il riferimento CPU, come `runParity()` per la materia |
+| Alta | Structural Dynamics su musica reale e a occhio | Nel lab, con gli override del cockpit: carico, coesione, memoria e risonanza tarati su un corpus; il quadrato si forma, vibra, si rompe e si ritrova in modo leggibile con ambient, percussioni, mix densi, drop e silenzio |
+| Media | Popolazione strutturale su GPU | Identità (`identityOf`) e tabella di risonanza in GLSL per decine di migliaia di elementi liberi, con parità GPU ↔ CPU; topologia rada su CPU; poi `WirePolygonPrimitive` come slot di Matter Field |
 | Alta | Spectral Shell su musica reale e a occhio | Gusci leggibili con ambient, voce, basso, mix densi e percussioni; età, apertura, chiusura e torsione tarate; polvere che vela senza coprire; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Scene fisiche su musica reale e a occhio | Vector Field, Tunnel e Particle Field con ambient, percussioni, basso elettronico, mix densi, stereo sbilanciato, silenzio, drop e build: ogni regime leggibile, nessun moto nel silenzio, tagli e pozzi tarati; costo a 1080p e in WebView2 su macchina scarica |
 | Media | Migrare le scene legacy a recipe e al modello fisico | Galaxy (orbite, `wells` a spirale), Liquid (superficie fluida, fronti condivisi), Oscilloscope (`SignalTracePrimitive`); parete del Tunnel come primitiva che legge `uField` / `uWave*`; **Spectrum resta com'è** |

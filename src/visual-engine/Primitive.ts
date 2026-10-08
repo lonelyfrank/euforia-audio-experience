@@ -9,6 +9,7 @@ import type { WorldView } from '../world/WorldView';
 import type { GeometryState } from './geometry/GeometryState';
 import type { VoiceCycles } from './geometry/VoiceCycles';
 import type { MaterialState } from './material/MaterialState';
+import type { ResonanceField } from './structural/ResonanceField';
 
 /**
  * What a world shares with its primitives for as long as it lives: the
@@ -47,6 +48,8 @@ export interface WorldFrame {
   fields: Readonly<SpatialFields>;
   look: Readonly<MaterialState>;
   waves: WaveField;
+  /** What matter of each natural frequency takes of the sound right now; only in worlds whose recipe asks for it. */
+  resonance?: ResonanceField;
   snapshot?: ExperienceSnapshot;
   audio: AudioFrame;
   response: VisualResponseFrame;

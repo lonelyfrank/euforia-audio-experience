@@ -49,6 +49,11 @@ export interface WorldRecipe {
   spatial?: number;
   /** Whether the observer moves the camera (default true): a world may keep a fixed view. */
   observer?: boolean;
+  /**
+   * Whether this world's matter answers the multiscale resonance by its own natural frequency (default false): the
+   * world then keeps a ResonanceField of what is heard (`frame.resonance`) for its primitives to look up.
+   */
+  resonance?: boolean;
 }
 
 /** Default time constants of a structure's presence (s). */
