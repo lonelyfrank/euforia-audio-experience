@@ -1,3 +1,4 @@
+import { DataUtils } from 'three';
 import {
   DataTexture, FloatType, GLSL3, HalfFloatType, NearestFilter, NoBlending, RawShaderMaterial, RedFormat, RGBAFormat, WebGLRenderTarget,
   type PixelFormat, type Texture, type TextureDataType, type WebGLRenderer,
@@ -184,7 +185,12 @@ export class MatterSimulation {
   /** Reads the state back (RGBA floats, one texel per element): positions, or velocities. Slow; diagnostics and the parity check only. */
   read(out: Float32Array, velocities = false): Float32Array {
     const { width, height } = this.seeds.layout;
-    this.renderer.readRenderTargetPixels(this.targets[this.current], 0, 0, width, height, out, undefined, velocities ? 1 : 0);
+    if (this.fullFloat) this.renderer.readRenderTargetPixels(this.targets[this.current], 0, 0, width, height, out, undefined, velocities ? 1 : 0);
+    else {
+      const half = new Uint16Array(width * height * 4);
+      this.renderer.readRenderTargetPixels(this.targets[this.current], 0, 0, width, height, half, undefined, velocities ? 1 : 0);
+      for (let i = 0; i < half.length; i++) out[i] = DataUtils.fromHalfFloat(half[i]);
+    }
     return out;
   }
 
@@ -192,6 +198,20 @@ export class MatterSimulation {
   reset(): void {
     this.pendingReset = true;
     this.phase = 0;
+  }
+
+  /** Read-only observation of the ping-pong index. */
+  get diagnosticTarget(): number { return this.current; }
+
+  /** Explicit lab readback: a prefix of one row, at most 256 elements, full-float only. */
+  readDiagnosticSample(position: Float32Array, velocity: Float32Array): number {
+    if (!this.fullFloat) return 0;
+    const count = Math.min(256, this.seeds.layout.width, Math.floor(position.length / 4), Math.floor(velocity.length / 4));
+    if (count < 1 || this.renderer.getContext().isContextLost()) return 0;
+    position.fill(NaN); velocity.fill(NaN);
+    this.renderer.readRenderTargetPixels(this.targets[this.current], 0, 0, count, 1, position, undefined, 0);
+    this.renderer.readRenderTargetPixels(this.targets[this.current], 0, 0, count, 1, velocity, undefined, 1);
+    return count;
   }
 
   dispose(): void {

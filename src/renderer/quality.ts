@@ -23,7 +23,7 @@ const AUTO_STEPS: QualityProfile[] = [
 const SAMPLE_WINDOW = 3;
 /** Step down when running below this fraction of the target frame rate. */
 const TOLERANCE = 0.85;
-const TARGET_FPS = 60;
+export const TARGET_FPS = 60;
 /** Frames longer than this (s) are ignored. */
 const STALL = 0.25;
 

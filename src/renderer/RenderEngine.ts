@@ -1,3 +1,4 @@
+import type { RenderObservation } from '../diagnostics/probes/RendererProbe';
 import { approach } from '../director/VisualDirector';
 import { AutoDirection } from '../director/AutoDirection';
 import { DEFAULT_DIRECTION } from '../director/profiles';
@@ -71,6 +72,8 @@ class Slot {
 export class RenderEngine {
   readonly renderer: WebGLRenderer;
   paused = false;
+  /** DEV observer, absent from ordinary rendering. Never owns engine state. */
+  diagnostics: RenderObservation | null = null;
   readonly autoDirection = new AutoDirection();
   private readonly direction: DirectionSettings = { ...DEFAULT_DIRECTION };
   /** The protagonist's layer (slot 0). */
@@ -237,11 +240,14 @@ export class RenderEngine {
     this.lastTime = now;
     const dt = Math.min(rawDt, MAX_DELTA);
 
+    const observer = import.meta.env.DEV ? this.diagnostics : null;
+    observer?.begin(now, rawDt);
     const input = this.frameSource(dt);
+    observer?.sourceDone();
     const { audio: frame, response } = input;
     const direction = this.autoDirection.update(response, this.direction, this.paused ? 0 : dt, frame.time, input.rig?.experience);
     const current = this.current;
-    if (!current) return;
+    if (!current) { observer?.end(0, 0, 0); return; }
     if (!this.paused) {
       this.floatPhase += dt * (0.6 * response.flow + 0.2 * response.density) * response.music.pace;
       this.updateLayout(dt, this.floatPhase);
@@ -276,6 +282,15 @@ export class RenderEngine {
     u.uContrast.value = current.director.frame.contrast;
     this.composer.render(dt);
 
+    if (observer) {
+      let layers = 0, crossfades = 0, passes = 0;
+      for (const pass of this.composer.passes) if (pass.enabled) passes++;
+      for (const slot of this.slots) {
+        if (slot.current) { layers++; passes += slot.current.diagnosticPasses; }
+        if (slot.previous) { layers++; crossfades++; passes += slot.previous.diagnosticPasses; }
+      }
+      observer.end(layers, crossfades, passes);
+    }
     if (!this.paused && this.quality.sample(rawDt)) this.applyQuality();
   };
 

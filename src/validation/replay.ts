@@ -1,3 +1,4 @@
+import type { ExperienceSnapshot } from '../experience/types';
 import { WasmAnalysis } from '../audio/features/WasmAnalysis';
 import { ExperienceEngine } from '../experience/ExperienceEngine';
 import type { AudioEvent } from '../experience/EventStream';
@@ -55,6 +56,10 @@ export function parseBeats(text: string): { time: number; position: number }[] {
 }
 
 export interface ReplayOptions {
+  /** Diagnostics observation on the common audio grid; borrowed snapshot, read-only. */
+  onGrid?: (snapshot: ExperienceSnapshot, audioTime: number) => void;
+  /** Optional yielding for the DEV replay worker; never the live pipeline. */
+  onProgress?: (seconds: number) => Promise<void>;
   /** Render rate of the presentation (fps) and analysis batch (frames). */
   fps?: number;
   batch?: number;
@@ -78,6 +83,7 @@ const SKIP = 5;
 
 export async function replay(pcm: Pcm, beats: { time: number; position: number }[] | null, options: ReplayOptions = {}): Promise<ReplayResult> {
   const { fps = 60, batch = Math.round(pcm.sampleRate / 100), delay = 0.1, traceRate = 20, limit = Infinity } = options;
+  if (![pcm.sampleRate, pcm.channels, fps, batch, traceRate].every(x => Number.isFinite(x) && x > 0) || !Number.isInteger(batch) || !Number.isInteger(pcm.channels) || !Number.isFinite(delay) || delay < 0) throw new Error('Invalid replay configuration');
   // The analysis takes mono or stereo; more channels are folded to the first two.
   const channels = Math.min(2, pcm.channels);
   const frames = Math.min(Math.floor(pcm.samples.length / pcm.channels), Math.floor(limit * pcm.sampleRate));
@@ -110,36 +116,41 @@ export async function replay(pcm: Pcm, beats: { time: number; position: number }
     if (e.type === 'silenceEnd' && silenceAt >= 0) { silences.push({ start: silenceAt, end: e.audioTime }); silenceAt = -1; }
   };
   const total = frames / pcm.sampleRate;
-  for (let f = 1; f <= Math.ceil(total * fps); f++) {
-    const now = f / fps;
-    decoder.begin();
-    while (captured + batch <= Math.min(frames, Math.floor(now * pcm.sampleRate))) {
-      for (let i = 0; i < batch; i++) {
-        const from = (captured + i) * pcm.channels;
-        chunk[i * channels] = pcm.samples[from];
-        if (channels === 2) chunk[i * 2 + 1] = pcm.samples[from + 1];
+  try {
+    for (let f = 1; f <= Math.ceil(total * fps); f++) {
+      const now = f / fps;
+      if (options.onProgress && f % Math.ceil(fps) === 0) await options.onProgress(now);
+      decoder.begin();
+      while (captured + batch <= Math.min(frames, Math.floor(now * pcm.sampleRate))) {
+        for (let i = 0; i < batch; i++) {
+          const from = (captured + i) * pcm.channels;
+          chunk[i * channels] = pcm.samples[from];
+          if (channels === 2) chunk[i * 2 + 1] = pcm.samples[from + 1];
+        }
+        wasm.push(chunk);
+        captured += batch;
       }
-      wasm.push(chunk);
-      captured += batch;
+      const heard = now - delay;
+      const s = engine.present(heard);
+      if (!s) continue;
+      engine.events.forEachHeard(cursor, heard, onEvent);
+      presented++;
+      const w = s.world;
+      // Smoothness: the largest change of the presented radial body in one frame (no discontinuities).
+      if (!Number.isNaN(previous)) smooth = Math.max(smooth, Math.abs(w.radius - previous));
+      previous = w.radius;
+      maxEnergy = Math.max(maxEnergy, w.energy); maxSpeed = Math.max(maxSpeed, Math.abs(w.speed));
+      if (Math.max(w.excitation, w.shimmer, w.turbulence, w.potential, w.illumination) > 0.98) saturated++;
+      const anticipation = s.state.anticipation > 0.4;
+      if (anticipation && !anticipating) anticipations.push(s.state.time);
+      anticipating = anticipation;
+      if (heard - traced >= 1 / traceRate - 1e-9) { trace.sample(s); traced = heard; }
+      if (Math.abs(now * 6 - Math.round(now * 6)) < 1e-6 && heard > 2) {
+        grid.push(heard, w.radius, w.radialVelocity, w.angle, w.spin, w.travel, w.speed, w.bias, w.excitation, w.turbulence, w.potential);
+        options.onGrid?.(s, heard);
+      }
     }
-    const heard = now - delay;
-    const s = engine.present(heard);
-    if (!s) continue;
-    engine.events.forEachHeard(cursor, heard, onEvent);
-    presented++;
-    const w = s.world;
-    // Smoothness: the largest change of the presented radial body in one frame (no discontinuities).
-    if (!Number.isNaN(previous)) smooth = Math.max(smooth, Math.abs(w.radius - previous));
-    previous = w.radius;
-    maxEnergy = Math.max(maxEnergy, w.energy); maxSpeed = Math.max(maxSpeed, Math.abs(w.speed));
-    if (Math.max(w.excitation, w.shimmer, w.turbulence, w.potential, w.illumination) > 0.98) saturated++;
-    const anticipation = s.state.anticipation > 0.4;
-    if (anticipation && !anticipating) anticipations.push(s.state.time);
-    anticipating = anticipation;
-    if (heard - traced >= 1 / traceRate - 1e-9) { trace.sample(s); traced = heard; }
-    if (Math.abs(now * 6 - Math.round(now * 6)) < 1e-6 && heard > 2) grid.push(heard, w.radius, w.radialVelocity, w.angle, w.spin, w.travel, w.speed, w.bias, w.excitation, w.turbulence, w.potential);
-  }
-  wasm.dispose();
+  } finally { wasm.dispose(); }
   const report: Record<string, number | string | null> = {
     seconds: round(total), sampleRate: pcm.sampleRate, channels: pcm.channels, presentedFrames: presented,
     onsetsPerSecond: round((events.onset ?? 0) / total), beats: beatTimes.length,

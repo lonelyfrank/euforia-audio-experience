@@ -82,13 +82,9 @@ export class App {
     this.cleanup.push(settingsStore.subscribe((s, previous) => this.applySettings(s, previous)));
     this.cleanup.push(this.audio.subscribe((state) => this.onAudioState(state)));
     this.installInput();
-    // Development-only audio/visual debug overlay (?debug or Shift+D); not part of the production bundle.
-    if (import.meta.env.DEV) void import('./debug/DebugOverlay').then((m) => {
-      if (!this.disposed) this.cleanup.push(m.installDebugOverlay(this));
-    });
-    // Development-only engine cockpit (?engine or Shift+E): a technical view beside the cinematic one, never in production.
-    if (import.meta.env.DEV) void import('./engine/EngineCockpit').then((m) => {
-      if (!this.disposed) this.cleanup.push(m.installEngineCockpit(this));
+    // A single DEV coordinator owns diagnostics, the legacy overlay and the structural cockpit.
+    if (import.meta.env.DEV) void import('../diagnostics/installDiagnostics').then((m) => {
+      if (!this.disposed) this.cleanup.push(m.installDiagnostics(this));
     });
   }
 

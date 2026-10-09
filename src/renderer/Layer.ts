@@ -131,6 +131,13 @@ export class Layer {
     this.composer.render(dt);
   }
 
+  /** Configured enabled passes; hidden layers may not submit them. */
+  get diagnosticPasses(): number {
+    let count = 0;
+    for (const pass of this.composer.passes) if (pass.enabled) count++;
+    return count;
+  }
+
   dispose(): void {
     this.visualizer.dispose();
     for (const pass of this.passes) pass.dispose();

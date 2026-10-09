@@ -1,3 +1,4 @@
+import type { DiagnosticsController } from '../../diagnostics/core/DiagnosticsController';
 import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { FIELD } from '../../render-systems/fields/fieldLaw';
 import { TOPOLOGY } from '../../render-systems/fields/vectorField';
@@ -37,7 +38,7 @@ const TRACE = 30 * TRACE_RATE;
 
 const MODULES = ['Structures', 'Resonance', 'Environment', 'Diagnostics'] as const;
 type Module = typeof MODULES[number];
-/** The rest of the cockpit's map: not built in this milestone. */
+/** Related domains open the shared Diagnostics dashboard. */
 const PLANNED = ['Input', 'Analysis', 'World', 'Matter', 'Geometry', 'Recipes', 'Render'];
 const VIEW_LABELS: Record<StructureView, string> = {
   all: 'Everything', particles: 'Particle system', nodes: 'Nodes', edges: 'Edges', polygon: 'Polygon', surface: 'Surface', fragments: 'Fragments',
@@ -76,11 +77,11 @@ const STYLE = /* css */ `
 .engine-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 `;
 
-export function installEngineCockpit(app: App): () => void {
+export function installEngineCockpit(app: App, diagnostics: DiagnosticsController, openDiagnostics: () => void): () => void {
   let cockpit: EngineCockpit | null = null;
   const toggle = (): void => {
     if (cockpit) { cockpit.dispose(); cockpit = null; }
-    else cockpit = new EngineCockpit(app);
+    else cockpit = new EngineCockpit(app, diagnostics, openDiagnostics);
   };
   const onKey = (event: KeyboardEvent): void => {
     if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyE') toggle();
@@ -133,9 +134,10 @@ class EngineCockpit {
   private lastFrame = performance.now();
   private frameMs = 16;
   private rafId = 0;
+  private readonly releaseDiagnostics: () => void;
   private readonly drawn = { calls: 0, triangles: 0, points: 0, lines: 0 };
 
-  constructor(private readonly app: App) {
+  constructor(private readonly app: App, private readonly diagnostics: DiagnosticsController, private readonly openDiagnostics: () => void) {
     this.withdraw = registerLaboratory(structuralLabScene);
     structuralLab.active = true;
     document.head.append(this.style);
@@ -151,14 +153,14 @@ class EngineCockpit {
     app.pinScene(this.world);
     this.timer = window.setInterval(() => this.refresh(), 120);
     this.sampler = window.setInterval(() => this.sample(), 1000 / TRACE_RATE);
-    app.directionDebug.renderer.info.autoReset = false;
+    this.releaseDiagnostics = diagnostics.acquire();
     this.rafId = requestAnimationFrame(this.frame);
   }
 
   dispose(): void {
     window.clearInterval(this.timer); window.clearInterval(this.sampler);
     cancelAnimationFrame(this.rafId);
-    this.app.directionDebug.renderer.info.autoReset = true;
+    this.releaseDiagnostics();
     this.left.remove(); this.right.remove(); this.bottom.remove(); this.style.remove();
     document.documentElement.classList.remove('engine-mode');
     // Nothing of the cockpit outlives it: the overrides, the view and the pinned world go back to the product's.
@@ -184,7 +186,7 @@ class EngineCockpit {
   private buildLeft(): void {
     const nav = h('nav', { class: 'engine-nav' });
     for (const module of MODULES) nav.append(h('button', { type: 'button', dataset: { module }, onclick: () => this.select(module) }, module));
-    for (const module of PLANNED) nav.append(h('button', { type: 'button', disabled: true, title: 'Not part of this milestone' }, module));
+    for (const module of PLANNED) nav.append(h('button', { type: 'button', onclick: this.openDiagnostics, title: 'Engine Diagnostics 1.0' }, module));
 
     const world = h('select', { onchange: () => { this.world = world.value; this.app.pinScene(this.world); world.blur(); } },
       new Option('Structural Lab', STRUCTURAL_LAB), ...visualizers.map((v) => new Option(v.name, v.id)));
@@ -366,10 +368,7 @@ class EngineCockpit {
     this.rafId = requestAnimationFrame(this.frame);
     this.frameMs += (now - this.lastFrame - this.frameMs) * 0.05;
     this.lastFrame = now;
-    const info = this.app.directionDebug.renderer.info;
-    // Totals of the frame instead of the last pass only: the counters are reset here, once a frame (as the debug overlay does).
-    Object.assign(this.drawn, info.render);
-    info.reset();
+    Object.assign(this.drawn, this.diagnostics.renderer?.drawn);
 
     const width = Math.max(100, this.bottom.clientWidth - 24), height = BOTTOM - 62, ctx = this.fit(this.traces, width, height);
     if (ctx) {

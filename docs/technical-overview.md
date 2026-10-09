@@ -387,3 +387,15 @@ costo; evitare wrapper creati soltanto per spostare righe.
 Artefatti locali della sessione (log di check, regressioni, contesto baseline e
 microbenchmark del decoder in `/tmp`, non versionati né più presenti). I dati e il metodo
 sono riportati qui perché i file temporanei possono scomparire.
+
+## Engine Diagnostics 1.0 — osservabilità DEV
+
+`App` importa `diagnostics/installDiagnostics` solo in DEV. Un controller condiviso
+coordina dashboard (`?diagnostics`, Shift+G), overlay e cockpit; l'osservazione del
+renderer avviene ai confini del frame reale. Sostituiti gli azzeramenti concorrenti
+di renderer.info e la registrazione WorldTrace permanente dell'overlay: ora REC è
+esplicito e le risorse si liberano all'ultima chiusura. Nessuna modifica alle leggi,
+a Spectrum o alla UI cinematica. Aggiunti replay/report sul percorso esistente,
+query GPU opt-in, campione materia limitato e isolamento da recipe.
+Contratti, disponibilità e verifiche: [engine-diagnostics](engine-diagnostics.md),
+[diagnostics-metrics](diagnostics-metrics.md), [diagnostics-validation](diagnostics-validation.md).

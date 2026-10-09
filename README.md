@@ -507,3 +507,17 @@ Spectral Matter interpreta la densità come quantità di materia (circa 96.000 /
 ## Licenza
 
 Software proprietario, tutti i diritti riservati: vedi [LICENSE](LICENSE). La pubblicazione dei sorgenti non concede alcun diritto d'uso, copia o ridistribuzione. Le dipendenze conservano le rispettive licenze.
+
+### Engine Diagnostics 1.0 (solo sviluppo)
+
+Aprire `http://localhost:1420/?diagnostics` con `npm run dev`, oppure premere
+**Shift+G**. Dashboard locale per audio, Experience/Planner, mondo, fisica,
+materia, geometria e renderer; **REC**, pausa della raccolta e freeze della vista
+sono distinti. Export JSON/CSV/Markdown e confronto di acquisizioni; replay
+sintetici a 30/60/144 FPS nel worker, parità GPU e readback materia su richiesta.
+L'overlay (Shift+D) e il cockpit (Shift+E) condividono ora contatori e lifecycle;
+**Shift+T esporta WorldTrace solo dopo aver avviato REC**. A diagnostica chiusa
+non rimangono tracce o query GPU; nessuna funzionalità diagnostica nella build
+produttiva. Dettagli e limiti: [guida](docs/engine-diagnostics.md),
+[metriche](docs/diagnostics-metrics.md), [audit](docs/diagnostics-audit.md),
+[validazione](docs/diagnostics-validation.md).

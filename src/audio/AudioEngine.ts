@@ -73,6 +73,9 @@ export class AudioEngine {
     return this.provider?.analysis?.stats ?? null;
   }
 
+  /** Capture sample rate, unavailable until the source is running. */
+  get captureSampleRate(): number | null { return this._state.status === 'running' ? this.provider?.sampleRate ?? null : null; }
+
   get visual(): MusicState {
     return this.response.frame;
   }
