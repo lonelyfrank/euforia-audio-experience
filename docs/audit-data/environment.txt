@@ -1,0 +1,43 @@
+# Environment readings, 9 Oct 2026 (audit). Commands and values as read.
+
+## OS / toolchain
+Fedora Linux 44 (Workstation), kernel 7.2.8-200.fc44.x86_64, session wayland
+rustc 1.98.1 (48a229cea 2026-09-01) (Fedora 1.98.1-1.fc44)
+cargo 1.98.1 (797e8a9bc 2026-08-05) (Fedora 1.98.1-1.fc44)
+node v22.23.1
+webkit2gtk4.1-2.54.0-2.fc44.x86_64
+mesa-dri-drivers-26.2.3-1.fc44.x86_64
+gtk3-3.24.52-2.fc44.x86_64
+pipewire-1.6.9-1.fc44.x86_64
+    Device: Mesa Intel(R) UHD Graphics (CML GT2) (0x9b41)
+OpenGL core profile version string: 4.6 (Core Profile) Mesa 26.2.3
+
+## CPU
+model name	: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
+scaling_driver=intel_pstate governor=powersave epp=balance_performance cpuinfo_max_freq=4900000 kHz
+intel_pstate: status=active max_perf_pct=100 no_turbo=0
+scaling_cur_freq now (kHz): 1600012 1600007 1600007 1600000 1599994 1600019 1600008 1599997 
+load average now: 5.60 7.50 8.37
+readings during the measurements: 16:57 -> 799998 799990 800003 800015 699993 700001 700219 700010 kHz, load 14.26 12.73 11.26; 17:24 -> 700001 700000 700245 700003 kHz (cpu0,2,4,6), load 11.46
+tuned: Current active profile: balanced
+
+## Power
+intel-rapl:0 package-0: PL1=51000000 uW (window 27983872 us), PL2=51000000 uW, enabled=1
+intel-rapl-mmio:0 package-0: PL1=12000000 uW (window 27983872 us), PL2=51000000 uW, enabled=1
+AC online=1; BAT0 100% Full
+ucsi-source-psy-USBC000:001: online=0 voltage_now=0 uV current_now=0 uA current_max=0 uA usb_type=[C] PD PD_PPS
+ucsi-source-psy-USBC000:002: online=1 voltage_now=5000000 uV current_now=3000000 uA current_max=3250000 uA usb_type=C [PD] PD_PPS
+
+## Thermal
+acpitz=67 C  pch_cannonlake=61 C  INT3400 Thermal=20 C  SEN1=1 C  SEN2=40 C  B0D4=67 C  iwlwifi_1=65 C  x86_pkg_temp=68 C  
+thermal_throttle cpu0: core=0 package=0
+
+## Display
+card1-eDP-1: 1920x1080
+WebView devicePixelRatio = 1 (probe)
+
+## WebView (probe, audit instance)
+{"client": "tauri", "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15", "platform": "Linux x86_64", "cores": 8, "devicePixelRatio": 1, "window": "1280x673", "screen": "1920x1080", "canvas": "1280x673", "pixelRatio": 1, "glVersion": "WebGL 2.0", "glRenderer": "Apple GPU", "glVendor": "Apple Inc.", "maxSamples": 16, "maxTexture": 16384, "timerQuery": false, "colorBufferFloat": true, "colorBufferHalfFloat": true, "parallelCompile": true, "crossOriginIsolated": false, "visibility": "visible", "dev": true, "heap": false}
+
+## Chromium (probe)
+{"client": "browser", "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36", "platform": "Linux x86_64", "cores": 8, "devicePixelRatio": 1, "window": "1280x720", "screen": "1280x720", "canvas": "1280x720", "pixelRatio": 1, "glVersion": "WebGL 2.0 (OpenGL ES 3.0 Chromium)", "glRenderer": "ANGLE (Intel, Mesa Intel(R) UHD Graphics (CML GT2), OpenGL ES 3.2)", "glVendor": "Google Inc. (Intel)", "maxSamples": 16, "maxTexture": 16384, "timerQuery": true, "colorBufferFloat": true, "colorBufferHalfFloat": true, "parallelCompile": true, "crossOriginIsolated": false, "visibility": "visible", "dev": true, "heap": true}

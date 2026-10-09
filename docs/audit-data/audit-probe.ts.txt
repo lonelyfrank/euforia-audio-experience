@@ -1,0 +1,255 @@
+/*
+ * TEMPORARY measurement probe of the engine audit. It exists only in the audit worktree, never in the repository.
+ * It changes no engine code: it wraps a few methods of the live objects at run time to time them, drives the
+ * settings store like a user would, and posts the numbers to the dev server of the same worktree.
+ */
+import { settingsStore } from './stores/settingsStore';
+import { DiagnosticsController } from './diagnostics/core/DiagnosticsController';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+interface Step {
+  name: string;
+  settings?: Record<string, unknown>;
+  source?: 'system' | 'microphone' | 'fake';
+  signal?: string;
+  warmup?: number;
+  seconds: number;
+  switchScenes?: string[];
+  switchEvery?: number;
+  bloomOff?: boolean;
+  diagnostics?: boolean;
+  gpu?: boolean;
+  raw?: boolean;
+}
+interface Plan { id?: string; steps?: Step[] }
+
+const client = '__TAURI_INTERNALS__' in window ? 'tauri' : 'browser';
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const q = (sorted: Float64Array | number[], p: number) => sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : 0;
+const round = (x: number, d = 3) => Number.isFinite(x) ? Number(x.toFixed(d)) : null;
+
+/** Per-frame CPU of the engine's own steps, by wrapping the instance methods (the classes are untouched). */
+const cpu = { tick: 0, source: 0, audio: 0, analyze: 0, decode: 0, rig: 0, present: 0 };
+const invokes: Record<string, number> = {};
+let wrapped = false;
+function wrap(app: any): void {
+  if (wrapped) return;
+  wrapped = true;
+  const time = (owner: any, method: string, key: keyof typeof cpu) => {
+    const original = owner[method];
+    const timed = function (this: unknown, ...args: unknown[]) {
+      const start = performance.now();
+      try { return original.apply(this, args); } finally { cpu[key] += performance.now() - start; }
+    };
+    try { owner[method] = timed; } catch { Object.defineProperty(owner, method, { value: timed, configurable: true, writable: true }); }
+  };
+  const render = app.render;
+  const tick = render.tick;
+  render.tick = (now: number) => { const start = performance.now(); try { tick(now); } finally { cpu.tick += performance.now() - start; } };
+  time(app, 'onFrame', 'source');
+  time(app.audio, 'update', 'audio');
+  time(app.audio.analyzer, 'analyze', 'analyze');
+  time(app.audio.features, 'decode', 'decode');
+  time(app.rigController, 'update', 'rig');
+  time(app.audio.experience, 'present', 'present');
+  // Native transport: every channel payload above Tauri's inline threshold is fetched through the IPC custom protocol.
+  try {
+    const internals = (window as any).__TAURI_INTERNALS__;
+    if (internals?.invoke) {
+      const invoke = internals.invoke;
+      const counted = function (this: unknown, cmd: string, ...rest: unknown[]) { invokes[cmd] = (invokes[cmd] ?? 0) + 1; return invoke.call(this, cmd, ...rest); };
+      try { internals.invoke = counted; } catch { Object.defineProperty(internals, 'invoke', { value: counted, configurable: true, writable: true }); }
+    }
+  } catch (error) { invokes['(invoke not wrappable: ' + String(error).slice(0, 60) + ')'] = 0; }
+  try {
+    const fetchOriginal = window.fetch;
+    window.fetch = function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes('__audit')) { const key = 'fetch ' + url.slice(0, 40).replace(/[?#].*$/, ''); invokes[key] = (invokes[key] ?? 0) + 1; }
+      return fetchOriginal.call(window, input as RequestInfo, init);
+    } as typeof fetch;
+  } catch { /* counting only */ }
+}
+
+function environment(app: any) {
+  const gl = app.render.renderer.getContext() as WebGL2RenderingContext;
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const canvas = app.render.renderer.domElement as HTMLCanvasElement;
+  return {
+    client, userAgent: navigator.userAgent, platform: navigator.platform, cores: navigator.hardwareConcurrency,
+    devicePixelRatio: window.devicePixelRatio, window: `${innerWidth}x${innerHeight}`, screen: `${screen.width}x${screen.height}`,
+    canvas: `${canvas.width}x${canvas.height}`, pixelRatio: app.render.renderer.getPixelRatio(),
+    glVersion: gl.getParameter(gl.VERSION), glRenderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+    glVendor: info ? gl.getParameter(info.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+    maxSamples: gl.getParameter(gl.MAX_SAMPLES), maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+    timerQuery: !!gl.getExtension('EXT_disjoint_timer_query_webgl2'), colorBufferFloat: !!gl.getExtension('EXT_color_buffer_float'),
+    colorBufferHalfFloat: !!gl.getExtension('EXT_color_buffer_half_float'), parallelCompile: !!gl.getExtension('KHR_parallel_shader_compile'),
+    crossOriginIsolated: (window as any).crossOriginIsolated, visibility: document.visibilityState, dev: import.meta.env.DEV,
+    heap: (performance as any).memory ? true : false,
+  };
+}
+
+/** Engine speed, independent of the app: the YIN difference kernel of VoiceTracker.findPeriod and a Math.exp loop, in ns per iteration. */
+function microbench(): Record<string, number | null> {
+  const buffer = new Float32Array(2048);
+  for (let i = 0; i < buffer.length; i++) buffer[i] = Math.sin(i * 0.37) + 0.3 * Math.sin(i * 0.011);
+  const yin = (): number => { let acc = 0; for (let tau = 1; tau <= 134; tau++) { let sum = 0; for (let j = 0; j < 1024; j++) { const d = buffer[j] - buffer[j + tau]; sum += d * d; } acc += sum; } return acc; };
+  const exp = (): number => { let acc = 0; for (let i = 0; i < 200000; i++) acc += Math.exp(-i * 1e-5); return acc; };
+  let sink = 0;
+  for (let i = 0; i < 40; i++) sink += yin() + exp();
+  const measure = (kernel: () => number, iterations: number, runs: number): number[] => {
+    const out: number[] = [];
+    for (let r = 0; r < 5; r++) { const start = performance.now(); for (let i = 0; i < runs; i++) sink += kernel(); out.push((performance.now() - start) * 1e6 / (runs * iterations)); }
+    return out.sort((a, b) => a - b);
+  };
+  const a = measure(yin, 134 * 1024, 40), b = measure(exp, 200000, 20);
+  return { yinNsPerIterationBest: round(a[0], 2), yinNsPerIterationMedian: round(a[2], 2), expNsBest: round(b[0], 2), expNsMedian: round(b[2], 2), sink: sink > 0 ? 1 : 0 };
+}
+
+async function run(app: any, step: Step): Promise<unknown> {
+  if (step.name.startsWith('microbench')) return { step: step.name, at: new Date().toISOString(), microbench: microbench() };
+  wrap(app);
+  const render = app.render, audio = app.audio;
+  if (step.settings) settingsStore.set(step.settings as never);
+  const switchStart = performance.now();
+  if (step.source) await app.selectSource(step.source);
+  if (step.signal) await app.playTestSignal(step.signal);
+  const sourceSwitchMs = step.source || step.signal ? Math.round(performance.now() - switchStart) : null;
+  await sleep((step.warmup ?? 6) * 1000);
+  if (step.bloomOff) for (const slot of render.slots) { if (slot.current?.bloom) slot.current.bloom.enabled = false; if (slot.previous?.bloom) slot.previous.bloom.enabled = false; }
+
+  const capacity = Math.ceil(step.seconds * 250) + 16;
+  const dts = new Float32Array(capacity), late = new Float32Array(capacity), heardError = new Float32Array(capacity), hops = new Uint8Array(capacity), ticks = new Float32Array(capacity);
+  const perSecond: number[][] = [];
+  const switches: { at: number; scene: string }[] = [];
+  const quality: { at: number; tier: string; pixelRatio: number; layers: number }[] = [];
+  for (const key of Object.keys(cpu) as (keyof typeof cpu)[]) cpu[key] = 0;
+  for (const key of Object.keys(invokes)) delete invokes[key];
+  const heap0 = (performance as any).memory?.usedJSHeapSize ?? null;
+  const memory0 = render.renderer.info.memory.geometries + render.renderer.info.memory.textures, programs0 = render.renderer.info.programs?.length ?? null;
+  const session0 = audio.session, gaps0 = audio.experience.gaps, frames0 = audio.features.frames;
+  let offsetMin = Infinity, offsetMax = -Infinity, offsetDown = 0, offsetDownSum = 0, lastOffset = audio.clock.offset, notReady = 0, maxHops = 0;
+  let n = 0, last = 0, lastHeard = audio.timing.heardTime, lastFrames = audio.features.frames, lastTick = 0;
+  let bucket = 0, bucketMax = 0, bucketSum = 0, bucketN = 0, bucketTick = 0, lastTier = '', lastRatio = 0, lastLayers = 0;
+  let nextSwitch = step.switchEvery ?? Infinity, switchIndex = 0;
+  let heapLast = (performance as any).memory?.usedJSHeapSize ?? 0, allocated = 0, collections = 0, collected = 0;
+  await new Promise<void>((resolve) => {
+    let start = 0;
+    const frame = (now: number) => {
+      if (!start) { start = last = now; lastTick = cpu.tick; requestAnimationFrame(frame); return; }
+      const elapsed = (now - start) / 1000, dt = now - last;
+      last = now;
+      if (n < capacity) {
+        dts[n] = dt;
+        late[n] = performance.now() - now;
+        const heard = audio.timing.heardTime;
+        heardError[n] = audio.clock.ready ? (heard - lastHeard) * 1000 - dt : NaN;
+        lastHeard = heard;
+        const decoded = audio.features.frames - lastFrames; lastFrames = audio.features.frames;
+        hops[n] = Math.min(255, Math.max(0, decoded)); if (decoded > maxHops) maxHops = decoded;
+        ticks[n] = cpu.tick - lastTick; lastTick = cpu.tick;
+        n++;
+      }
+      if (audio.clock.ready) {
+        const offset = audio.clock.offset;
+        if (offset < offsetMin) offsetMin = offset; if (offset > offsetMax) offsetMax = offset;
+        if (offset < lastOffset - 1e-6) { offsetDown++; offsetDownSum += lastOffset - offset; }
+        lastOffset = offset;
+      }
+      if (!audio.experience.ready) notReady++;
+      const heapNow = (performance as any).memory?.usedJSHeapSize ?? 0;
+      if (heapNow > heapLast) allocated += heapNow - heapLast; else if (heapNow < heapLast - 65536) { collections++; collected += heapLast - heapNow; }
+      heapLast = heapNow;
+      const tier = render.qualityTier, ratio = render.renderer.getPixelRatio();
+      let layers = 0; for (const slot of render.slots) { if (slot.current) layers++; if (slot.previous) layers++; }
+      if (tier !== lastTier || ratio !== lastRatio || layers !== lastLayers) { quality.push({ at: round(elapsed, 2)!, tier, pixelRatio: round(ratio, 3)!, layers }); lastTier = tier; lastRatio = ratio; lastLayers = layers; }
+      const second = Math.floor(elapsed);
+      if (second !== bucket) {
+        perSecond.push([bucket, bucketN, round(bucketSum / Math.max(1, bucketN), 2)!, round(bucketMax, 1)!, round(bucketTick / Math.max(1, bucketN), 2)!,
+          (performance as any).memory ? Math.round((performance as any).memory.usedJSHeapSize / 1024) : 0]);
+        bucket = second; bucketMax = bucketSum = bucketN = bucketTick = 0;
+      }
+      bucketN++; bucketSum += dt; if (dt > bucketMax) bucketMax = dt; bucketTick += ticks[Math.max(0, n - 1)];
+      if (step.switchScenes && elapsed >= nextSwitch) {
+        const scene = step.switchScenes[switchIndex++ % step.switchScenes.length];
+        switches.push({ at: round(elapsed, 3)!, scene });
+        settingsStore.set({ scene } as never);
+        nextSwitch += step.switchEvery!;
+      }
+      if (elapsed >= step.seconds) resolve(); else requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+
+  const frames = n, sorted = Float64Array.from(dts.subarray(0, n)).sort(), total = sorted.reduce((a, b) => a + b, 0);
+  const median = q(sorted, 0.5), budget = median < 12 ? 1000 / 120 : median < 14 ? 1000 / 75 : 1000 / 60;
+  const over = (ms: number) => { let c = 0; for (let i = 0; i < n; i++) if (dts[i] > ms) c++; return c; };
+  const errors = Array.from(heardError.subarray(0, n)).filter(Number.isFinite), absErrors = Float64Array.from(errors.map(Math.abs)).sort();
+  const lateSorted = Float64Array.from(late.subarray(0, n)).sort(), tickSorted = Float64Array.from(ticks.subarray(0, n)).sort();
+  const hopHistogram: Record<string, number> = {};
+  for (let i = 0; i < n; i++) { const key = hops[i] >= 8 ? '8+' : String(hops[i]); hopHistogram[key] = (hopHistogram[key] ?? 0) + 1; }
+  const perFrame = (ms: number) => round(ms / Math.max(1, frames), 3);
+  const result: Record<string, unknown> = {
+    step: step.name, sourceSwitchMs, config: { ...step, switchScenes: undefined }, settings: settingsStore.get(), at: new Date().toISOString(),
+    scene: render.current?.source.preset.name ?? null, tier: render.qualityTier, pixelRatio: render.renderer.getPixelRatio(),
+    canvas: `${render.renderer.domElement.width}x${render.renderer.domElement.height}`,
+    audio: { state: audio.state.status, source: audio.state.source, device: audio.state.source === 'fake' ? audio.state.deviceName : '(not recorded)', sampleRate: audio.captureSampleRate,
+      session: audio.session, sessionChanges: audio.session - session0, gaps: audio.experience.gaps - gaps0, hopsPerSecond: round((audio.features.frames - frames0) / (total / 1000), 1),
+      hopsPerFrame: hopHistogram, maxHopsInOneFrame: maxHops, experienceNotReadyFrames: notReady, clockReady: audio.clock.ready, lead: round(audio.timing.lead, 4), onsetDelay: round(audio.timing.onsetDelay, 4),
+      staged: audio.provider?.stage ? { dropped: audio.provider.stage.dropped, pending: audio.provider.stage.pending } : null, realtime: audio.realtimeStats ? { ...audio.realtimeStats } : null },
+    pacing: { seconds: round(total / 1000, 2), frames, fps: round(frames / (total / 1000), 2), budgetMs: round(budget, 2), p50: round(median, 2), p95: round(q(sorted, 0.95), 2), p99: round(q(sorted, 0.99), 2),
+      max: round(sorted[sorted.length - 1] ?? 0, 2), overBudget: over(budget * 1.2), over25: over(25), over33: over(33.4), over50: over(50), over100: over(100) },
+    callbackLateness: { p50: round(q(lateSorted, 0.5), 2), p95: round(q(lateSorted, 0.95), 2), max: round(lateSorted[lateSorted.length - 1] ?? 0, 2) },
+    cpuPerFrame: { tick: perFrame(cpu.tick), tickP95: round(q(tickSorted, 0.95), 2), tickP99: round(q(tickSorted, 0.99), 2), tickMax: round(tickSorted[tickSorted.length - 1] ?? 0, 2), source: perFrame(cpu.source), audioUpdate: perFrame(cpu.audio),
+      analyze: perFrame(cpu.analyze), decodeAndExperience: perFrame(cpu.decode), rig: perFrame(cpu.rig), presentSnapshot: perFrame(cpu.present), renderSubmit: perFrame(cpu.tick - cpu.source) },
+    heardClock: { samples: errors.length, rmsMs: round(Math.sqrt(errors.reduce((a, b) => a + b * b, 0) / Math.max(1, errors.length)), 3), p95AbsMs: round(q(absErrors, 0.95), 3), p99AbsMs: round(q(absErrors, 0.99), 3),
+      maxAbsMs: round(absErrors[absErrors.length - 1] ?? 0, 3), over4ms: errors.filter((e) => Math.abs(e) > 4).length, over8ms: errors.filter((e) => Math.abs(e) > 8).length,
+      offsetRangeMs: Number.isFinite(offsetMin) ? round((offsetMax - offsetMin) * 1000, 3) : null, offsetSnapsDown: offsetDown, offsetSnapMeanMs: offsetDown ? round(offsetDownSum / offsetDown * 1000, 3) : 0 },
+    memory: { allocatedKbPerFrame: heap0 ? round(allocated / 1024 / Math.max(1, frames), 2) : null, allocatedKbPerSecond: heap0 ? round(allocated / 1024 / (total / 1000), 1) : null, collections: heap0 ? collections : null, collectedKb: heap0 ? Math.round(collected / 1024) : null, heapStartKb: heap0 ? Math.round(heap0 / 1024) : null, heapEndKb: (performance as any).memory ? Math.round((performance as any).memory.usedJSHeapSize / 1024) : null,
+      geometries: render.renderer.info.memory.geometries, textures: render.renderer.info.memory.textures, resourcesDelta: render.renderer.info.memory.geometries + render.renderer.info.memory.textures - memory0,
+      programs: render.renderer.info.programs?.length ?? null, programsDelta: programs0 === null ? null : (render.renderer.info.programs?.length ?? 0) - programs0 },
+    ipc: { ...invokes }, quality, switches, perSecond,
+  };
+  if (step.raw || step.switchScenes) result.frameMs = Array.from(dts.subarray(0, n), (x) => Math.round(x * 10) / 10);
+
+  if (step.diagnostics !== false) {
+    // The engine's own diagnostics, for the counters it already knows how to take (all passes of a frame, CPU split, GPU timer).
+    const controller = new DiagnosticsController(app);
+    const release = controller.acquire();
+    if (step.gpu !== false) controller.setProfiling(true);
+    const gpu: number[] = [];
+    for (let i = 0; i < 16; i++) { await sleep(250); const ms = controller.renderer?.timer.ms; if (typeof ms === 'number') gpu.push(ms); }
+    const metrics: Record<string, number | null> = {};
+    for (const m of controller.store?.registry.metrics ?? []) {
+      if (/^(render\.|frame\.|fps\.|cpu\.|gpu\.|budget\.|pipeline\.|capture\.|latency\.|visualWorld\.|structural\.)/.test(m.id) || /\.(elements|vertices|presence|cost|stateBytes|targetBits)$/.test(m.id) || /debug\./.test(m.id)) metrics[m.id] = m.value === null ? null : round(m.value, 4);
+    }
+    gpu.sort((a, b) => a - b);
+    result.diagnostics = { metrics, gpuTimer: { supported: controller.renderer?.timer.supported ?? false, samples: gpu.length, medianMs: gpu.length ? round(q(gpu, 0.5), 2) : null, maxMs: gpu.length ? round(gpu[gpu.length - 1], 2) : null } };
+    release(); controller.dispose();
+  }
+  if (step.bloomOff) for (const slot of render.slots) { if (slot.current?.bloom) slot.current.bloom.enabled = true; if (slot.previous?.bloom) slot.previous.bloom.enabled = true; }
+  return result;
+}
+
+async function main(): Promise<void> {
+  let app: any;
+  while (!(app = (window as any).app)) await sleep(200);
+  await sleep(1500);
+  await fetch(`/__audit/result?client=${client}`, { method: 'POST', body: JSON.stringify({ step: '__environment', at: new Date().toISOString(), environment: environment(app) }) });
+  let done = '';
+  for (;;) {
+    let plan: Plan = {};
+    try { plan = await (await fetch(`/__audit/plan?client=${client}&t=${Date.now()}`)).json() as Plan; } catch { /* the server is restarting */ }
+    if (plan.id && plan.id !== done && plan.steps) {
+      done = plan.id;
+      for (const step of plan.steps) {
+        let result: unknown;
+        try { result = await run(app, step); } catch (error) { result = { step: step.name, error: String(error), stack: (error as Error)?.stack }; }
+        await fetch(`/__audit/result?client=${client}&plan=${plan.id}`, { method: 'POST', body: JSON.stringify({ plan: plan.id, client, ...(result as object) }) });
+      }
+      await fetch(`/__audit/result?client=${client}&plan=${plan.id}`, { method: 'POST', body: JSON.stringify({ plan: plan.id, client, step: '__done', at: new Date().toISOString(), environment: environment(app) }) });
+    }
+    await sleep(1500);
+  }
+}
+void main();

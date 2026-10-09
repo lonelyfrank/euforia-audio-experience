@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Feeds the audit instance's native capture with a private test signal, silently: links the output ports of a
+pw-play stream (started without auto-connect) to the capture input ports of ONE process (the audit app's pid).
+No sink is created, the default devices and every other application's links are left alone."""
+import json, subprocess, sys, time
+import os, glob
+marker = sys.argv[1]; player = sys.argv[2]
+def pids():
+    found = []
+    for d in glob.glob('/proc/[0-9]*'):
+        try:
+            if marker in os.readlink(d + '/exe'): found.append(d.split('/')[-1])
+        except OSError: pass
+    return found
+def dump():
+    return json.loads(subprocess.run(['pw-dump'], capture_output=True, text=True).stdout or '[]')
+linked = set()
+while True:
+    try:
+        objects = dump()
+        nodes = {o['id']: o.get('info', {}).get('props', {}) for o in objects if o.get('type') == 'PipeWire:Interface:Node'}
+        ports = [(o['id'], o.get('info', {}).get('props', {}), o.get('info', {}).get('direction')) for o in objects if o.get('type') == 'PipeWire:Interface:Port']
+        source = [n for n, p in nodes.items() if p.get('node.name') == player or p.get('media.name') == player or p.get('application.name') == player]
+        wanted = pids()
+        sinks = [n for n, p in nodes.items() if any(str(p.get('node.name', '')).endswith('-' + w) for w in wanted) and 'Input' in str(p.get('media.class', ''))]
+        existing = {(o.get('info', {}).get('output-port-id'), o.get('info', {}).get('input-port-id')) for o in objects if o.get('type') == 'PipeWire:Interface:Link'}
+        outs = sorted((p.get('audio.channel', ''), i) for i, p, d in ports if d == 'output' and p.get('node.id') in source)
+        for sink in sinks:
+            ins = sorted((p.get('audio.channel', ''), i) for i, p, d in ports if d == 'input' and p.get('node.id') == sink)
+            for k, (channel, port) in enumerate(ins):
+                if not outs: break
+                out = next((o for c, o in outs if c == channel), outs[k % len(outs)][1])
+                if (out, port) not in existing:
+                    r = subprocess.run(['pw-link', str(out), str(port)], capture_output=True, text=True)
+                    linked.add((out, port))
+                    print(time.strftime('%H:%M:%S'), 'link', out, '->', port, 'node', sink, r.stderr.strip(), flush=True)
+    except Exception as error:
+        print('error', error, flush=True)
+    time.sleep(6.0)

@@ -1,0 +1,7 @@
+# One stack sample per 'audio-capture' thread of the USER'S running app (pid 224903): state, CPU ticks (100/s) and the recognisable frames.
+TID 398379 state=R utime=95168 ticks
+
+TID 398381 state=R utime=396275 ticks
+extend_with resize Reactor4recv Reactor3run 
+TID 398382 state=S utime=83 ticks
+syscall park timing_info block_on timing_info timing_info block_on timing_info timing_info block_on timing_info timing_info block_on timing_info block_on timing_info 

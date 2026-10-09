@@ -1,0 +1,18 @@
+#!/bin/bash
+# Passive observer of the user's running Tauri app: memory, per-thread CPU ticks (by thread name), GPU render-engine time. Read-only /proc.
+APP=$1; WEB=$2; OUT=$3; END=$(( $(date +%s) + ${4:-5400} ))
+echo "epoch,proc,metric,value" > "$OUT"
+while [ "$(date +%s)" -lt "$END" ] && [ -d /proc/$APP ] && [ -d /proc/$WEB ]; do
+  now=$(date +%s)
+  for p in $APP $WEB; do
+    awk -v n=$now -v p=$p '/^(VmRSS|RssAnon|RssFile|VmHWM):/{gsub(":","",$1); print n","p","$1","$2}' /proc/$p/status >> "$OUT"
+    for t in /proc/$p/task/*; do
+      c=$(cat $t/comm 2>/dev/null) || continue
+      # fields after the ")" : utime is the 12th, stime the 13th
+      s=$(sed 's/^.*) //' $t/stat 2>/dev/null) || continue
+      set -- $s; echo "$c|${12}|${13}"
+    done | awk -F'|' -v n=$now -v p=$p '{u[$1]+=$2; s[$1]+=$3; k[$1]++} END{for (c in u) { gsub(",",";",c); print n","p",utime:"c","u[c]; print n","p",stime:"c","s[c]; print n","p",threads:"c","k[c] }}' >> "$OUT"
+    for f in /proc/$p/fdinfo/*; do awk '/^drm-client-id:/{id=$2} /^drm-engine-render:/{r=$2} /^drm-resident-system0:/{m=$2} END{if (id!="") print id, r, m}' $f 2>/dev/null; done | awk -v n=$now -v p=$p '{ if ($2 > r[$1]) r[$1]=$2; if ($3 > m[$1]) m[$1]=$3 } END{ for (id in r) { print n","p",gpu_render_ns:client"id","r[id]; print n","p",gpu_resident_kib:client"id","m[id] } }' >> "$OUT"
+  done
+  sleep 20
+done

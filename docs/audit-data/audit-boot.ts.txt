@@ -1,0 +1,9 @@
+// TEMPORARY (audit worktree only): start-up settings chosen by the audit plan, written before the settings store loads.
+try {
+  const request = new XMLHttpRequest();
+  request.open('GET', '/__audit/boot?client=' + ('__TAURI_INTERNALS__' in window ? 'tauri' : 'browser') + '&t=' + Date.now(), false);
+  request.send();
+  const text = request.responseText.trim();
+  if (request.status === 200 && text.startsWith('{') && text !== '{}') localStorage.setItem('euforia-audio-experience.settings.v1', text);
+} catch { /* no boot settings */ }
+export {};

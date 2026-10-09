@@ -1,0 +1,32 @@
+# Audit instance, dev build (serie D), pid 471128, 9 Oct 2026.
+# Timeline (UTC): 14:31:58 selectSource('microphone') requested -> 14:38:34 new capture stream appears in PipeWire (6 min 36 s).
+#                 14:39:44 selectSource('system') requested -> not completed at 14:50:27; stacks below taken then; instance killed.
+# eu-stack -1 -p <tid>; Rust v0-mangled symbols abbreviated to the readable path.
+
+=== TID 493195  thread 'audio-capture' (worker), state S
+#0  __syscall_cancel_arch
+#2  __futex_abstimed_wait_cancelable64
+#3  __pthread_clockjoin_ex
+#4  std::sys::thread::unix::Thread::join
+#6  std::thread::JoinHandle<()>::join                      (cpal)
+#7  <cpal::host::pulseaudio::stream::Stream as Drop>::drop
+#8-11 drop_glue / mem::drop of cpal::platform::Stream
+#12 audio_capture::capture::start::{closure}               (worker loop left; `drop(stream)`, capture.rs:163)
+
+=== TID 493199  cpal latency thread, state S, 0 CPU ticks
+#0  syscall
+#1  std::thread::park
+#2  futures_executor::local_pool::run_executor<Result<pulseaudio::protocol::command::timing_info ...>>
+#6  futures_executor::block_on(pulseaudio::client::record_stream::RecordStream::timing_info)
+#7  cpal::host::pulseaudio::stream::Stream::new_record::{closure}   (stream.rs:423)
+
+=== TID 493197  pulseaudio reactor thread, state R, 67,900 CPU ticks (679 s) since 14:38:3x
+#0  <Vec<u8>>::extend_with          (pulseaudio)
+#1  <Vec<u8>>::resize               (pulseaudio)
+#2  pulseaudio::client::reactor::Reactor::recv      (reactor.rs:344: read_buf.resize(off + 1024 * 1024, 0))
+#3  pulseaudio::client::reactor::Reactor::run       (reactor.rs:330-335: poll; recv; write_streams; write_commands)
+#4  pulseaudio::client::reactor::Reactor::spawn::{closure}
+
+# Reading: recv() loops `'read` until the socket would block; unoptimised, each pass zero-fills 1 MiB byte by byte, and
+# audio keeps arriving in the meantime, so the loop does not return and write_commands() is not reached. The timing_info
+# request of the latency thread is never sent, the thread never returns, and Stream::drop waits for it.

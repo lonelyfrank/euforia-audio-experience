@@ -1,0 +1,77 @@
+diff --git a/src/main.ts b/src/main.ts
+index 029b2b2..ba1a7a8 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,3 +1,4 @@
++import './audit-boot';
+ import { App } from './app/App';
+ import '@fontsource-variable/geist';
+ import './ui/tokens.css';
+@@ -11,3 +12,6 @@ void app.start();
+ 
+ // Handy for debugging from the devtools console during development.
+ if (import.meta.env.DEV) Object.assign(window, { app });
++
++// TEMPORARY (audit worktree only): measurement probe.
++if (import.meta.env.DEV) void import('./audit-probe');
+diff --git a/vite.config.ts b/vite.config.ts
+index e83c60f..f76db0e 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -1,4 +1,31 @@
+-import { defineConfig } from 'vite';
++import { defineConfig, type Plugin } from 'vite';
++import fs from 'node:fs';
++
++// TEMPORARY (audit worktree only): the probe fetches its plan and posts its results here.
++const AUDIT_DIR = process.env.AUDIT_DIR ?? '/tmp';
++const audit = (): Plugin => ({
++  name: 'audit',
++  configureServer(server) {
++    server.middlewares.use('/__audit/plan', (req, res) => {
++      const client = new URL(req.url ?? '', 'http://x').searchParams.get('client') ?? 'browser';
++      const file = `${AUDIT_DIR}/plan-${client}.json`;
++      res.setHeader('content-type', 'application/json');
++      res.end(fs.existsSync(file) ? fs.readFileSync(file) : '{}');
++    });
++    server.middlewares.use('/__audit/boot', (req, res) => {
++      const client = new URL(req.url ?? '', 'http://x').searchParams.get('client') ?? 'browser';
++      const file = `${AUDIT_DIR}/boot-${client}.json`;
++      res.setHeader('content-type', 'application/json');
++      res.end(fs.existsSync(file) ? fs.readFileSync(file) : '{}');
++    });
++    server.middlewares.use('/__audit/result', (req, res) => {
++      const client = new URL(req.url ?? '', 'http://x').searchParams.get('client') ?? 'browser';
++      let body = '';
++      req.on('data', (chunk) => { body += chunk; });
++      req.on('end', () => { fs.appendFileSync(`${AUDIT_DIR}/results-${client}.jsonl`, body + '\n'); res.end('ok'); });
++    });
++  },
++});
+ 
+ // Tauri expects a fixed dev port and must not have the console cleared.
+ // https://v2.tauri.app/start/frontend/vite/
+@@ -13,14 +40,16 @@ const isolation = process.env.TAURI_ENV_PLATFORM
+   : { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' };
+ 
+ export default defineConfig({
++  plugins: [audit()],
+   clearScreen: false,
+   server: {
+-    port: 1420,
++    port: Number(process.env.AUDIT_PORT ?? 1432),
+     strictPort: true,
+     host: host || false,
+-    hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
++    hmr: false,
+     watch: { ignored: ['**/src-tauri/**', '**/native/**'] },
+     headers: isolation,
++    fs: { allow: ['.', '<repo>/node_modules'] },
+   },
+   preview: { headers: isolation },
+   envPrefix: ['VITE_', 'TAURI_ENV_'],
+
+# new file: .cargo/config.toml (serie P only)
+# TEMPORARY (audit worktree only): the experiment for finding A-01 — only the PulseAudio client crate optimised in the dev profile.
+[profile.dev.package.pulseaudio]
+opt-level = 3

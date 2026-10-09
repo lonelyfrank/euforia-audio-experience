@@ -1,0 +1,45 @@
+scene tunnel quality low: 20 s, 400 frames, sampled allocations 45831 kB = 114.6 kB/frame, 2292 kB/s
+--- by file
+   29.47 kB/frame  25.7%  (native)
+   23.32 kB/frame  20.4%  src/audio/analysis/FFT.ts
+    9.34 kB/frame   8.1%  src/audio/features/BrowserAnalysis.ts
+    8.45 kB/frame   7.4%  src/audio/features/decode.ts
+    7.03 kB/frame   6.1%  src/morphology/SoundMorphology.ts
+    5.66 kB/frame   4.9%  node_modules/.vite/deps/three.module-Cm6HFFls.js
+    4.25 kB/frame   3.7%  src/director/VisualDirector.ts
+    2.96 kB/frame   2.6%  src/experience/ExperienceEngine.ts
+    2.59 kB/frame   2.3%  src/audio/visual-response/MusicContext.ts
+    2.25 kB/frame   2.0%  src/physics/MultiscaleResonance.ts
+    2.23 kB/frame   1.9%  src/ui/NowPlaying.ts
+    1.99 kB/frame   1.7%  src/audio/analysis/BeatDetector.ts
+    1.89 kB/frame   1.6%  src/experience/ExperiencePlanner.ts
+    1.63 kB/frame   1.4%  src/visualizers/tunnel/TunnelVisualizer.ts
+    1.58 kB/frame   1.4%  src/experience/TemporalMemory.ts
+    1.29 kB/frame   1.1%  src/audio/visual-response/VisualResponse.ts
+--- by function
+   23.32 kB/frame  20.4%  magnitudes  src/audio/analysis/FFT.ts:35
+   14.21 kB/frame  12.4%  assign  (native):0
+   11.62 kB/frame  10.1%  hypot  (native):0
+    8.45 kB/frame   7.4%  read  src/audio/features/decode.ts:14
+    6.50 kB/frame   5.7%  worker.onmessage  src/audio/features/BrowserAnalysis.ts:125
+    4.01 kB/frame   3.5%  follow  src/morphology/SoundMorphology.ts:70
+    3.26 kB/frame   2.8%  update  src/director/VisualDirector.ts:260
+    2.61 kB/frame   2.3%  receive  src/audio/features/BrowserAnalysis.ts:147
+    2.25 kB/frame   2.0%  update  src/physics/MultiscaleResonance.ts:158
+    2.23 kB/frame   1.9%  draw  src/ui/NowPlaying.ts:79
+    2.16 kB/frame   1.9%  copyMorphology  src/morphology/SoundMorphology.ts:15
+    2.04 kB/frame   1.8%  ingest  src/experience/ExperienceEngine.ts:83
+    1.89 kB/frame   1.6%  update  src/experience/ExperiencePlanner.ts:7
+    1.63 kB/frame   1.4%  update  src/visualizers/tunnel/TunnelVisualizer.ts:399
+    1.54 kB/frame   1.3%  estimateTempo  src/audio/analysis/BeatDetector.ts:175
+    1.54 kB/frame   1.3%  update  src/experience/TemporalMemory.ts:44
+    1.54 kB/frame   1.3%  setValueV1fArray  node_modules/.vite/deps/three.module-Cm6HFFls.js:45199
+    1.39 kB/frame   1.2%  push  node_modules/.vite/deps/three.module-Cm6HFFls.js:46566
+    1.21 kB/frame   1.1%  update  src/audio/visual-response/VisualResponse.ts:106
+    0.86 kB/frame   0.8%  update  src/morphology/SoundMorphology.ts:29
+    0.85 kB/frame   0.7%  adapt  src/director/VisualDirector.ts:373
+    0.81 kB/frame   0.7%  binLevel  src/audio/analysis/AudioAnalyzer.ts:291
+    0.73 kB/frame   0.6%  update  src/audio/visual-response/MusicContext.ts:143
+    0.65 kB/frame   0.6%  subarray  (native):0
+    0.59 kB/frame   0.5%  next  (native):0
+    0.58 kB/frame   0.5%  (IDLE_EXTERNAL)  (native):0
