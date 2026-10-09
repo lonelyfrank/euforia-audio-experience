@@ -9,7 +9,7 @@ export const OPEN_CENTER = { x: 0.5, y: 0.5 };
 export const OPEN_HORIZON = 0.66;
 
 /**
- * Final composition of the frame, in linear colour:
+ * Final composition of the frame, in linear colour (converted to the output colour space at the very end):
  * 1. sky: crossfade of the outgoing/incoming scene + navy haze + stars;
  * 2. floor: the sky mirrored below the horizon with sinusoidal ripples,
  *    darkened toward the bottom edge;
@@ -192,6 +192,8 @@ export const CompositeShader = {
       color += uSheen * line * across * (0.22 + uDensity * 0.18) * uReflection;
 
       gl_FragColor = vec4(pow(max(color, vec3(0.0)), vec3(0.85 + 0.33 * uContrast)) * uMinimal, 1.0);
+      // Drawn to the screen: linear → the display's colour space, here instead of in a pass of its own.
+      #include <colorspace_fragment>
     }
   `,
 };

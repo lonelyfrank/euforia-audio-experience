@@ -14,13 +14,13 @@ vi.mock('three', async (original) => ({
     setClearColor = vi.fn();
     setPixelRatio = vi.fn();
     setSize = vi.fn();
+    setRenderTarget = vi.fn();
+    render = vi.fn();
     dispose = vi.fn();
   },
 }));
-vi.mock('three/addons/postprocessing/EffectComposer.js', () => ({ EffectComposer: class {
-  addPass = vi.fn(); setPixelRatio = vi.fn(); setSize = vi.fn(); render = vi.fn(); dispose = vi.fn();
-} }));
 vi.mock('./Layer', () => ({ Layer: class {
+  ready = true;
   director = new VisualDirector();
   visualizer = { setPalette: vi.fn() };
   texture = null;
@@ -76,6 +76,93 @@ describe('render composition budget', () => {
     expect(layers[0].render).not.toHaveBeenCalled();
     expect(layers[1].render).not.toHaveBeenCalled();
     for (const layer of layers.slice(2)) expect(layer.render).toHaveBeenCalledOnce();
+    engine.dispose();
+  });
+
+  it('times the frame from its own timestamp and never steps the scenes more than the simulations integrate', () => {
+    const calls: [number, number][] = [];
+    const input = { audio: new AudioAnalyzer().frame, response: new VisualResponse().frame };
+    const host = { clientWidth: 800, clientHeight: 600, appendChild: vi.fn() } as unknown as HTMLElement;
+    const engine = new RenderEngine(host, (dt, now) => { calls.push([dt, now]); return input; });
+    engine.start();
+    const start = performance.now();
+    tick(start + 16);
+    tick(start + 76);
+    tick(start + 1076);
+    expect(calls[1][0]).toBeCloseTo(0.06, 6);
+    // A second-long stall is not a second-long step.
+    expect(calls[2][0]).toBeCloseTo(0.08, 9);
+    expect(calls[2][1]).toBeCloseTo((start + 1076) / 1000, 9);
+    engine.dispose();
+  });
+});
+
+describe('scene changes', () => {
+  function single() {
+    const input = { audio: new AudioAnalyzer().frame, response: new VisualResponse().frame };
+    const host = { clientWidth: 800, clientHeight: 600, appendChild: vi.fn() } as unknown as HTMLElement;
+    const engine = new RenderEngine(host, () => input);
+    const source = (): SceneSource => ({ create: vi.fn(), preset });
+    const slot = engine['slots'][0];
+    engine.show(source());
+    engine.start();
+    let now = performance.now();
+    const frames = (count: number, ms: number) => { for (let i = 0; i < count; i++) tick(now += ms); };
+    return { engine, source, slot, frames };
+  }
+
+  it('keeps the outgoing scene on screen until the incoming one has compiled, then crosses them', () => {
+    const { engine, source, slot, frames } = single();
+    frames(2, 16);
+    const outgoing = slot.current!;
+    engine.show(source());
+    const incoming = slot.current!;
+    (incoming as unknown as { ready: boolean }).ready = false;
+    vi.mocked(outgoing.render).mockClear();
+    frames(30, 16);
+    // Half a second of compiling: the old scene alone, untouched; the new one neither stepped nor drawn.
+    expect(slot.mix).toBe(0);
+    expect(outgoing.render).toHaveBeenCalledTimes(30);
+    expect(incoming.update).not.toHaveBeenCalled();
+    expect(incoming.render).not.toHaveBeenCalled();
+    (incoming as unknown as { ready: boolean }).ready = true;
+    frames(1, 16);
+    expect(incoming.update).toHaveBeenCalledOnce();
+    expect(slot.mix).toBeGreaterThan(0);
+    engine.dispose();
+  });
+
+  it('crosses in 0.9 s of real time, whatever the frame rate', () => {
+    for (const ms of [1000 / 144, 1000 / 60, 1000 / 20, 1000 / 12]) {
+      const { engine, source, slot, frames } = single();
+      frames(2, ms);
+      const outgoing = slot.current!;
+      engine.show(source());
+      const before = Math.floor(880 / ms);
+      frames(before, ms);
+      expect(slot.previous, `${ms} ms`).toBe(outgoing);
+      frames(Math.ceil(920 / ms) - before, ms);
+      expect(slot.previous, `${ms} ms`).toBeNull();
+      expect(outgoing.dispose).toHaveBeenCalledOnce();
+      engine.dispose();
+    }
+  });
+
+  it('drops a scene replaced before it was ever shown, without losing the one on screen', () => {
+    const { engine, source, slot, frames } = single();
+    frames(2, 16);
+    const onScreen = slot.current!;
+    engine.show(source());
+    const skipped = slot.current!;
+    (skipped as unknown as { ready: boolean }).ready = false;
+    frames(3, 16);
+    engine.show(source());
+    expect(skipped.dispose).toHaveBeenCalledOnce();
+    expect(onScreen.dispose).not.toHaveBeenCalled();
+    expect(slot.previous).toBe(onScreen);
+    frames(80, 16);
+    expect(slot.previous).toBeNull();
+    expect(onScreen.dispose).toHaveBeenCalledOnce();
     engine.dispose();
   });
 });

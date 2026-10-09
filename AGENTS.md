@@ -12,16 +12,24 @@
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
   dipendenze native. Ricontrollare `pkg-config --exists webkit2gtk-4.1 alsa`
   prima di tentare il desktop; non assumere che una vecchia verifica sia attuale.
-- Analisi grafica TS e analisi musicale Rust/WASM sono due contratti distinti.
-  Nel browser il WASM gira in `analysis.worker.ts`: non riportarlo sul frame loop.
-  Ogni sorgente consegna i record con `readFeatures()`; il ring PCM del worklet
-  (`PcmRing.ts`) e `tap.worklet.js` condividono un layout da tenere allineato.
-  Le scene consumano gli array del produttore senza modificarli né fare FFT.
+- Un solo core di analisi (`spectrum-analysis`): la musica per hop e, ogni pochi hop, ciò che
+  le scene disegnano (`scene.rs` → record `scene` → `SceneFeed` → `AudioFrame`). `AudioFrame` e
+  `AnalysisFrame` restano due contratti distinti. `scene.rs` è il port dell'`AudioAnalyzer` TS,
+  che resta il riferimento: cambiarli insieme e ripetere `SceneAnalysis.test.ts` (stessi numeri
+  per le stesse finestre). Nel browser il WASM gira in `analysis.worker.ts`: non riportarlo sul
+  frame loop, e non riportare PCM sul main thread. Ogni sorgente consegna i record con
+  `readFeatures()` / `readScene()`; il ring PCM del worklet (`PcmRing.ts`) e `tap.worklet.js`
+  condividono un layout da tenere allineato. Le scene consumano gli array del produttore senza
+  modificarli né fare FFT. Dettagli: `docs/performance-architecture.md`.
 - DSP fisico/percettivo in Rust; mai ricomputare le nuove misure in TS o nelle scene.
   Conservare ogni frame hop nel wire: il folding per batch rompe la memoria causale.
 - Tenere UI in App/menus; memoria/narrativa in ExperienceEngine, intenti in
   ExperiencePlanner, scene in ShowDirector, traduzione in VisualDirector,
   collegamento/Timing in RigController, risorse GPU in Layer.
+- Il frame è temporizzato dal timestamp di `requestAnimationFrame`, propagato da `RenderEngine`
+  ad `AudioEngine.update(dt, now)`: mai rileggere `performance.now()` a metà callback. `ClockSync`
+  non scatta: scorre verso la stima (reset solo a discontinuità reali). Per frame si decodifica un
+  numero limitato di hop (`RecordStage.drain`): niente recupero in un solo frame, niente hop saltati.
 - Snapshot Experience e fisica sono presentati al clock percepito, mai a RAF.
   Reset di sessione obbligatorio; buffer e history limitati. `meter=0` è ignoto.
   Grammatica geometrica e impulsi luminosi sono distinti: usare FlashGuard condiviso.
@@ -72,8 +80,15 @@
   un mondo vivo: il silenzio non crea energia. `ResonantPhysics` resta com'è. `wirePoint` è scritto in GLSL e in TS: cambiarli
   insieme. `structuralLab`, lo Structural Lab (fuori dal registry: `registerLaboratory`) e il cockpit (`?engine`, Shift+E) sono
   solo DEV e non scrivono impostazioni; la UI cinematica non si tocca.
-- Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente, non hop/beat.
-  Il wire e il WASM versionato devono corrispondere al backend.
+- Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente e quella dell'analisi delle
+  scene, non hop/beat. Le soglie (`DspBudget.ts` e `src-tauri/src/audio.rs`) sono le stesse nei due
+  host: cambiarle insieme. Il wire e il WASM versionato devono corrispondere al backend:
+  `wire::VERSION` va incrementata a ogni cambio di tag, record o layout (il frontend rifiuta un
+  produttore di un'altra versione).
+- Rendering: MSAA solo nello `ScenePass` del layer, pass successivi su target semplici; la
+  composizione è un pass solo, a schermo. Un layer non pronto (`Layer.ready`) non viene disegnato.
+  `QualityController` è l'unico osservatore del carico: `GpuBudget` legge da lì, e Auto non toglie
+  pixel quando il limite è la CPU.
 - La cattura nativa è condivisa: non sovrapporre stop/start o creare AudioEngine
   concorrenti. Preservare il reset della sessione e le verifiche dei token async.
 - Riutilizzare oggetti/array nel frame loop. Non dividere algoritmi coerenti solo

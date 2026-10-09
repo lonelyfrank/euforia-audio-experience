@@ -24,4 +24,14 @@ describe('GpuBudget', () => {
     expect(run(b, 60, 50)).toBe(2);
     expect(run(b, 60, 25)).toBe(3);
   });
+
+  it("earns nothing while held: a second scene is never paid for with the first one's quality", () => {
+    const b = new GpuBudget();
+    for (let t = 0; t < 60; t += 0.1) b.update(60, 0.1, 'low', true);
+    expect(b.units).toBe(1);
+    // Released, it earns at its usual pace; held again, it keeps what it has while the frame rate is good.
+    expect(run(b, 60, 11)).toBe(2);
+    for (let t = 0; t < 60; t += 0.1) b.update(60, 0.1, 'low', true);
+    expect(b.units).toBe(2);
+  });
 });

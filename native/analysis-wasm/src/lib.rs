@@ -21,12 +21,14 @@ pub struct Host {
 pub extern "C" fn sa_new(sample_rate: f32, channels: u32, capacity: u32) -> *mut Host {
     let channels = channels.max(1) as usize;
     let capacity = capacity as usize;
-    // Worst-case event capacity, including every hop frame.
+    // Worst-case event capacity, including every hop frame and a scene frame at each hop (the fastest cadence).
     let hops = capacity / channels / HOP + 2;
+    let per_hop =
+        wire::FRAME_RECORD + wire::ONSET_RECORD + wire::BEAT_RECORD + wire::SECTION_RECORD + wire::SCENE_RECORD;
     let host = Host {
         analyzer: Analyzer::new(sample_rate, channels),
         input: vec![0.0; capacity],
-        output: vec![0.0; hops * (wire::FRAME_RECORD + wire::ONSET_RECORD + wire::BEAT_RECORD + wire::SECTION_RECORD)],
+        output: vec![0.0; hops * per_hop],
         record: vec![0.0; MAX_RECORD],
     };
     Box::into_raw(Box::new(host))
@@ -88,6 +90,20 @@ pub unsafe extern "C" fn sa_push(host: *mut Host, count: u32) -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn sa_reset(host: *mut Host) {
     (*host).analyzer.reset();
+}
+
+/// Version of the record encoding this module writes (`wire::VERSION`): the decoder's must match.
+#[no_mangle]
+pub extern "C" fn sa_version() -> u32 {
+    wire::VERSION
+}
+
+/// The scenes' analysis: reactivity, smoothing, and its cadence in hops (0 = about 60 frames per second).
+/// # Safety
+/// `host` must come from `sa_new`.
+#[no_mangle]
+pub unsafe extern "C" fn sa_scene(host: *mut Host, sensitivity: f64, smoothing: f64, every: u32) {
+    (*host).analyzer.set_scene(sensitivity, smoothing, every);
 }
 
 /// Sets only slow DSP feature rates (0 high, 1 medium, 2 low).

@@ -1,4 +1,4 @@
-import type { AudioSourceId } from '../../types/audio';
+import type { AudioFrame, AudioSourceId } from '../../types/audio';
 import type { AudioCaptureProvider } from './AudioCaptureProvider';
 
 /** Shared plumbing (error listeners, identity) for capture providers. */
@@ -11,7 +11,8 @@ export abstract class BaseCaptureProvider implements AudioCaptureProvider {
 
   abstract start(): Promise<void>;
   abstract stop(): Promise<void>;
-  abstract readSamples(out: Float32Array, delay: number): void;
+  abstract readScene(frame: AudioFrame, delay: number, beatResponse: boolean): boolean;
+  abstract setScene(sensitivity: number, smoothing: number): void;
 
   onError(listener: (message: string) => void): void {
     this.errorListeners.add(listener);

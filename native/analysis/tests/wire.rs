@@ -1,4 +1,6 @@
-use spectrum_analysis::wire::{self, BEAT_RECORD, FRAME_RECORD, MAX_RECORD, ONSET_RECORD, SECTION_RECORD, TAG_BEAT, TAG_FRAME, TAG_ONSET, TAG_SECTION};
+use spectrum_analysis::wire::{
+    self, BEAT_RECORD, FRAME_RECORD, MAX_RECORD, ONSET_RECORD, SCENE_RECORD, SECTION_RECORD, TAG_BEAT, TAG_FRAME, TAG_ONSET, TAG_SCENE, TAG_SECTION,
+};
 use spectrum_analysis::{Analyzer, Event};
 
 const LAYOUT_TS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/audio/features/layout.ts");
@@ -21,7 +23,7 @@ fn records_are_tagged_and_sized() {
         (std::f32::consts::TAU * 60.0 * pos).sin() * (-pos * 9.0).exp()
     }).collect();
     let mut out = vec![0.0; MAX_RECORD];
-    let mut seen = [0usize; 4];
+    let mut seen = [0usize; 5];
     analyzer.push(&samples, |event| {
         let n = wire::encode(&event, &mut out);
         let (tag, size, slot) = match event {
@@ -29,10 +31,13 @@ fn records_are_tagged_and_sized() {
             Event::Onset(_) => (TAG_ONSET, ONSET_RECORD, 1),
             Event::Beat(_) => (TAG_BEAT, BEAT_RECORD, 2),
             Event::Section(_) => (TAG_SECTION, SECTION_RECORD, 3),
+            Event::Scene(_) => (TAG_SCENE, SCENE_RECORD, 4),
         };
         assert_eq!((out[0], n), (tag, size));
         assert!(out[..n].iter().all(|v| v.is_finite()));
         seen[slot] += 1;
     });
     assert!(seen[..3].iter().all(|&n| n > 0), "{seen:?}");
+    // One scene frame every three hops at 48 kHz (≈ 60 per second), each after the frame of its hop.
+    assert_eq!(seen[4], seen[0] / 3, "{seen:?}");
 }

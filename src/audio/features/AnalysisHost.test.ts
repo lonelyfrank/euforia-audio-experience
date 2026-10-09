@@ -4,7 +4,7 @@ import { SignalGenerator } from '../capture/testSignals';
 import { AnalysisHost, type BatchInfo, type HostSource } from './AnalysisHost';
 import { BrowserAnalysis } from './BrowserAnalysis';
 import { AnalysisDecoder, type AnalysisFrame } from './decode';
-import { RECORD, TAG } from './layout';
+import { CLOCK_FIELDS, RECORD, TAG } from './layout';
 import { FILLED, PcmRing, WRITTEN } from './PcmRing';
 import { RecordStage } from './RecordStage';
 import { WasmAnalysis } from './WasmAnalysis';
@@ -24,7 +24,6 @@ async function host(source: HostSource) {
       decoder.decode(batch, length);
       h.recycle(batch.buffer as ArrayBuffer);
     },
-    pcm: (mono) => h.recycle(mono.buffer as ArrayBuffer),
   }, () => now);
   return { h, frames, batches, advance: (s: number) => { now += s; } };
 }
@@ -65,8 +64,11 @@ describe('AnalysisHost', () => {
     expect(last.clock[0]).toBe(TAG.clock);
     expect(last.clock[1]).toBe(run.h.analysed);
     expect(last.clock[2]).toBeGreaterThanOrEqual(0);
-    const stage = new RecordStage(1 << 16);
-    const batch = new Float64Array([TAG.clock, SR, 0.002]);
+    // Batches are numbered, so the receiver can tell one that never arrived.
+    expect(run.batches.map((b) => b.clock[CLOCK_FIELDS.sequence[0]])).toEqual(run.batches.map((_, i) => i));
+    const stage = new RecordStage(SR);
+    const batch = new Float64Array(RECORD.clock);
+    batch.set([TAG.clock, SR, 0.002]);
     stage.stage(batch, batch.length, 11);
     const clock = new ClockSync();
     stage.drain(new AnalysisDecoder(), clock, SR);
@@ -89,13 +91,13 @@ describe('AnalysisHost', () => {
     run.h.pump();
     expect(run.h.analysed).toBe(4 * SR);
     expect(run.h.epoch).toBe(0);
-    expect(run.batches.at(-1)!.info.lost).toBeGreaterThan(0.2 * SR);
+    expect(run.batches.at(-1)!.clock[CLOCK_FIELDS.lost[0]]).toBeGreaterThan(0.2 * SR);
     // 5 s at once loses more than a second: new epoch, the clock starts over with what remains.
     write(5);
     run.h.pump();
     expect(run.h.epoch).toBe(1);
     expect(run.h.analysed).toBe(producer.capacity);
-    expect(run.batches.at(-1)!.info.epoch).toBe(1);
+    expect(run.batches.at(-1)!.clock[CLOCK_FIELDS.epoch[0]]).toBe(1);
     run.h.dispose();
   });
 

@@ -1,0 +1,19 @@
+{"id": "G", "steps": [
+ {"name": "microbench-start", "seconds": 0},
+ {"name": "G-tunnel-high-s4", "settings": {"scene": "tunnel", "quality": "high"}, "signal": "synthPop", "samples": null, "warmup": 7, "seconds": 10},
+ {"name": "G-tunnel-high-s2", "samples": 2, "warmup": 5, "seconds": 10},
+ {"name": "G-tunnel-high-s0", "samples": 0, "warmup": 5, "seconds": 10},
+ {"name": "G-tunnel-high-s4-nobloom", "samples": null, "bloomOff": true, "warmup": 5, "seconds": 10},
+ {"name": "G-tunnel-high-s4-bloomhalf", "samples": null, "bloomScale": 0.5, "warmup": 5, "seconds": 10},
+ {"name": "G-matter-high-s4", "settings": {"scene": "matter-field"}, "samples": null, "warmup": 6, "seconds": 10},
+ {"name": "G-matter-high-s2", "samples": 2, "warmup": 5, "seconds": 10},
+ {"name": "G-matter-high-s0", "samples": 0, "warmup": 5, "seconds": 10},
+ {"name": "G-matter-high-s4-nobloom", "samples": null, "bloomOff": true, "warmup": 5, "seconds": 10},
+ {"name": "G-matter-high-s4-bloomhalf", "samples": null, "bloomScale": 0.5, "warmup": 5, "seconds": 10},
+ {"name": "G-spectrum-high-s4", "settings": {"scene": "spectrum"}, "samples": null, "warmup": 6, "seconds": 10},
+ {"name": "G-spectrum-high-s0", "samples": 0, "warmup": 5, "seconds": 10},
+ {"name": "G-spectrum-high-s4-nobloom", "samples": null, "bloomOff": true, "warmup": 5, "seconds": 10},
+ {"name": "G-tunnel-medium-s4", "settings": {"scene": "tunnel", "quality": "medium"}, "samples": null, "warmup": 6, "seconds": 10},
+ {"name": "G-tunnel-medium-s0", "samples": 0, "warmup": 5, "seconds": 10},
+ {"name": "microbench-end", "settings": {"scene": "tunnel", "quality": "high"}, "samples": null, "seconds": 0}
+]}

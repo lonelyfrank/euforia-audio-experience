@@ -12,12 +12,15 @@ import { DiagnosticsStore } from './DiagnosticsStore';
 import { DiagnosticsCollector } from './DiagnosticsCollector';
 import type { DiagnosticMetric, DiagnosticReport, ReportMetadata } from './DiagnosticsTypes';
 import { RendererProbe } from '../probes/RendererProbe';
+import { PresentationProbe } from '../probes/PresentationProbe';
 import { collectEngine, metric, visualWorld } from '../probes/EngineProbes';
 import { summarizeMatter } from '../probes/MatterSample';
 
 export class DiagnosticsController {
   store: DiagnosticsStore | null = null;
   renderer: RendererProbe | null = null;
+  /** Per-frame pacing of the presentation: heard clock, ingestion, hitches (present while diagnostics are open). */
+  presentation: PresentationProbe | null = null;
   trace: WorldTrace | null = null;
   paused = false;
   recording = false;
@@ -34,6 +37,8 @@ export class DiagnosticsController {
   private disposed = false;
   private lastScene = '';
   private lastNarrative = '';
+  private lastQuality = '';
+  private lastResyncs = 0;
   private readonly position = new Float32Array(256 * 4);
   private readonly velocity = new Float32Array(256 * 4);
   private readonly initialOnly = worldLab.only;
@@ -51,9 +56,10 @@ export class DiagnosticsController {
     this.oldOnly = worldLab.only;
     this.store = new DiagnosticsStore(120);
     this.renderer = new RendererProbe(this.app.directionDebug.renderer);
+    this.presentation = new PresentationProbe();
     this.collector = new DiagnosticsCollector(this.store, this.detailed ? 10 : 5);
     this.collector.register({ id: 'engine', sample: (store, now) => {
-      collectEngine(this.app, store, this.renderer!, now, this.detailed);
+      collectEngine(this.app, store, this.renderer!, now, this.detailed, this.presentation!);
       metric(store, 'diagnostics', 'diagnostics.collection', this.collectionMs, now, 'ms', 'DiagnosticsController', 'render', 'valid', 'previous collection incl aggregation and trace copy', true);
       metric(store, 'diagnostics', 'diagnostics.ui', this.uiMs, now, 'ms', 'DiagnosticsDashboard', 'render', 'valid', 'previous UI refresh incl DOM and chart', true);
       metric(store, 'diagnostics', 'diagnostics.bufferBytes', store.bytes, now, 'bytes', 'DiagnosticsStore', 'render', 'valid', 'typed buffers only, excludes objects/DOM');
@@ -71,13 +77,14 @@ export class DiagnosticsController {
   private disable(): void {
     this.app.directionDebug.diagnostics = null;
     this.collector?.dispose(); this.renderer?.dispose();
-    this.collector = null; this.renderer = null; this.store = null; this.trace = null; this.matterMetrics = [];
+    this.collector = null; this.renderer = null; this.presentation = null; this.store = null; this.trace = null; this.matterMetrics = [];
     this.recording = this.paused = this.readback = false;
     worldLab.only = this.oldOnly;
   }
   reset(): void {
-    this.collector?.reset(); this.renderer?.frames.reset(); this.renderer?.timer.clear();
+    this.collector?.reset(); this.renderer?.frames.reset(); this.renderer?.timer.clear(); this.presentation?.reset();
     this.session = this.app.audio.session;
+    this.lastQuality = ''; this.lastResyncs = this.app.audio.clock.resyncs;
     this.cursor = { time: -Infinity, seq: 0 };
     this.sampledAt = -Infinity; this.matterMetrics = []; this.lastScene = this.lastNarrative = '';
     this.trace = this.recording ? new WorldTrace(1200) : null;
@@ -98,6 +105,9 @@ export class DiagnosticsController {
     if (!this.store || !this.collector) return;
     // Even paused diagnostics must not export values of the previous source.
     if (this.session !== this.app.audio.session) this.reset();
+    // Every frame, not at the sampling cadence: a hitch or a step of the clock lasts one frame.
+    const engine = this.app.audio;
+    this.presentation?.frame(this.renderer?.frameMs ?? 0, engine.clock.ready ? engine.timing.heardTime : NaN, engine.features.frames);
     if (this.metadata?.sampleRate === null && this.app.audio.captureSampleRate !== null) {
       this.metadata.sampleRate = this.app.audio.captureSampleRate;
       this.metadata.source = this.sourceCategory();
@@ -119,6 +129,11 @@ export class DiagnosticsController {
       if (!this.recording && this.store.count === 0 && (this.metadata?.scene !== scene || this.metadata.sampleRate !== audio.captureSampleRate || this.metadata.quality !== this.app.directionDebug.qualityTier || this.metadata.resolution !== this.resolution())) this.metadata = this.makeMetadata();
       if (this.lastScene && scene !== this.lastScene) this.note('scene-change', `${this.lastScene} → ${scene}; world not reset`, now);
       this.lastScene = scene;
+      const load = this.app.directionDebug.load;
+      const quality = `${this.app.directionDebug.qualityTier} step ${load.step} @ ${this.resolution()}`;
+      if (this.lastQuality && quality !== this.lastQuality) this.note('quality-change', `${this.lastQuality} → ${quality}; limit ${load.limit}`, now);
+      this.lastQuality = quality;
+      if (audio.clock.resyncs !== this.lastResyncs) { this.note('clock-resync', `capture ↔ host mapping restarted (${audio.clock.resyncs})`, now); this.lastResyncs = audio.clock.resyncs; }
       if (this.metadata && (this.metadata.scene !== scene || this.metadata.quality !== this.app.directionDebug.qualityTier || this.metadata.resolution !== this.resolution() || this.metadata.configuration !== this.configuration())) {
         if (!this.metadata.experimental.includes('mixed-configuration')) this.metadata.experimental.push('mixed-configuration');
       }

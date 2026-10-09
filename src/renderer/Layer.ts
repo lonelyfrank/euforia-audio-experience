@@ -6,6 +6,7 @@ import type { Pass } from 'three/addons/postprocessing/Pass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { PaletteColors, QualityProfile, SceneClock, SceneInput, SceneLayout, Visualizer, VisualizerPreset } from '../types/visualizer';
+import { ScenePass } from './ScenePass';
 
 export interface SceneSource {
   direction?: SceneDirection;
@@ -19,9 +20,17 @@ export interface LayerSize {
   pixelRatio: number;
 }
 
+/** Longest wait (ms) for a new scene's programs before it is shown anyway (a driver that never reports them ready). */
+const PREPARE_TIMEOUT = 3000;
+
 /**
  * One mounted visualizer with its own post-processing chain, rendered into an
  * offscreen target so two of them can be crossfaded.
+ *
+ * The scene's geometry is multisampled once (ScenePass); the passes after it
+ * (the scene's own, bloom) work on plain targets. Its shader programs are
+ * compiled off the frame (`ready`): until then the layer is not drawn, so a
+ * scene change does not stall the picture on a compile.
  */
 export class Layer {
   /** Reused timed input of the Director. */
@@ -33,7 +42,12 @@ export class Layer {
   readonly visualizer: Visualizer;
   private readonly composer: EffectComposer;
   private readonly passes: Pass[] = [];
+  /** The multisampled scene pass, when the profile asks for antialiasing. */
+  private readonly scenePass: ScenePass | null = null;
   private size: LayerSize = { width: 1, height: 1, pixelRatio: 1 };
+  /** True once the scene's programs are compiled: drawing it will not stall the frame. */
+  ready = false;
+  private disposed = false;
 
   constructor(
     renderer: WebGLRenderer,
@@ -44,8 +58,9 @@ export class Layer {
     private layout: SceneLayout,
   ) {
     this.director = new VisualDirector(source.direction);
-    const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: quality.bloom ? 4 : 0 });
-    this.composer = new EffectComposer(renderer, target);
+    const samples = quality.samples ?? (quality.bloom ? 4 : 0);
+    // With a multisampled scene pass the composer's targets hold only resolved pictures: no samples, no depth.
+    this.composer = new EffectComposer(renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthBuffer: samples === 0 }));
     this.composer.renderToScreen = false;
     this.visualizer = source.create();
 
@@ -61,20 +76,44 @@ export class Layer {
     this.visualizer.setPalette(palette);
     this.visualizer.setLayout?.(layout);
 
-    this.passes.push(new RenderPass(this.visualizer.scene, this.visualizer.camera), ...preBloom);
+    if (samples > 0) {
+      this.scenePass = new ScenePass(this.visualizer.scene, this.visualizer.camera, samples);
+      this.passes.push(this.scenePass);
+    } else this.passes.push(new RenderPass(this.visualizer.scene, this.visualizer.camera));
+    this.passes.push(...preBloom);
     const { strength, radius, threshold } = source.preset.bloom;
     if (quality.bloom && strength > 0) {
       this.bloom = new UnrealBloomPass(new Vector2(1, 1), strength, radius, threshold);
       this.passes.push(this.bloom);
     }
     this.passes.push(...postBloom);
+    if (this.scenePass) this.scenePass.last = this.passes.length === 1;
     for (const pass of this.passes) this.composer.addPass(pass);
     this.resize(size);
+    this.prepare(renderer);
   }
 
   /** The rendered frame (valid after `render`). */
   get texture() {
-    return this.composer.readBuffer.texture;
+    return this.scenePass?.last ? this.scenePass.texture : this.composer.readBuffer.texture;
+  }
+
+  /**
+   * Compiles the scene's programs without blocking (KHR_parallel_shader_compile where the driver has
+   * it), for the target a frame draws them into: a program is specific to its output colour space.
+   */
+  private prepare(renderer: WebGLRenderer): void {
+    const done = () => { this.ready = true; };
+    if (typeof renderer.compileAsync !== 'function') return done();
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.scenePass?.renderTarget ?? this.composer.readBuffer);
+    const compiled = renderer.compileAsync(this.visualizer.scene, this.visualizer.camera);
+    renderer.setRenderTarget(previous);
+    const timeout = setTimeout(done, PREPARE_TIMEOUT);
+    void compiled.catch(() => undefined).then(() => {
+      clearTimeout(timeout);
+      if (!this.disposed) done();
+    });
   }
 
   resize(size: LayerSize): void {
@@ -139,6 +178,7 @@ export class Layer {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.visualizer.dispose();
     for (const pass of this.passes) pass.dispose();
     this.composer.dispose();

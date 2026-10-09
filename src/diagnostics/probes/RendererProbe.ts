@@ -4,6 +4,8 @@ import { RollingStatistics } from '../metrics/RollingStatistics';
 export interface RenderObservation {
   begin(now: number, dt: number): void;
   sourceDone(): void;
+  /** Every layer is updated and drawn; the composition follows. */
+  layersDone(): void;
   end(layers: number, crossfades: number, passes: number): void;
 }
 
@@ -53,12 +55,16 @@ export class RendererProbe implements RenderObservation {
   frameMs = 0;
   sourceMs = 0;
   renderSubmitMs = 0;
+  /** Of `renderSubmitMs`: the layers (scene updates, their passes) and the final composition. */
+  layersMs = 0;
+  compositeMs = 0;
   layers = 0;
   crossfades = 0;
   passes = 0;
   onFrame: ((now: number) => void) | null = null;
   private start = 0;
   private sourceEnd = 0;
+  private layersEnd = 0;
   private now = 0;
   private autoReset = true;
   /** Between begin and end: a frame that threw leaves it set, and the next one must not take this probe's own setting for the renderer's. */
@@ -71,9 +77,12 @@ export class RendererProbe implements RenderObservation {
     this.open = true;
     this.renderer.info.autoReset = false; this.renderer.info.reset(); this.timer.begin();
   }
-  sourceDone(): void { this.sourceEnd = performance.now(); this.sourceMs = this.sourceEnd - this.start; }
+  sourceDone(): void { this.sourceEnd = this.layersEnd = performance.now(); this.sourceMs = this.sourceEnd - this.start; }
+  layersDone(): void { this.layersEnd = performance.now(); this.layersMs = this.layersEnd - this.sourceEnd; }
   end(layers: number, crossfades: number, passes: number): void {
-    this.renderSubmitMs = performance.now() - this.sourceEnd;
+    const end = performance.now();
+    this.renderSubmitMs = end - this.sourceEnd;
+    this.compositeMs = end - this.layersEnd;
     this.timer.end(); Object.assign(this.drawn, this.renderer.info.render);
     this.renderer.info.autoReset = this.autoReset; this.open = false;
     this.layers = layers; this.crossfades = crossfades; this.passes = passes;

@@ -123,4 +123,37 @@ describe('diagnostic data contracts', () => {
     disjoint = true; timer.begin(); expect(timer.ms).toBeNull(); expect(gl.deleteQuery).toHaveBeenCalledTimes(5);
     timer.dispose();
   });
+  it('sees what lasts one frame: hitches, steps of the heard clock and bursts of ingestion', async () => {
+    const { PresentationProbe } = await import('../probes/PresentationProbe');
+    const p = new PresentationProbe();
+    let heard = 10, hops = 0;
+    const frame = (ms: number, clockStep = ms / 1000, decoded = 3) => { heard += clockStep; hops += decoded; p.frame(ms, heard, hops); };
+    for (let i = 0; i < 200; i++) frame(1000 / 60);
+    // On time and regular: nothing to report.
+    expect(p.janks).toBe(0);
+    expect(p.heardError.summarize().p99).toBeLessThan(1e-6);
+    expect(p.hops.summarize().mean).toBe(3);
+    // A frame on time whose shown moment jumped 9 ms: motion stutters although nothing was late.
+    frame(1000 / 60, 1 / 60 + 0.009);
+    expect(p.maxHeardError).toBeCloseTo(9, 6);
+    expect(p.janks).toBe(0);
+    // A 120 ms stall, then the backlog decoded within the per-frame bound.
+    frame(120, 0.12, 0);
+    frame(1000 / 60, 1 / 60, 13);
+    expect([p.over33, p.over50, p.over100, p.janks]).toEqual([1, 1, 1, 1]);
+    expect(p.maxHops).toBe(13);
+    expect(p.frames).toBe(203);
+    // A restart of the session (counters back to zero) is not a negative burst, and a clock that is not ready is not an error.
+    p.frame(1000 / 60, NaN, 0);
+    p.frame(1000 / 60, 0.5, 3);
+    expect(p.hops.summarize().p99).toBeLessThanOrEqual(13);
+    p.reset();
+    expect([p.frames, p.janks, p.maxHops, p.maxHeardError, p.heardError.count]).toEqual([0, 0, 0, 0, 0]);
+  });
+  it('gives the median of a window', () => {
+    const stats = new RollingStatistics(100);
+    expect(stats.median()).toBeNull();
+    for (let i = 1; i <= 99; i++) stats.push(i);
+    expect(stats.median()).toBe(50);
+  });
 });

@@ -1,24 +1,20 @@
 import type { ClockSync } from '../../timing/ClockSync';
-import { BrowserAnalysis } from '../features/BrowserAnalysis';
+import type { AudioFrame } from '../../types/audio';
+import { BrowserAnalysis, type RealtimeStats } from '../features/BrowserAnalysis';
 import type { AnalysisDecoder } from '../features/decode';
 import { BaseCaptureProvider } from './BaseCaptureProvider';
-import { SampleRingBuffer } from './SampleRingBuffer';
-
-/** Seconds of samples kept (the analysis window plus the maximum audio delay, with margin). */
-const RING_SECONDS = 2;
 
 /**
  * Base for providers backed by the Web Audio graph (the browser microphone).
  * An AudioWorklet streams every stereo frame to the analysis worker (shared
- * ring or port) and posts blocks to this thread, where their mono mix fills a
- * ring buffer for the scenes, so the audio delay works as with native capture.
+ * ring or port), which analyses it for the music and for the scenes; only
+ * its records come to this thread.
  */
 export abstract class WebAudioProvider extends BaseCaptureProvider {
   protected context: AudioContext | null = null;
-  private readonly mono = new Float32Array(1024);
   private tap: AudioWorkletNode | null = null;
   private mute: GainNode | null = null;
-  private ring = new SampleRingBuffer(48000 * RING_SECONDS);
+  private scene = { sensitivity: 1, smoothing: 0.5 };
   analysis: BrowserAnalysis | null = null;
 
   /** Subclasses build their source node and connect it to `sink`. */
@@ -29,21 +25,19 @@ export abstract class WebAudioProvider extends BaseCaptureProvider {
     return this.analysis?.epoch ?? 0;
   }
 
+  get stats(): RealtimeStats | null {
+    return this.analysis?.stats ?? null;
+  }
+
   async start(): Promise<void> {
     await this.stop();
     const context = new AudioContext();
     this.context = context;
     this.sampleRate = context.sampleRate;
-    this.ring = new SampleRingBuffer(Math.ceil(context.sampleRate * RING_SECONDS));
     try {
       await context.audioWorklet.addModule(new URL('./tap.worklet.js', import.meta.url));
       const tap = new AudioWorkletNode(context, 'euforia-audio-experience-sample-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: 'max' });
-      tap.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        const pcm = event.data;
-        for (let i = 0; i < pcm.length / 2; i++) this.mono[i] = (pcm[i * 2] + pcm[i * 2 + 1]) * 0.5;
-        this.ring.write(this.mono, 0, pcm.length / 2);
-      };
-      const analysis = await BrowserAnalysis.start(context.sampleRate, { kind: 'stream' });
+      const analysis = await BrowserAnalysis.start(context.sampleRate, { kind: 'stream' }, this.scene);
       this.analysis = analysis;
       const { ring, port } = analysis.link;
       tap.port.postMessage({ type: 'analysis', ring, port }, port ? [port] : []);
@@ -63,7 +57,6 @@ export abstract class WebAudioProvider extends BaseCaptureProvider {
 
   async stop(): Promise<void> {
     this.disconnectSource();
-    if (this.tap) this.tap.port.onmessage = null;
     this.tap?.disconnect();
     this.mute?.disconnect();
     this.tap = null;
@@ -75,11 +68,16 @@ export abstract class WebAudioProvider extends BaseCaptureProvider {
     if (context && context.state !== 'closed') await context.close();
   }
 
-  readSamples(out: Float32Array, delay: number): void {
-    this.ring.readLatest(out, delay);
+  readFeatures(decoder: AnalysisDecoder, clock: ClockSync, maxFrames?: number): void {
+    this.analysis?.read(decoder, clock, maxFrames);
   }
 
-  readFeatures(decoder: AnalysisDecoder, clock: ClockSync): void {
-    this.analysis?.read(decoder, clock);
+  readScene(frame: AudioFrame, delay: number, beatResponse: boolean): boolean {
+    return this.analysis?.readScene(frame, delay, beatResponse) ?? false;
+  }
+
+  setScene(sensitivity: number, smoothing: number): void {
+    this.scene = { sensitivity, smoothing };
+    this.analysis?.setScene(this.scene);
   }
 }

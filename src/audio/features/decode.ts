@@ -16,7 +16,7 @@ export type BeatEvent = Shape<typeof BEAT_FIELDS>;
 /** A section change (kind: 0 intro, 1 build, 2 drop, 3 break, 4 outro), stamped at its downbeat. */
 export type SectionEvent = Shape<typeof SECTION_FIELDS>;
 export const SECTION_NAMES = ['intro', 'build', 'drop', 'break', 'outro'] as const;
-/** Sent by native hosts with each batch: capture clock (`sample`) and the age (s) of its newest sample. */
+/** Sent by hosts with each batch: capture clock (`sample`), the age (s) of its newest sample, and the host's account of the transport. */
 export type ClockRecord = Shape<typeof CLOCK_FIELDS>;
 
 function blank<F extends Record<string, readonly [number, number]>>(fields: F): Shape<F> {
@@ -35,6 +35,12 @@ function read<F extends Record<string, readonly [number, number]>>(fields: F, ta
       for (let i = 0; i < length; i++) values[i] = data[at + offset + i];
     }
   }
+}
+
+/** Values in the record that starts with `tag` (the tag included); 0 for an unknown tag. */
+export function recordSize(tag: number): number {
+  return tag === TAG.frame ? RECORD.frame : tag === TAG.scene ? RECORD.scene : tag === TAG.onset ? RECORD.onset :
+    tag === TAG.beat ? RECORD.beat : tag === TAG.section ? RECORD.section : tag === TAG.clock ? RECORD.clock : 0;
 }
 
 /** A fixed pool of reused events; `count` are valid after each decode. */
@@ -79,6 +85,8 @@ export class AnalysisDecoder {
   onOnset?: (onset: OnsetEvent) => void;
   onBeat?: (beat: BeatEvent) => void;
   onSection?: (section: SectionEvent) => void;
+  /** A scene record (the scenes' graphic analysis), still encoded at `data[at]`: see SceneFeed. */
+  onScene?: (data: Float64Array, at: number) => void;
   /** Where events beyond a full per-frame list are decoded for the consumers. */
   private readonly spareOnset = blank(ONSET_FIELDS);
   private readonly spareBeat = blank(BEAT_FIELDS);
@@ -91,6 +99,8 @@ export class AnalysisDecoder {
   clocked = false;
   /** Frames decoded in total (to tell whether anything arrived). */
   frames = 0;
+  /** Where the last `decode` stopped (values consumed): short of `length` when its frame budget ran out. */
+  consumed = 0;
 
   /** Starts a new batch: the previous batch's onsets and beats are cleared. */
   begin(): void {
@@ -100,17 +110,26 @@ export class AnalysisDecoder {
     this.clocked = false;
   }
 
-  /** Decodes `length` values of `data` (whole records). */
-  decode(data: Float64Array, length = data.length): void {
+  /**
+   * Decodes `length` values of `data` (whole records), starting at `from`. With `maxFrames`, stops
+   * after that many hop frames, at a record boundary: `consumed` tells where, and the caller
+   * continues from there in a later call. Nothing is skipped: every record is decoded once, in order.
+   */
+  decode(data: Float64Array, length = data.length, from = 0, maxFrames = Infinity): void {
     length = Math.min(length, data.length);
-    let at = 0;
+    let at = from;
+    let frames = 0;
+    this.consumed = length;
     while (at < length) {
       const tag = data[at];
       // Ignore truncated or unknown records before touching the reusable state.
-      const size = tag === TAG.frame ? RECORD.frame : tag === TAG.onset ? RECORD.onset :
-        tag === TAG.beat ? RECORD.beat : tag === TAG.section ? RECORD.section : tag === TAG.clock ? RECORD.clock : 0;
+      const size = recordSize(tag);
       if (size === 0 || at + size > length) return;
       if (tag === TAG.frame) {
+        if (frames++ >= maxFrames) {
+          this.consumed = at;
+          return;
+        }
         read(FRAME_FIELDS, this.frame, data, at);
         this.frames++;
         this.onFrame?.(this.frame);
@@ -134,6 +153,9 @@ export class AnalysisDecoder {
         read(CLOCK_FIELDS, this.clock, data, at);
         this.clocked = true;
         at += RECORD.clock;
+      } else if (tag === TAG.scene) {
+        this.onScene?.(data, at);
+        at += RECORD.scene;
       } else {
         // Unknown record: the stream is out of sync; drop the rest of the batch.
         return;

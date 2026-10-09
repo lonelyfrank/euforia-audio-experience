@@ -6,6 +6,7 @@ import type { DiagnosticsStore } from '../core/DiagnosticsStore';
 import type { MetricRegistry } from '../metrics/MetricRegistry';
 import type { ClockDomain, Domain, MetricStatus } from '../core/DiagnosticsTypes';
 import type { RendererProbe } from './RendererProbe';
+import type { PresentationProbe } from './PresentationProbe';
 import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
 import { MatterPrimitive } from '../../visual-engine/primitives/MatterPrimitive';
 import { FieldTracerPrimitive } from '../../visual-engine/primitives/FieldTracerPrimitive';
@@ -91,7 +92,7 @@ export function visualWorld(app: App) {
   const scene = app.directionDebug.current?.visualizer;
   return scene instanceof RecipeVisualizer ? scene.world : null;
 }
-export function collectEngine(app: App, store: DiagnosticsStore, render: RendererProbe, now: number, detailed: boolean): void {
+export function collectEngine(app: App, store: DiagnosticsStore, render: RendererProbe, now: number, detailed: boolean, presentation?: PresentationProbe): void {
   const audio = app.audio, ready = audio.clock.ready && audio.features.frames > 0 && audio.state.status === 'running';
   const analysis = audio.features.frame, rt = audio.realtimeStats;
   store.labels['audio.source'] = audio.state.source ?? 'none'; store.labels['audio.status'] = audio.state.status;
@@ -101,8 +102,27 @@ export function collectEngine(app: App, store: DiagnosticsStore, render: Rendere
   metric(store, 'audio', 'capture.hops', audio.features.frames, now, 'hop', 'AnalysisDecoder', 'render');
   metric(store, 'audio', 'capture.frames', ready ? analysis.sample : null, now, 'sample frames', 'AnalysisFrame.sample', 'render');
   for (const id of ['channels', 'hardwareBuffer', 'batchCpuMs']) metric(store, 'audio', `capture.${id}`, null, now, id === 'batchCpuMs' ? 'ms' : 'count', 'capture unavailable', 'render');
-  const units: Record<string, string> = { load: 'ratio', quality: 'tier', backlog: 'sample frames', dspAge: 's', transfer: 's', pending: 'f64 values', dropped: 'f64 values', lost: 'sample frames', filled: 'sample frames', batches: 'batch' };
-  for (const key of Object.keys(units)) metric(store, 'audio', `pipeline.${key}`, ready && rt ? rt[key as keyof typeof rt] as number : null, now, units[key], 'BrowserAnalysis', 'render', key === 'load' || key === 'transfer' ? 'estimated' : 'valid');
+  const units: Record<string, string> = { load: 'ratio', quality: 'tier', backlog: 'sample frames', dspAge: 's', transfer: 's', pending: 'f64 values', dropped: 'f64 values', lost: 'sample frames', filled: 'sample frames', batches: 'batch', missed: 'batch' };
+  const transport = rt?.mode === 'native' ? 'native capture (clock record)' : 'BrowserAnalysis';
+  for (const key of Object.keys(units)) metric(store, 'audio', `pipeline.${key}`, ready && rt ? rt[key as keyof typeof rt] as number : null, now, units[key], transport, 'render', key === 'load' || key === 'transfer' ? 'estimated' : 'valid',
+    'producer value', key === 'missed' || key === 'dropped' || key === 'lost' || key === 'load');
+  // How the capture clock is mapped to the host's: the offset shown, the estimate it glides towards, and real discontinuities.
+  metric(store, 'audio', 'clock.offset', ready ? audio.clock.offset : null, now, 's', 'ClockSync', 'render', 'estimated', 'host − capture, slew-limited');
+  metric(store, 'audio', 'clock.offsetError', ready ? (audio.clock.offset - audio.clock.floor) * 1000 : null, now, 'ms', 'ClockSync', 'render', 'estimated', 'offset − fastest delivery of the last 12 s');
+  metric(store, 'audio', 'clock.resyncs', audio.clock.resyncs, now, 'count', 'ClockSync', 'render', 'valid', 'estimate restarted after a jump of the clocks', true);
+  metric(store, 'audio', 'latency.onset', ready ? audio.timing.onsetDelay : null, now, 's', 'Timing', 'render', 'estimated', 'capture of an attack → the frame that learns of it', true);
+  if (presentation) {
+    const heard = presentation.heardError.summarize(), hops = presentation.hops.summarize();
+    for (const [key, value] of Object.entries(heard)) metric(store, 'audio', `clock.heardError.${key}`, value, now, 'ms', 'Timing.heardTime per frame', 'render', 'valid', '|advance of the heard moment − frame interval|, last 300 frames', true);
+    metric(store, 'audio', 'clock.heardError.max', presentation.maxHeardError, now, 'ms', 'Timing.heardTime per frame', 'render', 'valid', 'since reset', true);
+    metric(store, 'audio', 'pipeline.hopsPerFrame', hops.mean, now, 'hop', 'AnalysisDecoder per frame', 'render', 'valid', 'last 300 frames');
+    metric(store, 'audio', 'pipeline.hopsPerFrameP99', hops.p99, now, 'hop', 'AnalysisDecoder per frame', 'render', 'valid', 'last 300 frames', true);
+    metric(store, 'audio', 'pipeline.hopsPerFrameMax', presentation.maxHops, now, 'hop', 'AnalysisDecoder per frame', 'render', 'valid', 'since reset', true);
+    metric(store, 'render', 'frame.p50', render.frames.median(), now, 'ms', 'RAF intervals', 'render', 'valid', 'last 300 real frames', true);
+    metric(store, 'render', 'frame.jank', presentation.frames ? presentation.janks / presentation.frames : null, now, 'ratio', 'RAF intervals', 'render', 'valid', 'frames over 1.5 × the target interval, since reset', true);
+    for (const key of ['over33', 'over50', 'over100'] as const) metric(store, 'render', `frame.${key}`, presentation[key], now, 'frames', 'RAF intervals', 'render', 'valid', 'since reset', true);
+    metric(store, 'render', 'frame.count', presentation.frames, now, 'frames', 'RAF', 'render', 'valid', 'since reset');
+  }
   const timing = audio.timing;
   metric(store, 'audio', 'clock.analysis', ready ? analysis.time : null, analysis.time, 's', 'AnalysisFrame', 'capture');
   metric(store, 'audio', 'clock.captureHost', ready ? audio.clock.toHost(analysis.time) : null, now, 's', 'ClockSync', 'render', 'estimated');
@@ -150,6 +170,15 @@ export function collectEngine(app: App, store: DiagnosticsStore, render: Rendere
   metric(store, 'render', 'fps.mean', stats.mean ? 1000 / stats.mean : null, now, 'fps', 'RAF intervals', 'render');
   metric(store, 'render', 'cpu.source', render.sourceMs, now, 'ms', 'performance.now', 'render', 'valid', 'frameSource: graphics analysis + decode + rig, not worker DSP', true);
   metric(store, 'render', 'cpu.renderSubmit', render.renderSubmitMs, now, 'ms', 'performance.now', 'render', 'valid', 'scene updates + GPU command submission, not GPU execution', true);
+  metric(store, 'render', 'cpu.layers', render.layersMs, now, 'ms', 'performance.now', 'render', 'valid', 'Layer.update + Layer.render of every layer', true);
+  metric(store, 'render', 'cpu.composite', render.compositeMs, now, 'ms', 'performance.now', 'render', 'valid', 'final composition to the screen', true);
+  const load = app.directionDebug.load;
+  store.labels['quality.limit'] = load.limit;
+  metric(store, 'render', 'quality.autoStep', load.step, now, 'step', 'QualityController', 'render', 'valid', 'steps AUTO took down (0 = full quality)', true);
+  metric(store, 'render', 'quality.logicShare', load.logicShare, now, 'ratio', 'QualityController', 'render', 'valid', 'main-thread logic / frame interval, last window', true);
+  metric(store, 'render', 'quality.fps', load.fps, now, 'fps', 'QualityController', 'render', 'valid', 'smoothed, stalls excluded');
+  const heap = (performance as { memory?: { usedJSHeapSize: number } }).memory;
+  metric(store, 'render', 'memory.jsHeap', heap ? heap.usedJSHeapSize : null, now, 'bytes', 'performance.memory', 'render', heap ? 'valid' : 'unavailable', 'Chromium only', true);
   metric(store, 'render', 'gpu.frame', render.timer.ms, now, 'ms', 'EXT_disjoint_timer_query_webgl2', 'render', 'valid', 'asynchronous completed query, includes simulation and composition', true);
   for (const [key, value] of Object.entries({ layers: render.layers, crossfades: render.crossfades, configuredPasses: render.passes, width: r.domElement.width, height: r.domElement.height, pixelRatio: r.getPixelRatio() })) metric(store, 'render', `render.${key}`, value, now, key === 'width' || key === 'height' ? 'px' : 'count', 'RenderEngine', 'render');
   for (const key of ['gpuMemoryTotal', 'renderTargetsTotal', 'actuallyVisibleParticles']) metric(store, 'render', `render.${key}`, null, now, 'unavailable', 'not exposed', 'render');

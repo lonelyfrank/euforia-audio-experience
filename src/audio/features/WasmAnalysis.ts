@@ -1,5 +1,6 @@
 import { DspBudget } from './DspBudget';
 import { AnalysisDecoder } from './decode';
+import { WIRE_VERSION } from './layout';
 import instantiate from './spectrum_analysis.wasm?init';
 
 /** Exports of spectrum_analysis.wasm (native/analysis-wasm). */
@@ -13,6 +14,8 @@ interface Exports {
   sa_push(host: number, count: number): number;
   sa_reset(host: number): void;
   sa_quality(host: number, quality: number): void;
+  sa_scene(host: number, sensitivity: number, smoothing: number, every: number): void;
+  sa_version(): number;
 }
 
 /** Interleaved samples accepted per push (larger inputs are split). */
@@ -52,7 +55,19 @@ export class WasmAnalysis<S extends RecordSink = AnalysisDecoder> {
   static async create<S extends RecordSink>(sampleRate: number, channels: number, decoder: S): Promise<WasmAnalysis<S>>;
   static async create(sampleRate: number, channels: number, decoder: RecordSink = new AnalysisDecoder()): Promise<WasmAnalysis<RecordSink>> {
     const instance = await instantiate();
-    return new WasmAnalysis(instance.exports as unknown as Exports, sampleRate, channels, decoder);
+    const exports = instance.exports as unknown as Exports;
+    // The module is versioned with the decoder: a stale binary would be read with the wrong layout.
+    const version = exports.sa_version?.() ?? 1;
+    if (version !== WIRE_VERSION) throw new Error(`spectrum_analysis.wasm speaks wire ${version}, the decoder ${WIRE_VERSION}: run \`npm run wasm\``);
+    return new WasmAnalysis(exports, sampleRate, channels, decoder);
+  }
+
+  /**
+   * The scenes' analysis: the user's reactivity and smoothing, and its cadence in hops (0 = about
+   * 60 scene frames per second). Applies from the next scene frame.
+   */
+  setScene(sensitivity: number, smoothing: number, every = 0): void {
+    this.exports.sa_scene(this.host, sensitivity, smoothing, every);
   }
 
   /** Analyses interleaved samples; their frames and events are added to the decoder. */

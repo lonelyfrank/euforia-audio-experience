@@ -49,7 +49,7 @@ fn main() {
             a.push(batch.samples, |event| match event {
                 Event::Frame(f) => s.last = Some(*f),
                 Event::Onset(_) => s.onsets += 1,
-                Event::Section(_) => {}
+                Event::Section(_) | Event::Scene(_) => {}
                 Event::Beat(b) => s.beats.push(b.time),
             });
         },

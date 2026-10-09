@@ -4,8 +4,13 @@ import { installEngineCockpit } from '../app/engine/EngineCockpit';
 import { DiagnosticsController } from './core/DiagnosticsController';
 import { DiagnosticsDashboard } from './ui/DiagnosticsDashboard';
 
-/** One DEV entry point; production never loads this module or any of its dependencies. */
-export function installDiagnostics(app: App): () => void {
+/**
+ * The one entry point of diagnostics. Development builds load it at start, with every tool; a
+ * production build loads it only when diagnostics are asked for (`?diagnostics`, or
+ * Ctrl+Alt+Shift+D: see App), and then only the dashboard: an observer that reads the engine and
+ * writes no setting. The overlay and the cockpit stay development tools (`tools` false leaves them out).
+ */
+export function installDiagnostics(app: App, tools = true, open = false): () => void {
   const controller = new DiagnosticsController(app);
   let dashboard: DiagnosticsDashboard | null = null;
   const toggle = () => {
@@ -16,9 +21,9 @@ export function installDiagnostics(app: App): () => void {
     if (event.repeat || (event.target instanceof HTMLElement && (event.target.isContentEditable || /INPUT|SELECT|TEXTAREA/.test(event.target.tagName)))) return;
     if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyG') toggle();
   };
-  const overlay = installDebugOverlay(app, controller);
-  const cockpit = installEngineCockpit(app, controller, () => { if (!dashboard) toggle(); });
+  const overlay = tools ? installDebugOverlay(app, controller) : () => {};
+  const cockpit = tools ? installEngineCockpit(app, controller, () => { if (!dashboard) toggle(); }) : () => {};
   window.addEventListener('keydown', onKey);
-  if (new URLSearchParams(location.search).has('diagnostics')) toggle();
+  if (open || new URLSearchParams(location.search).has('diagnostics')) toggle();
   return () => { window.removeEventListener('keydown', onKey); dashboard?.dispose(); dashboard = null; overlay(); cockpit(); controller.dispose(); };
 }

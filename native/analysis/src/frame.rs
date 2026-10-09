@@ -419,6 +419,8 @@ macro_rules! layout {
     };
 }
 
+pub(crate) use layout;
+
 layout!(FeatureFrame {
     sample: u64,
     time: f64,

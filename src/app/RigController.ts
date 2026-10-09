@@ -140,7 +140,9 @@ export class RigController {
     const s = this.settings();
     this.showSettings.mode = this.pinned ? 'preset' : resolveDirection(s).rigMode;
     this.showSettings.scene = this.pinned ?? s.scene;
-    this.show.setBudget(this.budget.update(this.render.measuredFps, dt, this.render.qualityTier));
+    // One view of the load for both adaptations: no extra fixture while quality is reduced, limited or in transition.
+    const load = this.render.load;
+    this.show.setBudget(this.budget.update(load.fps, dt, this.render.qualityTier, load.reduced || load.limit !== 'none' || !load.steady));
     this.show.update(i, this.showSettings, this.showSink);
     const lead = this.show.slots[0];
     let sceneIndex = -1;

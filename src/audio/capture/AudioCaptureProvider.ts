@@ -1,20 +1,22 @@
-import type { AudioSourceId } from '../../types/audio';
+import type { AudioFrame, AudioSourceId } from '../../types/audio';
 import type { AnalysisDecoder } from '../features/decode';
 import type { RealtimeStats } from '../features/BrowserAnalysis';
 import type { ClockSync } from '../../timing/ClockSync';
 
 /**
- * A live source of mono PCM samples (system loopback, microphone, or the
- * synthetic test signal used in development). There are no file or
- * pre-recorded sources: everything is analysed as it is heard. Providers know nothing about analysis or
- * rendering: they only keep the most recent samples available for reading.
+ * A live source (system loopback, microphone, or the synthetic test signal
+ * used in development) and its analysis. There are no file or pre-recorded
+ * sources: everything is analysed as it is heard. The audio never reaches
+ * the frame loop: it is analysed where it is captured (in Rust on the native
+ * capture thread, or as WebAssembly in the browser analysis worker), and the
+ * provider only keeps the records that come back until a frame reads them.
  *
- * The analyzer pulls data once per frame via `readSamples`, so providers never
- * push into the rest of the engine.
+ * The engine pulls once per frame (`readFeatures`, `readScene`), so providers
+ * never push into the rest of the engine.
  */
 export interface AudioCaptureProvider {
   readonly id: AudioSourceId;
-  /** Sample rate of the data returned by `readSamples` (valid after start). */
+  /** Sample rate of the capture clock (valid after start). */
   readonly sampleRate: number;
   /** Human readable name of the device/source actually in use. */
   readonly deviceName: string;
@@ -23,24 +25,31 @@ export interface AudioCaptureProvider {
   stop(): Promise<void>;
 
   /**
-   * Copies the most recent `out.length` mono samples into `out`
-   * (oldest first), ending `delay` samples in the past. Must not allocate.
+   * Decodes into `decoder` the analysis records received and not decoded yet,
+   * at most `maxFrames` hop frames of them (a backlog is worked off over the
+   * following frames), and gives `clock` one observation per batch (its
+   * arrival time and capture clock).
    */
-  readSamples(out: Float32Array, delay: number): void;
+  readFeatures?(decoder: AnalysisDecoder, clock: ClockSync, maxFrames?: number): void;
 
   /**
-   * Decodes the analysis records received since the previous call into
-   * `decoder`, and gives `clock` one observation per batch (its arrival time
-   * and capture clock). The analysis runs off the frame loop: in Rust on the
-   * native capture thread, or as WebAssembly in the browser analysis worker.
+   * Writes into `frame` the scenes' graphic analysis nearest to `delay`
+   * samples before the newest one (see SceneFeed). False while none has arrived.
+   * Must not allocate.
    */
-  readFeatures?(decoder: AnalysisDecoder, clock: ClockSync): void;
+  readScene(frame: AudioFrame, delay: number, beatResponse: boolean): boolean;
+
+  /**
+   * The scenes' analysis runs with the user's reactivity and smoothing: tells
+   * the producer (now if it is running, and at every start).
+   */
+  setScene(sensitivity: number, smoothing: number): void;
 
   /** Changes when the analysis restarted after losing audio (its capture clock starts over). */
   readonly epoch?: number;
 
-  /** Browser sources: where the DSP runs and what it costs (debug). */
-  readonly analysis?: { readonly stats: RealtimeStats } | null;
+  /** Where the DSP runs, what it costs and how its records travel (diagnostics). */
+  readonly stats?: RealtimeStats | null;
 
   /** Registers a callback for asynchronous failures (device lost, ...). */
   onError(listener: (message: string) => void): void;

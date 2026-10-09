@@ -104,10 +104,31 @@ describe('resonant physics and DSP budget', () => {
   });
   it('reduces slow DSP work with hysteresis and recovers independently of GPU', () => {
     const b = new DspBudget();
-    for (let i=0;i<500;i++) b.update(0.008,0.01);
+    // 8 s at 80 % of a core: the first 3 s are warm-up, then one step down every 2 s.
+    for (let i=0;i<800;i++) b.update(0.008,0.01);
     expect(b.quality).toBe(2);
     for (let i=0;i<7000;i++) b.update(0.0005,0.01);
     expect(b.quality).toBe(0);
+  });
+  it('leaves the analysis thread alone while it has room: music and scene graphics together are not an overload', () => {
+    const b = new DspBudget();
+    // A quarter of a core, steadily: the analysis of a modest machine, graphics included.
+    for (let i=0;i<6000;i++) b.update(0.0025,0.01);
+    expect(b.quality).toBe(0);
+    // A slow start (a cold module) settles before it counts as overload.
+    const cold = new DspBudget();
+    for (let i=0;i<250;i++) cold.update(0.008,0.01);
+    for (let i=0;i<6000;i++) cold.update(0.0025,0.01);
+    expect(cold.quality).toBe(0);
+    // Pushed down by a real overload, it comes back once the load is clearly below it, without bouncing.
+    const loaded = new DspBudget();
+    for (let i=0;i<800;i++) loaded.update(0.005,0.01);
+    expect(loaded.quality).toBeGreaterThan(0);
+    const reached = loaded.quality;
+    for (let i=0;i<6000;i++) loaded.update(0.0028,0.01);
+    expect(loaded.quality).toBe(reached);
+    for (let i=0;i<7000;i++) loaded.update(0.0015,0.01);
+    expect(loaded.quality).toBe(0);
   });
 });
 

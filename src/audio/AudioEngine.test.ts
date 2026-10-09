@@ -13,7 +13,7 @@ function deferred<T = void>() {
 
 function provider(start = async () => {}): AudioCaptureProvider {
   return { id: 'microphone', sampleRate: 48000, deviceName: 'Test', start: vi.fn(start), stop: vi.fn(async () => {}),
-    readSamples: vi.fn(), onError: vi.fn() };
+    readScene: vi.fn(() => false), setScene: vi.fn(), onError: vi.fn() };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -73,6 +73,48 @@ describe('AudioEngine source ownership', () => {
     // The old clock mapping is gone before the new epoch's records are read.
     expect(engine.clock.ready).toBe(false);
     expect(vi.mocked(source.readFeatures!).mock.invocationCallOrder.length).toBe(3);
+    await engine.stop();
+  });
+
+  it('shows the scene analysis of the source in the frame the scenes hold, and falls silent without one', async () => {
+    const source = provider();
+    vi.mocked(source.readScene).mockImplementation((frame) => { frame.volume = 0.8; frame.silent = false; return true; });
+    vi.mocked(createCaptureProvider).mockReturnValue(source);
+    const engine = new AudioEngine();
+    const frame = engine.frame;
+    engine.configure({ sensitivity: 1.3, smoothing: 0.4, beatResponse: false });
+    engine.setDelay(0.055);
+    await engine.setSource('microphone');
+    // The producer analyses with the user's settings from its first frame, and learns of later changes.
+    expect(source.setScene).toHaveBeenCalledWith(1.3, 0.4);
+    engine.configure({ sensitivity: 0.9 });
+    expect(source.setScene).toHaveBeenLastCalledWith(0.9, 0.4);
+    const time = frame.time;
+    engine.update(1 / 60);
+    // The same object the scenes were given, 55 ms (2640 samples) behind the newest analysis, beat response off.
+    expect(engine.frame).toBe(frame);
+    expect(source.readScene).toHaveBeenLastCalledWith(frame, 2640, false);
+    expect(frame.volume).toBe(0.8);
+    expect(frame.time).toBeCloseTo(time + 1 / 60, 12);
+    await engine.stop();
+    for (let i = 0; i < 120; i++) engine.update(1 / 60);
+    expect(frame.silent).toBe(true);
+    expect(frame.volume).toBeLessThan(1e-3);
+  });
+
+  it('decodes a bounded number of hops per frame, more when frames are long, and times the frame from its own timestamp', async () => {
+    const source = provider();
+    source.readFeatures = vi.fn();
+    vi.mocked(createCaptureProvider).mockReturnValue(source);
+    const engine = new AudioEngine();
+    await engine.setSource('system');
+    const timed = vi.spyOn(engine.timing, 'update');
+    engine.update(1 / 60, 123.456);
+    expect(timed.mock.calls[0][0]).toBe(123.456);
+    // 3.1 hops arrive per frame at 60 fps: four times that, so a backlog shrinks without a frame paying for all of it.
+    expect(vi.mocked(source.readFeatures).mock.calls[0][2]).toBe(13);
+    for (let i = 0; i < 200; i++) engine.update(1 / 20, 124 + i / 20);
+    expect(vi.mocked(source.readFeatures).mock.calls.at(-1)![2]).toBe(Math.ceil((48000 / 256) * 0.05 * 4));
     await engine.stop();
   });
 

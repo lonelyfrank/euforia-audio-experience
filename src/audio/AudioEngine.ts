@@ -4,10 +4,19 @@ import type { AudioCaptureProvider } from './capture/AudioCaptureProvider';
 import { createCaptureProvider, type SourceOptions } from './capture/createCaptureProvider';
 import { AnalysisDecoder } from './features/decode';
 import type { RealtimeStats } from './features/BrowserAnalysis';
+import { HOP } from './features/layout';
 import { MusicInterpreter } from './interpretation/MusicInterpreter';
 import { ClockSync } from '../timing/ClockSync';
 import { ExperienceEngine } from '../experience/ExperienceEngine';
 import { Timing } from '../timing/Timing';
+
+/**
+ * Hop frames a rendered frame decodes at most: this many times what arrives during one frame, and
+ * never fewer than MIN_HOPS. After a stall the backlog is worked off over the next frames at this
+ * pace instead of in one, so a late frame does not make the next one late too.
+ */
+const CATCH_UP = 4;
+const MIN_HOPS = 12;
 
 export interface AudioEngineState {
   source: AudioSourceId | null;
@@ -18,15 +27,20 @@ export interface AudioEngineState {
 
 /**
  * Glue between a capture provider and the analysis. Owns the active provider,
- * pulls samples once per frame and exposes the resulting AudioFrame and the
- * VisualResponseFrame derived from it. Knows nothing about visualizers.
+ * pulls its records once per frame and exposes the resulting AudioFrame and
+ * the VisualResponseFrame derived from it. Knows nothing about visualizers.
  *
- * `features` is the Rust analysis (spectrum-analysis): the latest frame on
- * the capture clock and the onsets/beats since the previous rendered frame.
- * It never runs on the frame loop: native capture runs it on the capture
- * thread, browser sources in the analysis worker (BrowserAnalysis). Every
- * provider hands its records over through `readFeatures`. The TypeScript
- * AudioAnalyzer still feeds the scenes' graphics.
+ * The analysis is spectrum-analysis (Rust): `features` is its musical side
+ * (the latest hop frame on the capture clock, the onsets/beats decoded in
+ * this rendered frame), `frame` its graphic side (levels, display spectrum,
+ * waveform, voices: what the scenes draw). Neither runs on the frame loop:
+ * native capture analyses on the capture thread, browser sources in the
+ * analysis worker (BrowserAnalysis); every provider hands the records over
+ * through `readFeatures` and `readScene`. No audio reaches this thread.
+ *
+ * `analyzer` is the TypeScript original of the graphic analysis: it owns the
+ * AudioFrame the scenes hold, fades it out while no source is delivering,
+ * and is the reference the Rust port is tested against.
  */
 export class AudioEngine {
   readonly analyzer = new AudioAnalyzer();
@@ -47,9 +61,9 @@ export class AudioEngine {
   private frameInterval = 1 / 60;
   private epoch = 0;
   private provider: AudioCaptureProvider | null = null;
-  /** Latest samples: the voice window, whose newest FFT_SIZE samples (a fixed view) feed the FFT. */
-  private readonly samples = new Float32Array(VOICE_WINDOW);
-  private readonly fftSamples = this.samples.subarray(VOICE_WINDOW - FFT_SIZE);
+  /** Silence for the analyzer while no source is delivering: the voice window and its newest FFT_SIZE samples. */
+  private readonly silence = new Float32Array(VOICE_WINDOW);
+  private readonly silenceWindow = this.silence.subarray(VOICE_WINDOW - FFT_SIZE);
   private readonly listeners = new Set<(state: AudioEngineState) => void>();
   private switchToken = 0;
   /** Native providers share one backend capture: starts/stops must never overlap. */
@@ -68,9 +82,9 @@ export class AudioEngine {
     return this.analyzer.frame;
   }
 
-  /** Browser sources: where the DSP runs and what it costs (null for native capture). Debug. */
+  /** Where the DSP runs, what it costs and how its records travel (null while no source runs). Diagnostics. */
   get realtimeStats(): RealtimeStats | null {
-    return this.provider?.analysis?.stats ?? null;
+    return this.provider?.stats ?? null;
   }
 
   /** Capture sample rate, unavailable until the source is running. */
@@ -83,6 +97,7 @@ export class AudioEngine {
 
   configure(settings: Partial<AnalyzerSettings>): void {
     Object.assign(this.analyzer.settings, settings);
+    this.provider?.setScene(this.analyzer.settings.sensitivity, this.analyzer.settings.smoothing);
   }
 
   /**
@@ -127,6 +142,7 @@ export class AudioEngine {
     let provider: AudioCaptureProvider | null = null;
     try {
       provider = createCaptureProvider(source, options);
+      provider.setScene(this.analyzer.settings.sensitivity, this.analyzer.settings.smoothing);
       provider.onError((message) => {
         if (token === this.switchToken && this.provider === provider) this.setState({ ...this._state, status: 'error', error: message });
       });
@@ -143,6 +159,8 @@ export class AudioEngine {
     }
     this.provider = provider;
     this.epoch = provider.epoch ?? 0;
+    // Settings may have changed while it was starting.
+    provider.setScene(this.analyzer.settings.sensitivity, this.analyzer.settings.smoothing);
     this.analyzer.reset();
     this.response.reset();
     this.frameInterval = 1 / 60;
@@ -151,21 +169,33 @@ export class AudioEngine {
     }
   }
 
-  /** Pull + analyse + derive the visual response. Call once per rendered frame. */
-  update(dt: number): AudioFrame {
+  /**
+   * Pulls the analysis and derives the visual response. Call once per rendered frame: `now` is that
+   * frame's requestAnimationFrame time (s, the clock of `performance.now()`), the instant the picture
+   * is timed from; a time read later in the callback would carry how long the callback waited.
+   */
+  update(dt: number, now = performance.now() / 1000): AudioFrame {
     this.features.begin();
-    if (this.provider) this.provider.readSamples(this.samples, Math.round(this.delay * this.provider.sampleRate));
-    else this.samples.fill(0);
-    if (this.provider && (this.provider.epoch ?? 0) !== this.epoch) {
+    const provider = this.provider;
+    const sampleRate = provider?.sampleRate ?? 48000;
+    if (provider && (provider.epoch ?? 0) !== this.epoch) {
       // The provider's analysis restarted after losing audio: its capture clock starts over.
-      this.epoch = this.provider.epoch ?? 0;
+      this.epoch = provider.epoch ?? 0;
       this.restartAnalysis();
     }
-    this.provider?.readFeatures?.(this.features, this.clock);
     this.frameInterval += (Math.min(dt, 0.1) - this.frameInterval) * 0.05;
+    const arriving = (sampleRate / HOP) * this.frameInterval;
+    provider?.readFeatures?.(this.features, this.clock, Math.max(MIN_HOPS, Math.ceil(arriving * CATCH_UP)));
     const { onsets } = this.features;
-    this.timing.update(performance.now() / 1000, this.frameInterval, this.features.frame, onsets.items, onsets.count, this.clock, dt);
-    const frame = this.analyzer.analyze(this.fftSamples, this.provider?.sampleRate ?? 48000, dt, this.samples);
+    this.timing.update(now, this.frameInterval, this.features.frame, onsets.items, onsets.count, this.clock, dt);
+    const frame = this.analyzer.frame;
+    if (provider?.readScene(frame, Math.round(this.delay * sampleRate), this.analyzer.settings.beatResponse)) {
+      frame.time += dt;
+      frame.sampleRate = sampleRate;
+    } else {
+      // No source, or none delivering yet: the picture falls silent through the same smoothing it rose with.
+      this.analyzer.analyze(this.silenceWindow, sampleRate, dt, this.silence);
+    }
     this.response.update(frame, dt);
     return frame;
   }

@@ -1,0 +1,12 @@
+{"id": "Z", "steps": [
+ {"name": "microbench-start", "seconds": 0},
+ {"name": "Z-tunnel-low", "settings": {"scene": "tunnel", "quality": "low"}, "signal": "synthPop", "warmup": 7, "seconds": 15, "raw": true},
+ {"name": "Z-tunnel-medium", "settings": {"quality": "medium"}, "warmup": 6, "seconds": 15},
+ {"name": "Z-tunnel-high", "settings": {"quality": "high"}, "warmup": 6, "seconds": 15, "raw": true},
+ {"name": "Z-spectrum-high", "settings": {"scene": "spectrum"}, "warmup": 6, "seconds": 12},
+ {"name": "Z-matter-field-high", "settings": {"scene": "matter-field"}, "warmup": 6, "seconds": 12},
+ {"name": "Z-spectral-matter-high", "settings": {"scene": "spectral-matter"}, "warmup": 6, "seconds": 12},
+ {"name": "Z-oscilloscope-low", "settings": {"scene": "oscilloscope", "quality": "low"}, "warmup": 6, "seconds": 12},
+ {"name": "Z-spectrum-low", "settings": {"scene": "spectrum", "quality": "low"}, "warmup": 6, "seconds": 12},
+ {"name": "microbench-end", "settings": {"scene": "tunnel", "quality": "high"}, "seconds": 0}
+]}

@@ -179,6 +179,7 @@ fn analyze(rate: f32, channels: usize, samples: &[f32], resonators: bool) -> Out
                     out.novelty.push(f.time);
                 }
             }
+            Event::Scene(_) => {}
         });
     }
     out

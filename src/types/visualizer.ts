@@ -18,6 +18,8 @@ export interface QualityProfile {
   /** Multiplier for particle / instance counts (1 = preset value). */
   density: number;
   bloom: boolean;
+  /** Multisampling of the scene's geometry (samples per pixel; 0 = none). Default: 4 with bloom, none without. */
+  samples?: number;
 }
 
 /**

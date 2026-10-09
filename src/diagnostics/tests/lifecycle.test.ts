@@ -9,7 +9,7 @@ function setup() {
   const gl = { getExtension: () => null, getParameter: () => 'test WebGL', isContextLost: () => false };
   const info = { autoReset: true, reset: vi.fn(), render: { calls: 7, points: 9, triangles: 3, lines: 2 }, memory: { geometries: 4, textures: 5 } };
   const renderer = { info, getContext: () => gl, domElement: { width: 1280, height: 720 }, getPixelRatio: () => 1 };
-  const directionDebug = { renderer, qualityTier: 'high', current: null, diagnostics: null };
+  const directionDebug = { renderer, qualityTier: 'high', current: null, diagnostics: null, load: { fps: 60, limit: 'none', reduced: false, step: 0, logicShare: 0, steady: true } };
   const audio = new AudioEngine();
   const app = { audio, directionDebug } as unknown as App;
   return { controller: new DiagnosticsController(app), audio, directionDebug, info };

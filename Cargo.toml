@@ -12,5 +12,17 @@ publish = false
 [profile.dev.package.spectrum-analysis]
 opt-level = 3
 
+# So does the capture itself. Unoptimized, the PulseAudio client (cpal's Linux host) zeroes its
+# 1 MiB read buffer byte by byte on every read: a whole core, and a reactor that never gets to
+# write, so stopping a stream waits for minutes (docs/EUFORIA_FULL_ENGINE_AUDIT.md, A-06).
+[profile.dev.package.pulseaudio]
+opt-level = 3
+
+[profile.dev.package.cpal]
+opt-level = 3
+
+[profile.dev.package.audio-capture]
+opt-level = 3
+
 [profile.release.package.spectrum-analysis-wasm]
 opt-level = "s"

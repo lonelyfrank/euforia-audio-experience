@@ -1,19 +1,43 @@
-# Euforia Engine Diagnostics 1.0
+# Euforia Engine Diagnostics 2.0
 
-Modalità locale di sviluppo: `npm run dev`, poi `http://localhost:1420/?diagnostics`
-o **Shift+G**. Nessun servizio esterno, nessuna registrazione PCM, nessuna nuova scena.
+In sviluppo: `npm run dev`, poi `http://localhost:1420/?diagnostics` o **Shift+G**.
+In una build di produzione: **Ctrl+Alt+Shift+D** (o `?diagnostics` nell'URL); da lì in poi
+Shift+G apre e chiude la dashboard. Nessun servizio esterno, nessuna registrazione PCM,
+nessun nome di dispositivo nei report, nessuna nuova scena.
 La pagina mantiene il rendering originale dietro un pannello tecnico con Shadow DOM:
 CSS e menu cinematici non vengono modificati. **Shift+D** conserva l'overlay;
 **Shift+E** conserva il cockpit strutturale e collega i domini della diagnostica.
 
 ## Proprietà e lifecycle
 
-`App` importa un solo entry point dietro `import.meta.env.DEV`. `installDiagnostics`
-coordina dashboard, overlay e cockpit attraverso `DiagnosticsController`.
+`App` importa un solo entry point: subito in sviluppo, su richiesta in produzione
+(`App.loadDiagnostics`). `installDiagnostics` coordina dashboard, overlay e cockpit
+attraverso `DiagnosticsController`; in produzione installa la sola dashboard, che osserva
+e non scrive impostazioni (overlay e cockpit restano strumenti di sviluppo).
 I consumer acquisiscono una lease: il primo crea store, collector e observer,
 l'ultimo li rilascia. Da spento non ci sono timer di raccolta, WorldTrace, query GPU,
-readback, log per frame o serializzazioni. Restano solo i listener DEV di apertura.
-La build di produzione elimina il ramo e i moduli diagnostici raggiungibili soltanto da esso.
+readback, log per frame o serializzazioni. Restano solo i listener di apertura.
+Nella build di produzione il modulo è un chunk separato: finché non viene chiesto non è
+scaricato né eseguito, e nel frame resta un solo confronto con `null`.
+
+## Che cosa misura in più la 2.0
+
+| Metriche | Fonte | Perché |
+|---|---|---|
+| `frame.p50`, `frame.jank`, `frame.over33/50/100`, `frame.count` | `PresentationProbe`, ogni frame | uno scatto dura un frame: a 5 Hz non si vede |
+| `clock.heardError.mean/p95/p99/max` | avanzamento di `Timing.heardTime` meno l'intervallo del frame | moto a strappi anche con frame puntuali |
+| `clock.offset`, `clock.offsetError`, `clock.resyncs` | `ClockSync` | la mappa cattura → host e le sue discontinuità reali |
+| `pipeline.hopsPerFrame`, `…P99`, `…Max` | `AnalysisDecoder`, ogni frame | ingestione a raffica dopo uno stallo |
+| `pipeline.batches/missed/lost/load/quality/dspAge/pending/dropped` anche per la cattura nativa | record clock del produttore, `RecordStage` | prima erano `null` per le sorgenti native |
+| `latency.onset` | `Timing.onsetDelay` | cattura di un attacco → frame che lo conosce |
+| `cpu.layers`, `cpu.composite` | `RendererProbe` | dove va la sottomissione del rendering |
+| `quality.autoStep`, `quality.logicShare`, `quality.fps`, etichetta `quality.limit` | `QualityController` | che cosa limita il frame rate: GPU o CPU |
+| `memory.jsHeap` | `performance.memory` (solo Chromium / WebView2) | andamento della memoria |
+| eventi `quality-change`, `clock-resync` | `DiagnosticsController` | correlare uno scatto alla sua causa |
+
+Restano non misurabili dall'applicazione: il tempo GPU nei WebView senza
+`EXT_disjoint_timer_query_webgl2` (WebKitGTK), la CPU per thread e per processo, la
+frequenza della CPU e i limiti di potenza.
 
 `RenderEngine` chiama l'observer all'inizio e alla fine del proprio frame;
 `RendererProbe` salva/ripristina `info.autoReset`, raccogliendo **tutti i pass** invece

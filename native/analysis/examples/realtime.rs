@@ -36,7 +36,7 @@ fn main() {
             Event::Frame(_) => frames += 1,
             Event::Beat(_) => beats += 1,
             Event::Onset(_) => {}
-            Event::Section(_) => {}
+            Event::Section(_) | Event::Scene(_) => {}
         });
         costs.push(batch_start.elapsed().as_secs_f64() * 1000.0);
     }

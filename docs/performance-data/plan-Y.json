@@ -1,0 +1,19 @@
+{"id": "Y", "steps": [
+ {"name": "microbench-start", "seconds": 0},
+ {"name": "Y-tunnel-low", "settings": {"scene": "tunnel", "quality": "low"}, "signal": "synthPop", "warmup": 7, "seconds": 12, "raw": true},
+ {"name": "Y-tunnel-medium", "settings": {"quality": "medium"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-tunnel-high", "settings": {"quality": "high"}, "warmup": 6, "seconds": 12, "raw": true},
+ {"name": "Y-spectrum-high", "settings": {"scene": "spectrum"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-liquid-high", "settings": {"scene": "liquid"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-oscilloscope-high", "settings": {"scene": "oscilloscope"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-galaxy-high", "settings": {"scene": "galaxy"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-particle-field-high", "settings": {"scene": "particle-field"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-resonant-field-high", "settings": {"scene": "resonant-field"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-matter-field-high", "settings": {"scene": "matter-field"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-spectral-matter-high", "settings": {"scene": "spectral-matter"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-spectral-shell-high", "settings": {"scene": "spectral-shell"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-vector-field-high", "settings": {"scene": "vector-field"}, "warmup": 6, "seconds": 12},
+ {"name": "Y-switch-high", "settings": {"scene": "tunnel"}, "warmup": 5, "seconds": 34, "switchScenes": ["spectrum", "matter-field", "tunnel", "galaxy", "spectral-matter", "liquid", "vector-field", "tunnel"], "switchEvery": 4, "diagnostics": false},
+ {"name": "Y-spectrum-low", "settings": {"scene": "spectrum", "quality": "low"}, "warmup": 6, "seconds": 12},
+ {"name": "microbench-end", "settings": {"scene": "tunnel", "quality": "high"}, "seconds": 0}
+]}

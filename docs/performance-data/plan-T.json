@@ -1,0 +1,6 @@
+{"id": "T", "steps": [
+ {"name": "T-fake-tunnel-high", "settings": {"scene": "tunnel", "quality": "high"}, "signal": "synthPop", "warmup": 7, "seconds": 15},
+ {"name": "T-back-to-system", "source": "system", "warmup": 6, "seconds": 15},
+ {"name": "T-fake-again", "signal": "synthPop", "warmup": 5, "seconds": 5, "diagnostics": false},
+ {"name": "T-system-again", "source": "system", "warmup": 5, "seconds": 10, "diagnostics": false}
+]}

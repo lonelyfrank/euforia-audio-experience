@@ -12,6 +12,7 @@ use crate::loudness::Loudness;
 use crate::presence::Presence;
 use crate::resonators::ResonatorBank;
 use crate::rhythm::Rhythm;
+use crate::scene::Scene;
 use crate::structure::Structure;
 use crate::Event;
 use crate::SILENCE_DB;
@@ -117,6 +118,9 @@ pub struct Analyzer {
     short_window: Vec<f32>,
     short_previous: Vec<f32>,
     frame: FeatureFrame,
+    /// The scenes' graphic analysis, on the same sample clock and hop boundaries.
+    scene: Scene,
+    mono_scale: f32,
 }
 
 impl Analyzer {
@@ -190,12 +194,26 @@ impl Analyzer {
                 .collect(),
             short_previous: vec![0.0; SHORT_SIZE / 2 + 1],
             frame: FeatureFrame { key: -1, ..FeatureFrame::default() },
+            scene: Scene::new(sample_rate),
+            mono_scale: 1.0 / channels as f32,
         }
+    }
+
+    /// The scenes' analysis: the user's reactivity and smoothing, and its cadence in hops (0 = about 60 per second).
+    pub fn set_scene(&mut self, sensitivity: f64, smoothing: f64, every: u32) {
+        self.scene.configure(sensitivity, smoothing, every);
+        self.scene.set_quality(self.quality);
+    }
+
+    /// Hops between two scene frames.
+    pub fn scene_every(&self) -> u32 {
+        self.scene.every()
     }
 
     /// Quality changes only slow feature rates; hop, short attacks and beat tracking stay intact.
     pub fn set_quality(&mut self, quality: u8) {
         self.quality = quality.min(2);
+        self.scene.set_quality(self.quality);
     }
 
     pub fn sample_rate(&self) -> f32 {
@@ -219,7 +237,8 @@ impl Analyzer {
     /// Feeds interleaved samples (any count; a trailing partial frame is ignored)
     /// and reports events in time order: for each completed hop, the onset
     /// found at the previous hop (if any), the beat predicted inside the hop
-    /// (if any), then the hop's `FeatureFrame`.
+    /// (if any), then the hop's `FeatureFrame` and, every few hops, the
+    /// `SceneFrame` measured at the same sample.
     /// Allocation-free.
     pub fn push(&mut self, interleaved: &[f32], mut on_event: impl FnMut(Event)) {
         let channels = self.channels;
@@ -233,6 +252,8 @@ impl Analyzer {
                 self.hop_clipped += 1;
             }
             self.loudness.sample(frame);
+            // The scenes draw the mono mix of every channel.
+            self.scene.sample(frame.iter().sum::<f32>() * self.mono_scale);
             self.sample += 1;
             self.since_hop += 1;
             if self.since_hop == HOP {
@@ -308,16 +329,22 @@ impl Analyzer {
                 f.tempo_bpm = reading.tempo_bpm;
                 f.tempo_confidence = reading.tempo_confidence * f.presence;
                 on_event(Event::Frame(&self.frame));
+                if self.scene.hop(self.sample) {
+                    on_event(Event::Scene(self.scene.frame()));
+                }
             }
         }
     }
 
-    /// Forgets the signal (a new source); the learned noise floors are kept.
+    /// Forgets the signal (a new source); the learned noise floors are kept, and so is the scenes'
+    /// analysis: its adaptive ranges belong to the picture, which goes on across a loss of audio.
     pub fn reset(&mut self) {
         let floor = self.presence.floor;
         let mut context = std::mem::take(&mut self.context);
         context.reset();
-        *self = Self::with_options(self.sample_rate, self.channels, self.options);
+        let mut next = Self::with_options(self.sample_rate, self.channels, self.options);
+        std::mem::swap(&mut next.scene, &mut self.scene);
+        *self = next;
         self.presence.floor = floor;
         self.context = context;
     }

@@ -12,6 +12,11 @@ const HOLD = 60;
  * How many fixtures the GPU can afford, from the measured frame rate: start
  * with one scene, earn more while the frame rate stays high, give one back
  * quickly when it drops, and don't try again for a while.
+ *
+ * It reads the same load as the quality controller and yields to it: while
+ * `hold` is set (AUTO has already taken quality from the scene, the frame
+ * rate is limited, or a transition is running) no new fixture is earned.
+ * A second scene is never paid for with the first one's quality.
  */
 export class GpuBudget {
   units = 1;
@@ -19,10 +24,10 @@ export class GpuBudget {
   private bad = 0;
   private hold = 0;
 
-  update(fps: number, dt: number, level: 'low' | 'medium' | 'high'): number {
+  update(fps: number, dt: number, level: 'low' | 'medium' | 'high', hold = false): number {
     const max = MAX_UNITS[level];
     this.hold = Math.max(0, this.hold - dt);
-    this.good = fps >= GOOD_FPS ? this.good + dt : 0;
+    this.good = fps >= GOOD_FPS && !hold ? this.good + dt : 0;
     this.bad = fps < BAD_FPS ? this.bad + dt : 0;
     if (this.bad >= BAD && this.units > 1) {
       this.units = Math.max(1, this.units - 1);

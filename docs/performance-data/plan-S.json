@@ -1,0 +1,8 @@
+{"id": "S", "steps": [
+ {"name": "microbench-start", "seconds": 0},
+ {"name": "S-sys-tunnel-high (user config, system)", "settings": {"scene": "tunnel", "reflection": false, "audioDelay": 55, "trackInfo": "dim", "rigMode": "preset", "direction": "manual", "preset": "nebula", "quality": "high"}, "warmup": 10, "seconds": 30, "raw": true},
+ {"name": "S-sys-tunnel-low", "settings": {"quality": "low"}, "warmup": 6, "seconds": 20},
+ {"name": "S-sys-matter-high", "settings": {"scene": "matter-field", "quality": "high"}, "warmup": 7, "seconds": 20},
+ {"name": "S-sys-spectrum-high", "settings": {"scene": "spectrum"}, "warmup": 6, "seconds": 20},
+ {"name": "microbench-end", "settings": {"scene": "tunnel"}, "seconds": 0}
+]}

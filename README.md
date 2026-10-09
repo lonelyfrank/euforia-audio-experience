@@ -82,13 +82,15 @@ Il core ha `aria-expanded` e un'etichetta che cambia in base allo stato; la ruot
 
 ```text
 Live capture (system / microphone / test)
-  ├─ PCM mono → AudioAnalyzer TS → AudioFrame + ruoli/voci grafiche
-  └─ PCM stereo → Analyzer Rust (thread di cattura) / WASM (worker browser, hop 256)
+  └─ PCM stereo → Analyzer Rust (thread di cattura) / WASM (worker browser, hop 256): il PCM non lascia quel thread
        ├─ 512: transienti; 2048: timbro, ERB, fase, HPSS, stereo
-       └─ 8192: chroma, pitch bins, parziali (frequenza, livello, pan, fase: sul wire)
+       ├─ 8192: chroma, pitch bins, parziali (frequenza, livello, pan, fase: sul wire)
        ├─ contesto: floor per banda, percentili loudness, derivate, downbeat previsto
-            ↓ ogni frame hop datato + record clock per batch, senza folding
-       RecordStage → AnalysisDecoder → ExperienceEngine (frame + onset/beat/sezioni)
+       └─ scene (mix mono, ≈ 60 volte al secondo): livelli, spettro, forma d'onda, voci → record `scene`
+            ↓ ogni frame hop datato, i record scene, un record clock per batch (sequenza, epoca), senza folding
+       RecordStage ─ record scene → SceneFeed → AudioFrame + ruoli/voci grafiche (MusicInterpreter)
+            ↓ il resto, al più N hop per frame (un arretrato si smaltisce sui frame seguenti)
+       AnalysisDecoder → ExperienceEngine (frame + onset/beat/sezioni)
             ├─ SoundMorphology: che tipo di suono è (proprietà continue, per hop)
             ├─ memoria multiscala / motivi / narrativa / trajectory / previsione
             ├─ EventStream ordinato per tempo audio
@@ -111,8 +113,12 @@ Live capture (system / microphone / test)
                    grafo di connessioni, fronti d'urto · memoria visiva · osservatore
                render-systems (leggi e risorse): legge dei campi e dei flussi, forme, materia, onde, memoria
                      ↓
-       RenderEngine: 3 slot / 4 layer composti → composizione → Canvas
+       RenderEngine: 3 slot / 4 layer composti → composizione (un pass, direttamente a schermo) → Canvas
 ```
+
+Come è distribuito il lavoro fra i thread, i quattro clock, il trasporto e l'adattamento al carico:
+[architettura delle prestazioni](docs/performance-architecture.md); misure prima/dopo in
+[performance-benchmarks](docs/performance-benchmarks.md).
 
 La [scheda tecnica per gli agenti](docs/technical-overview.md) descrive responsabilità,
 contratti, verifiche dell'audit e miglioramenti prioritari. Il rapporto di questo refactor e le misure sono in [docs/refactor-report.md](docs/refactor-report.md).
@@ -128,9 +134,9 @@ Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/real
 Principi:
 
 - **I visualizer non conoscono la sorgente audio**: ricevono `AudioFrame`, ruoli diretti, `ModulationState` e i colori della palette.
-- **La sorgente audio non conosce i visualizer**: un provider espone PCM grafico tramite `readSamples()` e i record dell'analisi musicale tramite `readFeatures()`; l'analisi gira fuori dal frame loop (thread di cattura nativo o worker browser).
-- **Analisi centralizzata per percorso**: nessun visualizer fa FFT per conto suo. TS e Rust/WASM oggi calcolano alcune misure sovrapposte: la loro unificazione richiede una migrazione verificata, non la rimozione di uno dei due.
-- **Il render engine non conosce l'audio engine** né la UI: riceve una callback `frameSource(dt)`.
+- **La sorgente audio non conosce i visualizer**: un provider espone i record dell'analisi tramite `readFeatures()` (musica) e `readScene()` (grafica); l'analisi gira fuori dal frame loop (thread di cattura nativo o worker browser) e nessun PCM raggiunge il main thread.
+- **Un solo core di analisi**: `spectrum-analysis` (Rust) calcola la musica e ciò che le scene disegnano. L'analisi grafica (`scene.rs`) è il port dell'`AudioAnalyzer` TypeScript, che resta come riferimento: un test li confronta finestra per finestra (`SceneAnalysis.test.ts`). Nessun visualizer fa FFT per conto suo.
+- **Il render engine non conosce l'audio engine** né la UI: riceve una callback `frameSource(dt, now)`, dove `now` è il timestamp del frame da cui tutto viene temporizzato.
 - **La musica modifica il mondo, non ogni frame**: il moto delle scene viene dal `WorldState` condiviso (forze, momento, smorzamento); le scene lo interpretano, non lo ricalcolano.
 - **Le primitive leggono geometria, non audio**: in un mondo visuale nessuna primitiva guarda bande, beat o spettri; legge `GeometryState`, i campi e il materiale del frame, gli stessi per tutte.
 - **Riutilizzo nel percorso continuo**: buffer, eventi e oggetti Three.js persistono fra frame. Mount, cambi di look, IPC/worklet e debug possono allocare; non è una garanzia di zero allocazioni sull’intera pipeline.
@@ -141,18 +147,18 @@ Principi:
 |---|---|---|
 | Desktop shell | **Tauri 2** | Binario leggero, WebView di sistema, backend Rust per il codice nativo |
 | Cattura audio | **Rust + cpal 0.18** | WASAPI loopback su Windows senza workaround; stessa API per il microfono su tutte le piattaforme |
-| Trasporto | Due Tauri `Channel` binari; nel browser worklet → `SharedArrayBuffer` (o `MessagePort`) → worker | PCM mono `f32` + record feature/eventi/clock `f64`, little-endian; buffer trasferiti e riciclati |
+| Trasporto | Un Tauri `Channel` binario (circa un messaggio per frame di scena); nel browser worklet → `SharedArrayBuffer` (o `MessagePort`) → worker | Solo record `f64` little-endian (hop, eventi, scene, clock con sequenza ed epoca), versionati (`WIRE_VERSION`); nessun PCM; buffer trasferiti e riciclati |
 | Feature musicali | Crate Rust `spectrum-analysis`, anche in WASM | Hop 256; finestre 512/2048/8192; misure fisiche/percettive, ritmo e sezioni |
-| Temporizzazione | `ClockSync`, `Timing`, `Dynamics` in TypeScript | Cue sul clock audio percepito, molle/follower a 240 Hz e inviluppi analitici |
+| Temporizzazione | `ClockSync`, `Timing`, `Dynamics` in TypeScript | Cue sul clock audio percepito a partire dal timestamp del frame; la mappa cattura → host scorre senza scatti; molle/follower a 240 Hz e inviluppi analitici |
 | Frontend | **TypeScript + Vite**, DOM vanilla | UI piccola: nessun framework necessario |
 | Rendering | **Three.js** (WebGL2) + shader GLSL | Particelle, tunnel, galassia e onde calcolati sulla GPU; bloom e composizione in post-processing |
 | Font | Geist (via `@fontsource-variable/geist`) | Incluso nel bundle: funziona offline e rispetta la CSP |
 
 ### Composizione del frame
 
-1. Ogni `Layer` possiede scena, `VisualDirector`, render target e pass; bloom e densità dipendono dalla qualità.
-2. Ciascuno dei tre slot conserva il layer corrente e quello uscente per un crossfade di 0,9 s. Il compositore legge al massimo quattro layer, nell’ordine degli slot (corrente, uscente); i layer oltre il limite o a peso zero aggiornano lo stato CPU ma non vengono renderizzati. Gli slot ricevono peso, scala, offset, specchio, flash e tinta dalla regia.
-3. Il pass finale (`renderer/compositeShader.ts`) aggiunge fondo, alone e stelle sopra l'orizzonte (al 47% dell'altezza), riflette il cielo sotto l'orizzonte con increspature sinusoidali, scurisce verso il basso e disegna la linea d'orizzonte.
+1. Ogni `Layer` possiede scena, `VisualDirector`, render target e pass; bloom e densità dipendono dalla qualità. La geometria della scena è multicampionata una volta sola (`ScenePass`, ×4 a Medium/High) e risolta; i pass successivi (quelli della scena, il bloom) lavorano su target semplici. I programmi della scena vengono compilati senza bloccare il frame: finché non sono pronti il layer non viene disegnato.
+2. Ciascuno dei tre slot conserva il layer corrente e quello uscente per un crossfade di 0,9 s di tempo reale, che parte quando la scena entrante è pronta. Il compositore legge al massimo quattro layer, nell’ordine degli slot (corrente, uscente); i layer oltre il limite o a peso zero aggiornano lo stato CPU ma non vengono renderizzati. Gli slot ricevono peso, scala, offset, specchio, flash e tinta dalla regia.
+3. Il pass finale (`renderer/compositeShader.ts`), l'unico della composizione, disegna direttamente a schermo: aggiunge fondo, alone e stelle sopra l'orizzonte (al 47% dell'altezza), riflette il cielo sotto l'orizzonte con increspature sinusoidali, scurisce verso il basso, disegna la linea d'orizzonte e converte nello spazio colore del display.
 4. La camera viene decentrata con `setViewOffset`: con riflesso il centro è al 52% × 38%; senza riflesso la scena occupa la finestra e fluttua lentamente. Il cambio di layout è interpolato.
 
 ## Avvio
@@ -284,7 +290,7 @@ Nota: la proposta iniziale prevedeva due crate separati, `native/windows-audio` 
 
 ## AudioFrame
 
-Contratto grafico TS, prodotto una volta per frame da `AudioAnalyzer` (`src/types/audio.ts`). È distinto da `AnalysisFrame`, il contratto feature Rust decodificato in `audio/features/decode.ts`: quest’ultimo include clock, beat predetti, otto bande, armonia, stereo e sezioni. Non scambiare i due clock o i rispettivi campi BPM.
+Contratto grafico (`src/types/audio.ts`). Lo misura `spectrum-analysis` (`scene.rs`) a cadenza fissa sul clock di cattura, circa 60 volte al secondo; ogni frame mostra l'analisi più vicina a «la più recente meno l'audio delay» (`SceneFeed`). Senza sorgente lo tiene l'`AudioAnalyzer` TypeScript, che lo fa scendere al silenzio ed è il riferimento del port. È distinto da `AnalysisFrame`, il contratto feature Rust decodificato in `audio/features/decode.ts`: quest’ultimo include clock, beat predetti, otto bande, armonia, stereo e sezioni. Non scambiare i due clock o i rispettivi campi BPM.
 
 Campi principali di `AudioFrame`:
 
@@ -458,7 +464,7 @@ Una scena può anche essere una **recipe**: una lista di primitive condivise in 
 
 Spectral Matter interpreta la densità come quantità di materia (circa 96.000 / 62.000 / 34.000 elementi) e riduce con essa legami e faccette disegnati (assenti a Low, dove materia e forme restano punti), risoluzione della memoria visiva (assente a Low) e dettaglio della turbolenza. Matter Field scala ogni primitiva (materia 60.000 / 39.000 / 21.000 elementi, filamenti, anelli della membrana, nodi) e tiene la memoria visiva a metà risoluzione. Vector Field scala traccianti (circa 36.000 / 23.500 / 12.500) e linee di campo, con memoria visiva a metà risoluzione (assente a Low). Spectral Shell scala gli anelli della membrana, il numero di gusci (4 / 3 / 2) e la polvere (16.000 / 10.400 / 5.600 elementi).
 
-**Auto** riduce prima la sola risoluzione a 0,85×, poi passa a Medium, riduce bloom/risoluzione e infine a Low. Soglia di discesa: 3 s sotto 51 fps. Recupera un passo dopo almeno 30 s a 58 fps e cooldown di 60 s. Gli stalli non costituiscono evidenza. I cambi di sola risoluzione non ricreano la scena.
+**Auto** riduce prima la sola risoluzione a 0,85×, poi passa a Medium, riduce bloom/risoluzione e infine a Low. Soglia di discesa: 3 s sotto 51 fps **quando il limite è la GPU**: se il main thread spende più di metà del frame nella propria logica il limite è la CPU e togliere pixel non servirebbe, quindi Auto non scende. Recupera un passo dopo almeno 30 s a 58 fps e cooldown di 60 s; un recupero che non regge raddoppia l'attesa del successivo (fino a 8 minuti). Stalli, crossfade e i 2 s dopo ogni cambio non costituiscono evidenza. I cambi di sola risoluzione non ricreano la scena. Il budget dei fixture legge lo stesso carico e non concede una seconda scena mentre Auto è ridotto.
 
 ## Supporto piattaforme
 
@@ -508,16 +514,20 @@ Spectral Matter interpreta la densità come quantità di materia (circa 96.000 /
 
 Software proprietario, tutti i diritti riservati: vedi [LICENSE](LICENSE). La pubblicazione dei sorgenti non concede alcun diritto d'uso, copia o ridistribuzione. Le dipendenze conservano le rispettive licenze.
 
-### Engine Diagnostics 1.0 (solo sviluppo)
+### Engine Diagnostics 2.0
 
-Aprire `http://localhost:1420/?diagnostics` con `npm run dev`, oppure premere
-**Shift+G**. Dashboard locale per audio, Experience/Planner, mondo, fisica,
+In sviluppo: aprire `http://localhost:1420/?diagnostics` con `npm run dev`, oppure premere
+**Shift+G**. In una build di produzione il modulo non viene caricato finché non lo si chiede
+con **Ctrl+Alt+Shift+D** (o `?diagnostics`): si apre la sola dashboard, che osserva e non scrive
+impostazioni; overlay e cockpit restano strumenti di sviluppo. Oltre alle metriche della 1.0
+misura ciò che dura un frame (scatti, passi del clock udito, hop decodificati per frame), il
+trasporto (batch, buchi di sequenza, frame persi, carico e qualità DSP anche per la cattura
+nativa), la mappa dei clock e il limite del frame rate (GPU o CPU). Dashboard locale per audio, Experience/Planner, mondo, fisica,
 materia, geometria e renderer; **REC**, pausa della raccolta e freeze della vista
 sono distinti. Export JSON/CSV/Markdown e confronto di acquisizioni; replay
 sintetici a 30/60/144 FPS nel worker, parità GPU e readback materia su richiesta.
 L'overlay (Shift+D) e il cockpit (Shift+E) condividono ora contatori e lifecycle;
 **Shift+T esporta WorldTrace solo dopo aver avviato REC**. A diagnostica chiusa
-non rimangono tracce o query GPU; nessuna funzionalità diagnostica nella build
-produttiva. Dettagli e limiti: [guida](docs/engine-diagnostics.md),
+non rimangono tracce o query GPU, e nessun codice diagnostico gira nel frame. Dettagli e limiti: [guida](docs/engine-diagnostics.md),
 [metriche](docs/diagnostics-metrics.md), [audit](docs/diagnostics-audit.md),
 [validazione](docs/diagnostics-validation.md).

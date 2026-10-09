@@ -101,10 +101,19 @@ A 48 kHz un hop è 5,33 ms (187,5 Hz); a 44,1 kHz 5,80 ms; a 96 kHz 2,67 ms.
 | Very slow | 2 Hz | fingerprint di ricorrenza (TS, `TemporalMemory`) |
 | Experience | ogni hop; snapshot ≤ 120 Hz | stato, eventi, previsione, plan, fisica modale |
 | Scene | per frame, sul clock udito | `Dynamics` 240 Hz; mondo (World Engine) per hop, estrapolato esattamente al tempo udito |
+| Analisi delle scene (`scene.rs`) | ogni 3 hop a 44,1/48 kHz (≈ 60/s), 6 a 96 kHz | l'`AudioFrame`: livelli, spettro, forma d'onda, voci; record `scene` sul wire |
 
-La qualità DSP (`DspBudget`, sopra 30% di un core per 2 s scende, sotto 12% per 30 s
-risale) cambia solo le cadenze Medium/Slow. Hop, beat, onset, clock e contesto restano
-invariati. Il budget è indipendente dalla qualità GPU.
+La qualità DSP (`DspBudget`, sopra 40% di un core per 2 s scende, sotto 20% per 30 s
+risale; i primi 3 s dopo l'avvio non contano) cambia solo le cadenze Medium/Slow e quella
+dell'analisi delle scene (3 → 4 → 6 hop). Hop, beat, onset, clock e contesto restano
+invariati. Il budget è indipendente dalla qualità GPU. Le soglie erano 30% e 12% finché il
+thread faceva solo l'analisi musicale: dal 9 ottobre 2026 porta anche quella grafica
+([performance-architecture](performance-architecture.md)).
+
+Trasporto e clock dopo il refactor delle prestazioni: un solo flusso di record per sorgente
+(nessun PCM verso il main thread), record clock con sequenza ed epoca, al più N hop
+decodificati per frame, `ClockSync` che scorre invece di scattare, `Timing` che parte dal
+timestamp del frame. I dettagli sono in [performance-architecture](performance-architecture.md).
 
 ## AcousticState (AnalysisFrame)
 

@@ -1,11 +1,11 @@
-// Stereo is preserved for musical analysis. Graphical downmix happens in the host.
+// Stereo is preserved for the analysis (the music, and the scenes' graphics from its mono mix).
 //
-// Two outputs: blocks of BLOCK frames posted to the main thread (graphics ring),
-// and every frame streamed to the analysis worker, either through a shared
+// Every frame is streamed to the analysis worker, either through a shared
 // PcmRing (src/audio/features/PcmRing.ts: this writer mirrors its layout) or,
 // without cross-origin isolation, as transferred blocks on a MessagePort.
-// The analysis stream is continuous on the context's sample clock: render
-// quanta that were skipped are written as silence (counted in the ring header).
+// Nothing is posted to the main thread. The stream is continuous on the
+// context's sample clock: render quanta that were skipped are written as
+// silence (counted in the ring header).
 const BLOCK = 1024;
 /** Frames between two wake-ups of the analysis worker (2 hops of 256). */
 const NOTIFY = 512;
@@ -14,8 +14,6 @@ const HEADER = 16, WRITTEN = 0, SEQUENCE = 1, FILLED = 2;
 class SampleTap extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.block = new Float32Array(BLOCK * 2);
-    this.filled = 0;
     this.state = null;
     this.data = null;
     this.mask = 0;
@@ -79,16 +77,10 @@ class SampleTap extends AudioWorkletProcessor {
     if (channels && channels[0]) {
       const left = channels[0], right = channels[1] || left;
       this.next = currentFrame + left.length;
-      for (let i = 0; i < left.length; i++) {
-        this.block[this.filled * 2] = left[i];
-        this.block[this.filled * 2 + 1] = right[i];
-        if (++this.filled === BLOCK) {
-          this.port.postMessage(this.block, [this.block.buffer]);
-          this.block = new Float32Array(BLOCK * 2); this.filled = 0;
-        }
-        if (live) { this.feed(left[i], right[i], w); w = (w + 1) | 0; }
+      if (live) {
+        for (let i = 0; i < left.length; i++, w = (w + 1) | 0) this.feed(left[i], right[i], w);
+        this.publish(w, left.length);
       }
-      if (live) this.publish(w, left.length);
     }
     return true;
   }

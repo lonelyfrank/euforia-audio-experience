@@ -1,66 +1,69 @@
 import type { ClockSync } from '../../timing/ClockSync';
+import type { AudioFrame } from '../../types/audio';
 import type { TestSignal } from '../capture/testSignals';
-import { AnalysisHost, RING_SECONDS, type BatchInfo, type HostOptions, type HostSource } from './AnalysisHost';
+import { AnalysisHost, RING_SECONDS, type BatchInfo, type HostOptions, type HostSource, type SceneSettings } from './AnalysisHost';
 import type { FromWorker, ToWorker } from './analysisProtocol';
 import type { AnalysisDecoder } from './decode';
-import { RECORD } from './layout';
 import { PcmRing } from './PcmRing';
 import { RecordStage } from './RecordStage';
 
-/** Where the browser DSP runs and how PCM reaches it. */
-export type AnalysisMode = 'worker-shared' | 'worker-port' | 'worker-timer' | 'main-thread';
+/** Where the DSP runs and how PCM reaches it: the analysis worker (three ways), the main thread without workers, or the native capture thread. */
+export type AnalysisMode = 'worker-shared' | 'worker-port' | 'worker-timer' | 'main-thread' | 'native';
 
 /** What feeds the analysis: the AudioWorklet's stream, or the synthetic generator. */
 export type BrowserSource = { kind: 'stream' } | { kind: 'generator'; signal: TestSignal };
-
-/** Seconds of records kept between two rendered frames (a longer stall drops the oldest). */
-const STAGE_SECONDS = 3;
 
 export interface RealtimeStats {
   mode: AnalysisMode;
   /** DSP work / audio time, smoothed; DSP quality level (0 high … 2 low). */
   load: number;
   quality: number;
-  /** Frames waiting in the PCM ring when the last batch left. */
+  /** Frames waiting in the PCM ring when the last batch left (browser sources). */
   backlog: number;
-  /** Seconds from the newest sample's arrival at the DSP to its batch being ready. */
+  /** Seconds from the newest sample's capture (native) or arrival at the DSP (browser) to its batch being sent. */
   dspAge: number;
-  /** Seconds from the worker posting a batch to the main thread receiving it. */
+  /** Seconds from the worker posting a batch to the main thread receiving it (browser sources). */
   transfer: number;
-  /** f64 values staged for the next frame, and dropped by a stalled frame loop. */
+  /** f64 values staged for the next frames, and dropped by a stalled frame loop. */
   pending: number;
   dropped: number;
+  /** Frames the capture lost, and frames the worklet filled with silence (cumulative). */
   lost: number;
   filled: number;
+  /** Batches received, and holes in their sequence (a batch that never arrived). */
   batches: number;
+  missed: number;
 }
 
 /**
  * Main-thread handle of the browser analysis. Starts the analysis worker
  * (falling back to the main thread when workers are unavailable), gives the
  * AudioWorklet the shared ring or port to stream PCM into, and stages the
- * returned records like the native capture's: decoded once per rendered frame,
- * clock observations included. The DSP itself never runs on the frame loop
- * unless there is no worker.
+ * returned records like the native capture's: decoded by the rendered frames,
+ * clock observations included, the scenes' graphic analysis in its own feed.
+ * The DSP itself never runs on the frame loop unless there is no worker, and
+ * no PCM comes back.
  */
 export class BrowserAnalysis {
   /** For the worklet: the shared ring, or the port to post blocks to. Null for the generator. */
   readonly link: { ring: SharedArrayBuffer | null; port: MessagePort | null } = { ring: null, port: null };
-  readonly stats: RealtimeStats = { mode: 'main-thread', load: 0, quality: 0, backlog: 0, dspAge: 0, transfer: 0, pending: 0, dropped: 0, lost: 0, filled: 0, batches: 0 };
-  /** Changes when the analysis restarted after losing audio: the capture clock started over. */
-  epoch = 0;
+  readonly stats: RealtimeStats = { mode: 'main-thread', load: 0, quality: 0, backlog: 0, dspAge: 0, transfer: 0, pending: 0, dropped: 0, lost: 0, filled: 0, batches: 0, missed: 0 };
   private readonly stage: RecordStage;
   private worker: Worker | null = null;
   private host: AnalysisHost | null = null;
   private disposed = false;
 
-  private constructor(readonly sampleRate: number, private readonly onPcm: ((mono: Float32Array, frames: number) => void) | null) {
-    const hops = Math.ceil((sampleRate / 256) * STAGE_SECONDS);
-    this.stage = new RecordStage(hops * (RECORD.frame + RECORD.onset + RECORD.beat) + 64 * RECORD.clock);
+  private constructor(readonly sampleRate: number, private scene: SceneSettings) {
+    this.stage = new RecordStage(sampleRate);
   }
 
-  static async start(sampleRate: number, source: BrowserSource, onPcm: ((mono: Float32Array, frames: number) => void) | null = null): Promise<BrowserAnalysis> {
-    const analysis = new BrowserAnalysis(sampleRate, onPcm);
+  /** Changes when the analysis restarted after losing audio: the capture clock started over. */
+  get epoch(): number {
+    return this.stage.epoch;
+  }
+
+  static async start(sampleRate: number, source: BrowserSource, scene: SceneSettings = { sensitivity: 1, smoothing: 0.5 }): Promise<BrowserAnalysis> {
+    const analysis = new BrowserAnalysis(sampleRate, scene);
     if (typeof Worker !== 'undefined') {
       try {
         await analysis.startWorker(source);
@@ -75,12 +78,25 @@ export class BrowserAnalysis {
     return analysis;
   }
 
-  /** Per rendered frame: main-thread fallback analyses here; then the staged records are decoded. */
-  read(decoder: AnalysisDecoder, clock: ClockSync): void {
+  /** Per rendered frame: main-thread fallback analyses here; then the staged records are decoded, at most `maxFrames` hops of them. */
+  read(decoder: AnalysisDecoder, clock: ClockSync, maxFrames?: number): void {
     this.poll();
-    this.stats.pending = this.stage.pending;
-    this.stats.dropped = this.stage.dropped;
-    this.stage.drain(decoder, clock, this.sampleRate);
+    this.stage.drain(decoder, clock, this.sampleRate, maxFrames);
+    const s = this.stats, t = this.stage.stats;
+    s.load = t.load; s.quality = t.quality; s.lost = t.lost; s.dspAge = t.age;
+    s.pending = t.pending; s.dropped = t.dropped; s.batches = t.batches; s.missed = t.missed;
+  }
+
+  /** The scenes' graphic analysis for the frame being rendered (see SceneFeed). */
+  readScene(frame: AudioFrame, delay: number, beatResponse: boolean): boolean {
+    return this.stage.scenes.read(frame, delay, beatResponse);
+  }
+
+  /** The scenes' analysis settings; they apply from its next frame. */
+  setScene(scene: SceneSettings): void {
+    this.scene = scene;
+    this.worker?.postMessage({ type: 'scene', scene } satisfies ToWorker);
+    this.host?.setScene(scene);
   }
 
   /** Main-thread fallback only: generate/analyse what is due now. */
@@ -100,7 +116,7 @@ export class BrowserAnalysis {
   }
 
   private options(source: HostSource): HostOptions {
-    return { sampleRate: this.sampleRate, source, adaptive: true };
+    return { sampleRate: this.sampleRate, source, adaptive: true, scene: this.scene };
   }
 
   private async startWorker(source: BrowserSource): Promise<void> {
@@ -143,37 +159,23 @@ export class BrowserAnalysis {
     }
     this.host = await AnalysisHost.create(this.options(hostSource), {
       records: (batch, length, info) => { this.accept(batch, length, info, 0); this.host?.recycle(batch.buffer as ArrayBuffer); },
-      pcm: (mono, frames) => { this.onPcm?.(mono, frames); this.host?.recycle(mono.buffer as ArrayBuffer); },
     });
     this.stats.mode = 'main-thread';
   }
 
   private receive(message: FromWorker): void {
     if (this.disposed) return;
-    if (message.type === 'records') {
-      const batch = new Float64Array(message.buffer);
-      this.accept(batch, message.length, message.info, (performance.timeOrigin + performance.now() - message.posted) / 1000);
-    } else if (message.type === 'pcm') {
-      this.onPcm?.(new Float32Array(message.buffer), message.frames);
-    } else return;
+    if (message.type !== 'records') return;
+    const batch = new Float64Array(message.buffer);
+    this.accept(batch, message.length, message.info, (performance.timeOrigin + performance.now() - message.posted) / 1000);
     this.worker?.postMessage({ type: 'recycle', buffer: message.buffer } satisfies ToWorker, [message.buffer]);
   }
 
   private accept(batch: Float64Array, length: number, info: BatchInfo, transfer: number): void {
-    if (info.epoch !== this.epoch) {
-      // The capture clock restarted: nothing staged from the old epoch may reach the decoder.
-      this.stage.clear();
-      this.epoch = info.epoch;
-    }
     this.stage.stage(batch, length, performance.now() / 1000);
     const s = this.stats;
-    s.load = info.load;
-    s.quality = info.quality;
     s.backlog = info.backlog;
-    s.lost = info.lost;
     s.filled = info.filled;
-    s.dspAge = batch[length - 1];
     s.transfer += (transfer - s.transfer) * 0.1;
-    s.batches++;
   }
 }

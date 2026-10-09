@@ -1,5 +1,5 @@
 import { SignalGenerator, type TestSignal } from '../capture/testSignals';
-import { RECORD, TAG } from './layout';
+import { CLOCK_FIELDS, RECORD, TAG } from './layout';
 import { FILLED, PcmRing } from './PcmRing';
 import { CAPACITY, WasmAnalysis, type RecordSink } from './WasmAnalysis';
 
@@ -14,32 +14,33 @@ export type HostSource =
   | { kind: 'port' }
   | { kind: 'generator'; signal: TestSignal };
 
+/** The scenes' analysis as the user sets it: reactivity, smoothing, and its cadence in hops (0 = about 60 per second). */
+export interface SceneSettings {
+  sensitivity: number;
+  smoothing: number;
+  every?: number;
+}
+
 export interface HostOptions {
   sampleRate: number;
   source: HostSource;
   /** Lower slow DSP rates when the measured cost is high (never hop, beats or onsets). */
   adaptive: boolean;
+  /** The scenes' analysis settings to start with. */
+  scene?: SceneSettings;
 }
 
-/** Diagnostics sent with each batch. */
+/** Diagnostics sent with each batch, beside what its clock record says (epoch, sequence, lost frames, load, quality). */
 export interface BatchInfo {
-  /** Increments when the analysis restarted after a long loss of audio (the capture clock restarts too). */
-  epoch: number;
-  /** DSP work / audio duration, smoothed (0.1 = 10% of one core). */
-  load: number;
-  quality: number;
   /** Frames captured but not analysed yet when the batch was sent. */
   backlog: number;
-  /** Frames the consumer lost to a stall, and frames the worklet filled with silence (cumulative). */
-  lost: number;
+  /** Frames the worklet filled with silence (cumulative). */
   filled: number;
 }
 
 /** What crosses the thread boundary. Buffers are lent; give them back with `recycle`. */
 export interface HostOutput {
   records(batch: Float64Array, length: number, info: BatchInfo): void;
-  /** Generator only: the mono mix of what was analysed, for the scenes' graphics. */
-  pcm?(mono: Float32Array, frames: number): void;
 }
 
 const CHANNELS = 2;
@@ -54,11 +55,13 @@ const POOL = 16;
 
 /**
  * Runs the Rust/WASM analysis outside the frame loop: drains the PCM ring,
- * analyses every frame in chunks, and sends the records of each chunk with a
- * clock record (capture sample, age of its newest sample), exactly like the
- * native capture thread does. Environment-agnostic: the analysis worker runs
+ * analyses every frame in chunks, and sends the records of each chunk (the
+ * musical analysis of every hop, the scenes' graphic one every few hops)
+ * with a clock record (capture sample, age of its newest sample, sequence,
+ * epoch, load), exactly like the native capture thread does. The audio stays
+ * here: only records leave. Environment-agnostic: the analysis worker runs
  * it; without workers it runs on the main thread. Allocation-free after warm-up
- * (record and PCM buffers circulate through pools).
+ * (record buffers circulate through a pool).
  */
 export class AnalysisHost implements RecordSink {
   epoch = 0;
@@ -73,9 +76,10 @@ export class AnalysisHost implements RecordSink {
   private batch: Float64Array | null = null;
   private length = 0;
   private readonly records: Float64Array[] = [];
-  private readonly pcmPool: Float32Array[] = [];
   private lost = 0;
-  private readonly info: BatchInfo = { epoch: 0, load: 0, quality: 0, backlog: 0, lost: 0, filled: 0 };
+  /** Batches sent. */
+  private sequence = 0;
+  private readonly info: BatchInfo = { backlog: 0, filled: 0 };
 
   private constructor(readonly options: HostOptions, private readonly output: HostOutput, private readonly now: () => number) {
     const { source, sampleRate } = options;
@@ -88,9 +92,15 @@ export class AnalysisHost implements RecordSink {
     const host = new AnalysisHost(options, output, now);
     host.wasm = await WasmAnalysis.create(options.sampleRate, CHANNELS, host);
     host.wasm.adaptive = options.adaptive;
+    if (options.scene) host.setScene(options.scene);
     // The generator's clock starts with the source, not at the first pump.
     host.lastGenerated = now();
     return host;
+  }
+
+  /** The scenes' analysis settings; they apply from its next frame. */
+  setScene(scene: SceneSettings): void {
+    this.wasm.setScene(scene.sensitivity, scene.smoothing, scene.every ?? 0);
   }
 
   /** Port source: a block of interleaved stereo frames from the worklet. */
@@ -124,9 +134,7 @@ export class AnalysisHost implements RecordSink {
 
   /** A buffer the receiver is done with. */
   recycle(buffer: ArrayBuffer): void {
-    if (buffer.byteLength === (this.wasm.outputCapacity + RECORD.clock) * 8) {
-      if (this.records.length < POOL) this.records.push(new Float64Array(buffer));
-    } else if (buffer.byteLength === FRAMES * 4 && this.pcmPool.length < POOL) this.pcmPool.push(new Float32Array(buffer));
+    if (buffer.byteLength === (this.wasm.outputCapacity + RECORD.clock) * 8 && this.records.length < POOL) this.records.push(new Float64Array(buffer));
   }
 
   dispose(): void {
@@ -138,16 +146,18 @@ export class AnalysisHost implements RecordSink {
     this.analysed += frames;
     // A chunk shorter than a hop may produce no record; the clock record still goes out.
     const batch = this.take(RECORD.clock);
-    batch[this.length] = TAG.clock;
-    batch[this.length + 1] = this.analysed;
-    batch[this.length + 2] = Math.max(0, this.now() - arrival);
+    const at = this.length;
+    batch[at] = TAG.clock;
+    batch[at + CLOCK_FIELDS.sample[0]] = this.analysed;
+    batch[at + CLOCK_FIELDS.age[0]] = Math.max(0, this.now() - arrival);
+    batch[at + CLOCK_FIELDS.sequence[0]] = this.sequence++;
+    batch[at + CLOCK_FIELDS.epoch[0]] = this.epoch;
+    batch[at + CLOCK_FIELDS.lost[0]] = this.lost;
+    batch[at + CLOCK_FIELDS.load[0]] = this.wasm.budget.load;
+    batch[at + CLOCK_FIELDS.quality[0]] = this.wasm.budget.quality;
     this.length += RECORD.clock;
     const info = this.info;
-    info.epoch = this.epoch;
-    info.load = this.wasm.budget.load;
-    info.quality = this.wasm.budget.quality;
     info.backlog = this.ring.available();
-    info.lost = this.lost;
     info.filled = Atomics.load(this.ring.state, FILLED);
     this.batch = null;
     const length = this.length;
@@ -178,11 +188,6 @@ export class AnalysisHost implements RecordSink {
       const n = Math.min(frames, FRAMES);
       generator.fillStereo(this.input, n);
       this.ring.write(this.input, n);
-      if (this.output.pcm) {
-        const mono = this.pcmPool.pop() ?? new Float32Array(FRAMES);
-        for (let i = 0; i < n; i++) mono[i] = (this.input[2 * i] + this.input[2 * i + 1]) * 0.5;
-        this.output.pcm(mono, n);
-      }
       frames -= n;
     }
   }

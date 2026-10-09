@@ -36,12 +36,13 @@ scope.onmessage = async (event: MessageEvent<ToWorker>) => {
   const message = event.data;
   if (message.type === 'recycle') {
     host?.recycle(message.buffer);
+  } else if (message.type === 'scene') {
+    host?.setScene(message.scene);
   } else if (message.type === 'start') {
     try {
       host = await AnalysisHost.create(message.options, {
         records: (batch, length, info) =>
           post({ type: 'records', buffer: batch.buffer as ArrayBuffer, length, info: { ...info }, posted: performance.timeOrigin + performance.now() }, [batch.buffer]),
-        pcm: (mono, frames) => post({ type: 'pcm', buffer: mono.buffer as ArrayBuffer, frames }, [mono.buffer]),
       });
     } catch (error) {
       post({ type: 'error', message: error instanceof Error ? error.message : String(error) });

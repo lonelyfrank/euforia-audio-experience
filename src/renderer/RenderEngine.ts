@@ -3,20 +3,24 @@ import { approach } from '../director/VisualDirector';
 import { AutoDirection } from '../director/AutoDirection';
 import { DEFAULT_DIRECTION } from '../director/profiles';
 import type { DirectionSettings } from '../director/types';
-import { Color, HalfFloatType, WebGLRenderer, WebGLRenderTarget, type Vector2, type Vector4 } from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Color, WebGLRenderer, type Vector2, type Vector4 } from 'three';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { PaletteColors, QualitySetting, SceneInput, SceneLayout } from '../types/visualizer';
 import { CompositeShader, HORIZON, OPEN_CENTER, OPEN_HORIZON, SCENE_CENTER } from './compositeShader';
-import { QualityController } from './quality';
+import { QualityController, type FrameLimit } from './quality';
 import { Layer, type LayerSize, type SceneSource } from './Layer';
 export type { SceneSource } from './Layer';
 
-/** Longest step fed to visualizers, so a hiccup does not make them jump. */
-const MAX_DELTA = 1 / 20;
-/** Scene switch crossfade, seconds (linear). */
+/**
+ * Longest step fed to visualizers, so a hiccup does not make them jump. It is what the simulations
+ * integrate without losing time (four sub-steps of 1/50 s, see matterLaw): down to 12.5 frames per
+ * second the scenes' time runs with the music's; below that it falls behind rather than leap.
+ */
+const MAX_DELTA = 0.08;
+/** Scene switch crossfade, seconds (linear) of real time: a slow frame does not stretch it. */
 const CROSSFADE = 0.9;
+/** A frame longer than this (s) is a stall, not time the crossfade should skip over. */
+const CROSSFADE_STALL = 0.25;
 /** Water reflection on/off transition, seconds. */
 const REFLECTION_FADE = 1;
 /** How far the scene floats without the reflection (fractions of the window). */
@@ -65,14 +69,16 @@ class Slot {
 
 /**
  * Owns the WebGL renderer, the frame loop and the final composition
- * (the rig's layers, sky, reflective floor, horizon). Audio comes in through
- * the `frameSource` callback, so it does not depend on the audio engine.
- * Up to SLOTS fixtures (scenes) play at once; slot 0 is the protagonist.
+ * (the rig's layers, sky, reflective floor, horizon), drawn straight to the
+ * screen in one pass: the composition shader converts to the display's colour
+ * space itself. Audio comes in through the `frameSource` callback, so it does
+ * not depend on the audio engine. Up to SLOTS fixtures (scenes) play at once;
+ * slot 0 is the protagonist.
  */
 export class RenderEngine {
   readonly renderer: WebGLRenderer;
   paused = false;
-  /** DEV observer, absent from ordinary rendering. Never owns engine state. */
+  /** Diagnostics observer, null unless diagnostics were explicitly opened. Never owns engine state. */
   diagnostics: RenderObservation | null = null;
   readonly autoDirection = new AutoDirection();
   private readonly direction: DirectionSettings = { ...DEFAULT_DIRECTION };
@@ -87,14 +93,15 @@ export class RenderEngine {
     this.direction.autoDirection = settings.autoDirection;
   }
 
-  private readonly composer: EffectComposer;
   private readonly composite = new ShaderPass(CompositeShader, 'tUnused');
-  private readonly output = new OutputPass();
   private readonly quality = new QualityController();
   private readonly resizeObserver: ResizeObserver;
   private readonly palette: [Color, Color, Color] = [new Color(), new Color(), new Color()];
   private readonly slots: Slot[] = Array.from({ length: SLOTS }, () => new Slot());
   private readonly layerTextures = ['tL0', 'tL1', 'tL2', 'tL3'] as const;
+  private readonly loadView = { fps: 60, limit: 'none' as FrameLimit, reduced: false, step: 0, logicShare: 0, steady: true };
+  /** False while a scene is crossfading or still preparing: such frames are not evidence of what a profile costs. */
+  private steady = true;
   private rafId = 0;
   private lastTime = 0;
   private time = 0;
@@ -109,15 +116,14 @@ export class RenderEngine {
 
   constructor(
     private readonly container: HTMLElement,
-    private readonly frameSource: (dt: number) => SceneInput,
+    /** `dt`: seconds to advance; `now`: this frame's requestAnimationFrame time (s), the instant the picture is timed from. */
+    private readonly frameSource: (dt: number, now: number) => SceneInput,
   ) {
     this.renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setClearColor(0x000000, 1);
     container.appendChild(this.renderer.domElement);
 
-    this.composer = new EffectComposer(this.renderer, new WebGLRenderTarget(1, 1, { type: HalfFloatType }));
-    this.composer.addPass(this.composite);
-    this.composer.addPass(this.output);
+    this.composite.renderToScreen = true;
     // Until a show director drives the slots, the protagonist plays as designed.
     this.slots[0].params.weight = 1;
 
@@ -140,6 +146,13 @@ export class RenderEngine {
   /** Frame rate measured by the quality controller (for the GPU budget). */
   get measuredFps(): number {
     return this.quality.fps;
+  }
+
+  /** The rendering load as the quality controller sees it: what limits the frame rate, and whether AUTO already gave quality up. */
+  get load(): { fps: number; limit: FrameLimit; reduced: boolean; step: number; logicShare: number; steady: boolean } {
+    const q = this.quality, l = this.loadView;
+    l.fps = q.fps; l.limit = q.limit; l.reduced = q.reduced; l.step = q.step; l.logicShare = q.logicShare; l.steady = this.steady;
+    return l;
   }
 
   /** Palette colours are copied; the scenes and the composition pick them up at once. */
@@ -183,11 +196,16 @@ export class RenderEngine {
   setSlot(index: number, source: SceneSource | null, force = false): void {
     const slot = this.slots[index];
     if (!force && (slot.current?.source ?? null) === source) return;
-    // A switch during a crossfade drops the oldest scene.
-    slot.previous?.dispose();
-    slot.previous = slot.current;
+    if (slot.current && !slot.current.ready && slot.previous) {
+      // Replaced before it was ever shown: the scene on screen stays until the newest one is ready.
+      slot.current.dispose();
+    } else {
+      // A switch during a crossfade drops the oldest scene.
+      slot.previous?.dispose();
+      slot.previous = slot.current;
+      slot.mix = slot.previous ? 0 : 1;
+    }
     slot.current = source ? new Layer(this.renderer, source, this.quality.profile, this.layerSize, slot.palette, this.layout) : null;
-    slot.mix = slot.previous ? 0 : 1;
     this.quality.resetWindow();
   }
 
@@ -203,8 +221,6 @@ export class RenderEngine {
     for (const slot of this.slots) slot.dispose();
     this.resizeObserver.disconnect();
     this.composite.dispose();
-    this.output.dispose();
-    this.composer.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -212,6 +228,8 @@ export class RenderEngine {
   /** Updates and renders one layer and gives it a place in the composition; returns the places used. */
   private drawLayer(layer: Layer | null, slot: Slot, amount: number, used: number, input: SceneInput, direction: DirectionSettings, dt: number): number {
     if (!layer) return used;
+    // A scene still compiling its programs waits (see Layer.ready): it starts when it can be drawn.
+    if (!layer.ready) return used;
     if (!this.paused) layer.update(input, direction, dt, this.time + dt, slot.params.structure);
     // Keep CPU state in sync, but spend GPU time only on layers the compositor can see.
     if (used >= MAX_LAYERS || amount * slot.params.weight <= 0) return used;
@@ -240,9 +258,11 @@ export class RenderEngine {
     this.lastTime = now;
     const dt = Math.min(rawDt, MAX_DELTA);
 
-    const observer = import.meta.env.DEV ? this.diagnostics : null;
+    const observer = this.diagnostics;
     observer?.begin(now, rawDt);
-    const input = this.frameSource(dt);
+    const logicStart = performance.now();
+    const input = this.frameSource(dt, now / 1000);
+    const logic = (performance.now() - logicStart) / 1000;
     observer?.sourceDone();
     const { audio: frame, response } = input;
     const direction = this.autoDirection.update(response, this.direction, this.paused ? 0 : dt, frame.time, input.rig?.experience);
@@ -255,9 +275,12 @@ export class RenderEngine {
 
     const u = this.composite.uniforms;
     let used = 0;
+    let steady = true;
     for (const slot of this.slots) {
-      if (slot.previous) {
-        slot.mix = Math.min(slot.mix + dt / CROSSFADE, 1);
+      if (slot.previous || slot.current?.ready === false) steady = false;
+      if (slot.previous && slot.current?.ready !== false) {
+        // The outgoing scene holds the picture until the incoming one is ready, then they cross in real time.
+        slot.mix = Math.min(slot.mix + Math.min(rawDt, CROSSFADE_STALL) / CROSSFADE, 1);
         if (slot.mix >= 1) {
           slot.previous.dispose();
           slot.previous = null;
@@ -268,6 +291,7 @@ export class RenderEngine {
     }
     for (let i = used; i < MAX_LAYERS; i++) (u.uLayer.value as Vector4[])[i].x = 0;
     if (!this.paused) this.time += dt;
+    observer?.layersDone();
 
     u.uTime.value = this.time;
     u.uWeight.value = response.weight;
@@ -280,18 +304,19 @@ export class RenderEngine {
     u.uAudible.value = Math.max(directed.audible, directed.trace * 0.5, directed.music.drop * 0.4);
     u.uMinimal.value = approach(u.uMinimal.value as number, direction.experience === 'minimal' ? current.director.frame.visibility : 1, dt, 1, 1);
     u.uContrast.value = current.director.frame.contrast;
-    this.composer.render(dt);
+    this.composite.render(this.renderer, null!, null!, dt, false);
 
     if (observer) {
-      let layers = 0, crossfades = 0, passes = 0;
-      for (const pass of this.composer.passes) if (pass.enabled) passes++;
+      // The composition is one pass.
+      let layers = 0, crossfades = 0, passes = 1;
       for (const slot of this.slots) {
         if (slot.current) { layers++; passes += slot.current.diagnosticPasses; }
         if (slot.previous) { layers++; crossfades++; passes += slot.previous.diagnosticPasses; }
       }
       observer.end(layers, crossfades, passes);
     }
-    if (!this.paused && this.quality.sample(rawDt)) this.applyQuality();
+    this.steady = steady;
+    if (!this.paused && this.quality.sample(rawDt, logic, steady)) this.applyQuality();
   };
 
   /**
@@ -346,8 +371,6 @@ export class RenderEngine {
     this.layerSize = { width, height, pixelRatio };
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(width, height);
-    this.composer.setPixelRatio(pixelRatio);
-    this.composer.setSize(width, height);
     (this.composite.uniforms.uResolution.value as Vector2).set(width * pixelRatio, height * pixelRatio);
     for (const slot of this.slots) {
       slot.current?.resize(this.layerSize);

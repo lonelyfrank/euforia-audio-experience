@@ -55,6 +55,7 @@ export class App {
   private idleTimer = 0;
   private started = false;
   private disposed = false;
+  private diagnosticsLoaded = false;
   private readonly inputEvents = new AbortController();
   private readonly cleanup: Array<() => void> = [];
 
@@ -75,16 +76,27 @@ export class App {
     );
     root.append(this.stage);
 
-    this.render = new RenderEngine(canvasHost, (dt) => this.onFrame(dt));
+    this.render = new RenderEngine(canvasHost, (dt, now) => this.onFrame(dt, now));
     this.rigController = new RigController(this.audio, this.render, () => settingsStore.get());
     this.sceneInput = { audio: this.audio.frame, response: this.audio.visual, rig: this.rig };
 
     this.cleanup.push(settingsStore.subscribe((s, previous) => this.applySettings(s, previous)));
     this.cleanup.push(this.audio.subscribe((state) => this.onAudioState(state)));
     this.installInput();
-    // A single DEV coordinator owns diagnostics, the legacy overlay and the structural cockpit.
-    if (import.meta.env.DEV) void import('../diagnostics/installDiagnostics').then((m) => {
-      if (!this.disposed) this.cleanup.push(m.installDiagnostics(this));
+    // A single coordinator owns diagnostics (and, in development, the legacy overlay and the structural cockpit).
+    // A production build loads none of it unless asked: `?diagnostics`, or Ctrl+Alt+Shift+D at any time.
+    if (import.meta.env.DEV || new URLSearchParams(location.search).has('diagnostics')) this.loadDiagnostics(false);
+    else window.addEventListener('keydown', (event) => {
+      if (event.ctrlKey && event.altKey && event.shiftKey && event.code === 'KeyD' && !event.repeat) this.loadDiagnostics(true);
+    }, { signal: this.inputEvents.signal });
+  }
+
+  /** Loads the diagnostics module once; `open` shows the dashboard as soon as it is there. Until then nothing of it runs. */
+  private loadDiagnostics(open: boolean): void {
+    if (this.diagnosticsLoaded) return;
+    this.diagnosticsLoaded = true;
+    void import('../diagnostics/installDiagnostics').then((m) => {
+      if (!this.disposed) this.cleanup.push(m.installDiagnostics(this, import.meta.env.DEV, open));
     });
   }
 
@@ -117,12 +129,12 @@ export class App {
 
   // ---- frame ---------------------------------------------------------------
 
-  private onFrame(dt: number): SceneInput {
-    const frame = this.audio.update(dt);
+  private onFrame(dt: number, now: number): SceneInput {
+    const frame = this.audio.update(dt, now);
     // The core and the waveform pulse with the beat over a floor of loudness.
     const level = Math.min(1, frame.volume * 0.35 + frame.beatPulse * 0.65);
     if (!this.idle) this.dial.setLevel(level);
-    if (settingsStore.get().trackInfo !== 'hidden') this.nowPlaying.draw(level, performance.now());
+    if (settingsStore.get().trackInfo !== 'hidden') this.nowPlaying.draw(level, now * 1000);
     this.calibration.frame(dt);
     this.rigController.update(dt);
     return this.sceneInput;

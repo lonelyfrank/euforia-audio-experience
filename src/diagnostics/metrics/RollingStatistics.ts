@@ -20,5 +20,11 @@ export class RollingStatistics {
     const sorted = this.sorted.subarray(0, this.count).sort();
     return { mean: sum / this.count, p95: sorted[Math.ceil(this.count * 0.95) - 1], p99: sorted[Math.ceil(this.count * 0.99) - 1] };
   }
+  /** Median of the window (nearest rank), null while empty. */
+  median(): number | null {
+    if (!this.count) return null;
+    for (let i = 0; i < this.count; i++) this.sorted[i] = this.values[i];
+    return this.sorted.subarray(0, this.count).sort()[Math.ceil(this.count * 0.5) - 1];
+  }
   reset(): void { this.head = this.count = 0; }
 }

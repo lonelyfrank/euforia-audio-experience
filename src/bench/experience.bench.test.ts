@@ -74,7 +74,7 @@ it('browser analysis path per sample rate: host pump, transfer, stage+decode, ex
   const seconds = 12;
   for (const rate of [44100, 48000, 96000]) {
     let now = 0;
-    const stage = new RecordStage(1 << 20), decoder = new AnalysisDecoder(), clock = new ClockSync(), e = new ExperienceEngine();
+    const stage = new RecordStage(rate), decoder = new AnalysisDecoder(), clock = new ClockSync(), e = new ExperienceEngine();
     const pumps: number[] = [], transfers: number[] = [], decodes: number[] = [], hops: number[] = [], plans: number[] = [];
     const plan = e.planner.update.bind(e.planner);
     e.planner.update = (s, a, dt) => { const t0 = performance.now(); plan(s, a, dt); plans.push(performance.now() - t0); };
@@ -88,7 +88,6 @@ it('browser analysis path per sample rate: host pump, transfer, stage+decode, ex
         transfers.push(performance.now() - t0);
         pending.push({ batch: moved, length });
       },
-      pcm: (mono) => host.recycle(mono.buffer as ArrayBuffer),
     }, () => now);
     // The worklet wakes the worker every 512 frames; the renderer reads at 60 fps.
     const wake = 512 / rate;
