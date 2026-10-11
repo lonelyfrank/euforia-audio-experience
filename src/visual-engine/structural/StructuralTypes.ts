@@ -1,4 +1,5 @@
 import type { ResonanceField } from './ResonanceField';
+import type { SolidBudget } from './SolidTypes';
 
 /*
  * Structural dynamics: the physical lifecycle of what a world is built from.
@@ -53,6 +54,8 @@ export interface StructuralConfig {
   reach: number;
   /** How far an element sees its neighbours (units): the cell of the spatial grid. */
   neighbourhood: number;
+  /** Pools of the volumetric bodies this system may hold (SolidDynamics). Absent: it holds none and pays nothing for them. */
+  solids?: Partial<SolidBudget>;
 }
 
 export const DEFAULT_STRUCTURE: Readonly<StructuralConfig> = { capacity: 256, seed: 1, step: 1 / 120, maxJoints: 1, maxSides: 6, reach: 0.42, neighbourhood: 0.5 };
@@ -116,6 +119,10 @@ export const createStillEnvironment = (): StructuralEnvironment => ({
   push: (_x, _y, _z, _affinity, out) => { out[0] = out[1] = out[2] = 0; },
   hold: (_x, _y, _z, _home, out) => { out[0] = out[1] = out[2] = 0; },
 });
+
+/** Bounds no state passes, whatever the environment: speed (units/s) and distance from the world's centre (units). */
+export const V_MAX = 12;
+export const R_MAX = 8;
 
 export const unit = (x: number): number => (x > 0 ? (x < 1 ? x : 1) : 0);
 /** A finite number, or the fallback: what reaches the simulation is never NaN or infinite. */

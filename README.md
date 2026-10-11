@@ -31,6 +31,7 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 - **Scene fisiche** (sperimentale): le scene sono interpretazioni fisiche diverse dello stesso mondo, non animazioni indipendenti. **Vector Field** (già *Field*) mostra il mondo come campo vettoriale (sorgenti, vortici, gusci, fronti) con traccianti e linee di campo; il **Tunnel** è architettura sotto forze acustiche (torsione geometrica, guida d'onda, tagli in anelli e pannelli, un fronte di rilascio che lascia un'altra struttura); in **Particle Field** le particelle si organizzano in un potenziale stazionario comune (nuvola, gusci, filamenti, eliche, lamine, reticolo). Nel silenzio nulla genera moto nuovo ([docs/physical-scenes.md](docs/physical-scenes.md))
 - **Spectral Shell** (sperimentale): il grafico circolare che compare dentro Matter Field, da solo. È la stessa membrana a disco (dodici modi propri eccitati dalle altezze che suonano, impulsi causali dagli eventi), con il proprio passato attorno come gusci: ogni guscio è la membrana come risuonava un momento prima, più grande e più tenue con l'età. Il suono dà la forma; il mondo decide come sta nello spazio ([docs/spectral-shell.md](docs/spectral-shell.md))
 - **Structural Dynamics** (sperimentale, prima milestone; laboratorio solo in sviluppo): particelle, capi di un filo, vertici e frammenti sono la stessa cosa, un elemento fisico con identità propria (massa, risonanza naturale, selettività, affinità di legame: distribuzioni continue, niente categorie). L'ambiente del mondo decide dove va; la sua risonanza decide come risponde. Elementi compatibili si legano in fili, i fili si saldano in catene e poligoni; un legame troppo carico si rompe, e i pezzi restano vivi (stessa altezza, stesso moto, memoria dei partner) finché si ritrovano. Passo fisso sul clock udito, deterministico, a risorse limitate ([docs/structural-dynamics.md](docs/structural-dynamics.md))
+- **Solid Dynamics** (sperimentale, prima milestone; laboratorio solo in sviluppo): gli stessi elementi tenuti insieme come corpi tridimensionali. Tetraedro, cubo e icosaedro sono condizioni iniziali: link (spigoli e controventi interni), facce e celle volumetriche risolti nello stesso passo fisso (vincoli XPBD di lunghezza, flessione e volume). Il suono sposta ciò a cui link e celle tendono, mai un vertice; un link troppo carico cede, facce e celle che teneva si aprono, i pezzi restano gli stessi elementi e, in un mondo vivo e ordinato, si ritrovano un link alla volta. Il rendering mostra lo stato della simulazione e nient'altro ([docs/solid-dynamics.md](docs/solid-dynamics.md))
 - 11 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**, **Matter Field**, **Vector Field**, **Spectral Shell**
 - Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
@@ -129,7 +130,8 @@ Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/real
 [Visual Grammar: che cosa chiede il suono alla geometria](docs/visual-grammar.md),
 [scene fisiche: Vector Field, Tunnel, Particle Field](docs/physical-scenes.md),
 [Spectral Shell: la membrana di Matter Field e il suo passato](docs/spectral-shell.md),
-[Structural Dynamics: elementi, legami, frattura, riformazione, cockpit del motore](docs/structural-dynamics.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
+[Structural Dynamics: elementi, legami, frattura, riformazione, cockpit del motore](docs/structural-dynamics.md),
+[Solid Dynamics: corpi volumetrici, solver, frattura e ricomposizione, laboratorio](docs/solid-dynamics.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
 
@@ -218,7 +220,7 @@ src/
   app/              App (UI/lifecycle), RigController (collegamento regia), menus, shortcuts
     calibration/    click di prova e regolazione della sincronizzazione
     debug/          diagnostica caricata solo in sviluppo
-    engine/         inspector Structural Lab incorporato nel workspace (solo DEV)
+    engine/         inspector dei laboratori incorporati nel workspace: Structural Lab, Solid Dynamics (solo DEV)
   audio/
     AudioEngine.ts  provider attivo + analizzatore
     capture/        AudioCaptureProvider e implementazioni
@@ -243,9 +245,10 @@ src/
     geometry/       GeometryState, SonicGeometryMapper, forma dei cicli delle voci, texture delle voci
     material/       MaterialState: come emette luce ciò che il mondo contiene
     primitives/     materia, filamenti, membrana, grafo di connessioni, fronti d'urto (legge GLSL + riferimento CPU)
-                    poligoni di fili (WirePolygonPrimitive: disegna un sistema strutturale)
+                    poligoni di fili (WirePolygonPrimitive) e solidi (SolidPrimitive): disegnano un sistema strutturale
     structural/     Structural Dynamics: identità, stato, legami, lifecycle, simulazione a passo fisso, campo di risonanza;
-                    lab/ = Structural Lab, mondo di sviluppo fuori dal registry (docs/structural-dynamics.md)
+                    Solid*.ts = corpi volumetrici (topologia, pool, solver; docs/solid-dynamics.md); WorldEnvironment = il mondo come lo campionano;
+                    lab/ = Structural Lab e Solid Dynamics, mondi di sviluppo fuori dal registry (docs/structural-dynamics.md)
     VisualWorld.ts  interpretazione una volta per frame, budget strutturale, presenze, lifecycle
     WorldRecipe.ts, RecipeVisualizer.ts   recipe e adattatore verso Layer (defineRecipe)
   render-systems/   leggi e risorse grafiche condivise (docs/visual-systems.md, docs/matter-engine.md)
@@ -360,7 +363,7 @@ Forme delle voci, tracce e spettri disegnati restano su questo percorso grafico;
 
 Architettura, mood/modalità, Director, capacità e istruzioni di estensione: [docs/visual-director.md](docs/visual-director.md).
 
-Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). Gli strumenti tecnici sono ora raccolti in **Euforia Engine Workspace**: Shift+D apre Audio, Shift+E apre Laboratories, Shift+G apre Diagnostics. La stessa scorciatoia sulla vista attiva chiude il workspace. Sidebar e inspector accompagnano il canvas originale, con controlli e grafici sotto il viewport. I laboratori DEV mantengono pinning, override, segnali, Matter e isolamento delle primitive; **Termina esperimento** li ripristina senza chiudere il workspace. `?engine`, `?debug`, `?diagnostics`, `?matter=wave|harmonic|particles` e `?primitives=matter,surface` restano disponibili; `?legacy=resonant-field` mantiene il suo significato. Architettura, mapping e verifiche: [docs/engine-workspace.md](docs/engine-workspace.md).
+Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). Gli strumenti tecnici sono ora raccolti in **Euforia Engine Workspace**: Shift+D apre Audio, Shift+E apre Laboratories, Shift+G apre Diagnostics. La stessa scorciatoia sulla vista attiva chiude il workspace. È una postazione a tre colonne nello stile del cockpit «Euforia Engine» (token e Geist, pannelli, tile e grafici del design system): navigazione a sinistra, il canvas originale al centro, a destra l'inspector contestuale della sezione (tile, pannelli, grafici, registry, laboratorio, report) con scroll proprio; l'inspector si ripiega o si allarga. Shift+D mostra Audio & Analysis a pannelli (spettro, bande, ritmo, onset, loudness, feature spettrali, history, stato musicale) e, in DEV, sotto il viewport restano soltanto `Audio Input` e `Live Input`, in sola lettura. I laboratori DEV mantengono pinning, override, segnali, Matter e isolamento delle primitive; **Termina esperimento** li ripristina senza chiudere il workspace. `?engine`, `?debug`, `?diagnostics`, `?matter=wave|harmonic|particles` e `?primitives=matter,surface` restano disponibili; `?legacy=resonant-field` mantiene il suo significato. Architettura, mapping e verifiche: [docs/engine-workspace.md](docs/engine-workspace.md).
 
 ## Aggiungere una scena
 
@@ -493,6 +496,7 @@ Spectral Matter interpreta la densità come quantità di materia (circa 96.000 /
 - **Field, Tunnel e Particle Field** (scene fisiche): leggi e regimi verificati con test automatici (silenzio, 30 / 60 / 144 fps, limiti, determinismo), parità GPU ↔ CPU delle leggi di Field e fotogrammi su una Intel UHD con segnali sintetici; **nessuna prova con musica reale né del movimento nel tempo**. Guadagni dei tagli del Tunnel, profondità dei pozzi di Particle Field, esposizione e scie di Field sono punti di partenza che richiedono gli occhi ([limiti](docs/physical-scenes.md)).
 - **Matter Engine**: prima milestone. Morfologia tarata sui segnali di prova attraverso il DSP reale, forme verificate sul riferimento CPU e a schermo con segnali sintetici (fotogrammi, non il movimento); **nessuna prova con musica reale**. Con mix densi e armonia che cambia in fretta la rete dei parziali è poco leggibile; i poligoni sono tratteggiati, non riempiti; geometria spettrale, volume e illuminazione direzionale non esistono ancora. Misure di costo prese su una macchina carica ([dettagli](docs/matter-engine.md)).
 - **Structural Dynamics**: prima milestone. La simulazione gira su CPU per centinaia di elementi (non decine di migliaia); soglie di carico, tempi di coesione, memoria e guadagni della risonanza sono tarati solo su segnali sintetici; verificata con test automatici e su una Intel UHD con sorgente sintetica, **non con musica reale né a occhio nel tempo**. Esiste solo nello Structural Lab di sviluppo: nessuna scena del prodotto la usa ancora. La risonanza multiscala gira in ogni sessione (~20 µs per hop sulla macchina di sviluppo carica).
+- **Solid Dynamics**: prima milestone, solo nel laboratorio di sviluppo. Rigidezze, ampiezze della spinta risonante, soglie di frattura e forza della memoria sono tarate su segnali sintetici (sul segnale di prova il drop distrugge quasi del tutto il corpo); la ricomposizione non è garantita (cubo e icosaedro spesso si ritrovano solo in parte); nessuna collisione; un corpo alla volta nel laboratorio; simulazione su CPU per decine di vertici. **Non verificata con musica reale né a occhio nel tempo**; tempo GPU non misurato ([limiti](docs/solid-dynamics.md)).
 - Il World Engine è un modello fisico visivo, non meccanica calibrata; coefficienti tarati su segnali sintetici, non ancora su musica reale né con prova percettiva.
 - ERB, roughness, armonicità, H/P/R e range di loudness sono approssimazioni live, non strumenti certificati o separazione di sorgenti. La taratura percettiva su un corpus reale resta da eseguire.
 - Test automatici su analisi, presenza, semantica temporale e grammatica delle scene; la cattura reale WASAPI richiede ancora una verifica su Windows.
@@ -508,6 +512,7 @@ Spectral Matter interpreta la densità come quantità di materia (circa 96.000 /
 - Scene fisiche: taratura di Field, Tunnel e Particle Field su musica reale e a occhio; Galaxy (orbite), Liquid (superficie fluida) e Oscilloscope (traccia) sullo stesso modello; storia per tracciante in Field ([prossimi passi](docs/physical-scenes.md))
 - Matter Engine: taratura su musica reale e a occhio; forma "membrana" dai modi di Resonant Field (fatta: `WaveSurfacePrimitive`); geometria spettrale da ERB; Particle Field e Galaxy come stati della materia invece che scene; transizioni fra scene come trasformazioni invece che crossfade ([piano](docs/matter-engine.md))
 - Structural Dynamics: taratura su musica reale con gli override del cockpit; popolazione GPU (identità e tabella di risonanza sono già in forma di shader/texture); superfici fatte di più poligoni; poi uno slot in Matter Field ([prossima milestone](docs/structural-dynamics.md))
+- Solid Dynamics: taratura su musica reale nel laboratorio; celle che nascono da superfici che si chiudono; collisioni minime; più corpi; frattura per celle su solidi suddivisi ([prossima milestone](docs/solid-dynamics.md))
 - Visual Systems: taratura percettiva di Spectral Matter su musica reale; riuso graduale di memoria visiva, onde e materia nelle scene esistenti; reaction-diffusion, geometria implicita, densità volumetrica e backend compute restano da fare ([nota](docs/visual-systems.md))
 - Profilare GPU per pass e ripresa dopo tab nascosta in WebView reali; tarare il World Engine su un corpus reale e a occhio; backlog e criteri nella [scheda tecnica](docs/technical-overview.md)
 

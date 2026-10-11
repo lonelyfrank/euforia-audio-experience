@@ -16,7 +16,7 @@ export function installDiagnostics(app: App, tools = true, open = false): () => 
   if (import.meta.env.DEV && tools) {
     void import('./workspace/DevelopmentTools').then(({ DevelopmentTools }) => {
       if (disposed) return;
-      workspace = new EngineWorkspace(app, controller, parent => new DevelopmentTools(app, controller, parent));
+      workspace = new EngineWorkspace(app, controller, (parent, deck) => new DevelopmentTools(app, controller, parent, deck));
       show();
     });
   } else { workspace = new EngineWorkspace(app, controller); show(); }

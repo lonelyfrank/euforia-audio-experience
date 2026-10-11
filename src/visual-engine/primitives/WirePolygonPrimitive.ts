@@ -2,13 +2,11 @@ import {
   AdditiveBlending, BufferAttribute, BufferGeometry, Color, DoubleSide, DynamicDrawUsage, Group, InstancedBufferAttribute, InstancedBufferGeometry, LineSegments, Mesh,
   Points, ShaderMaterial, Vector3, type Object3D,
 } from 'three';
-import { FIELD, layerRadius, WAVE_PUSH } from '../../render-systems/fields/fieldLaw';
-import { FRONT_SHIFT, frontsAt } from '../../render-systems/fields/flowLaw';
-import { deriveTopology, fieldAt } from '../../render-systems/fields/vectorField';
 import type { PaletteColors, QualityProfile } from '../../types/visualizer';
 import type { Primitive, PrimitiveContext, WorldFrame } from '../Primitive';
 import { StructuralSystem } from '../structural/StructuralDynamics';
-import { createStillEnvironment, createTuning, ROLE, ROLE_COUNT, unit, type StructuralEnvironment } from '../structural/StructuralTypes';
+import { createTuning, ROLE, ROLE_COUNT, unit, type StructuralEnvironment } from '../structural/StructuralTypes';
+import { createWorldEnvironment, readWorld } from '../structural/WorldEnvironment';
 
 /*
  * Wire polygons: the first living structure of the structural engine. What
@@ -80,9 +78,7 @@ const STRING = 0.06;
 const MATTER = { id: 1, centre: 0.68, spread: 0.2 };
 const FIGURE = { id: 2, centre: 0.36, spread: 0.03 };
 const SHELL = [0.25, 1.25, 0.55] as const;
-/** Share of the matter's radial spring that structural elements feel: held in the body, free to deform within it. */
-const HOLD = 0.35;
-const EXPOSURE = 0.85;
+export const EXPOSURE = 0.85;
 
 const wireLaw = /* glsl */ `
 // A point of a wire from A to B at s (0..1), bent by its first three string modes (signed shares of its length):
@@ -122,7 +118,7 @@ void main() {
 }
 `;
 
-const nodeVertex = /* glsl */ `
+export const nodeVertex = /* glsl */ `
 // x: size, y: light, z: palette blend, w: heat
 attribute vec4 aNode;
 uniform vec3 uColorA;
@@ -152,14 +148,14 @@ void main() {
 }
 `;
 
-const flatFragment = /* glsl */ `
+export const flatFragment = /* glsl */ `
 varying vec3 vColor;
 void main() {
   gl_FragColor = vec4(vColor, 1.0);
 }
 `;
 
-const nodeFragment = /* glsl */ `
+export const nodeFragment = /* glsl */ `
 varying vec3 vColor;
 void main() {
   float d = length(gl_PointCoord - 0.5);
@@ -187,8 +183,6 @@ export function wirePoint(ax: number, ay: number, az: number, bx: number, by: nu
   wireOut[0] = ax + dx * s + nx * across + cx * out; wireOut[1] = ay + dy * s + ny * across + cy * out; wireOut[2] = az + dz * s + nz * across + cz * out;
   return wireOut;
 }
-
-const fronts = WAVE_PUSH / FRONT_SHIFT;
 
 export class WirePolygonPrimitive implements Primitive {
   readonly object: Object3D = new Group();
@@ -219,18 +213,7 @@ export class WirePolygonPrimitive implements Primitive {
   constructor(context: PrimitiveContext, private readonly quality: StructureQuality, private readonly params: StructureParams, readonly topology: Float32Array) {
     const system = this.system = new StructuralSystem({ capacity: quality.capacity, seed: context.seed, maxSides: MAX_SIDES });
     const state = system.state, n = state.capacity, bonds = state.bondCapacity, corners = state.loopCapacity * state.maxSides;
-    const { uField, uWaveA, uWaveB } = context;
-    this.environment = {
-      ...createStillEnvironment(),
-      flow: (x, y, z, out) => { const F = fieldAt(x, y, z, uField, topology); out[0] = F[0]; out[1] = F[1]; out[2] = F[2]; },
-      push: (x, y, z, affinity, out) => { const F = frontsAt(x, y, z, affinity, uWaveA, uWaveB); out[0] = F[0] * fronts; out[1] = F[1] * fronts; out[2] = F[2] * fronts; },
-      // The radial spring of the field law, as the matter of that layer feels it: the world's pressure moves the radius it rests at.
-      hold: (x, y, z, home, out) => {
-        const px = x - uField[FIELD.lateral], r = Math.max(Math.sqrt(px * px + y * y + z * z), 1e-4);
-        const k = -HOLD * uField[FIELD.stiffness] * (r - layerRadius(home, uField[FIELD.radius], uField[FIELD.gather])) / r;
-        out[0] = px * k; out[1] = y * k; out[2] = z * k;
-      },
-    };
+    this.environment = createWorldEnvironment(context, topology);
     this.sides = params.polygon;
     this.seed(false);
 
@@ -278,12 +261,9 @@ export class WirePolygonPrimitive implements Primitive {
   }
 
   update(frame: Readonly<WorldFrame>, presence: number): void {
-    const { geometry: g, fields, look } = frame, env = this.environment, system = this.system;
-    // The same field the world's tracers and lines follow (derived here too, so nothing depends on who was updated first).
-    deriveTopology(this.topology, g, fields);
-    env.coherence = g.coherence; env.harmony = g.symmetry; env.turbulence = g.disorder; env.tension = g.tension;
-    env.energy = g.energy; env.release = g.fracture; env.drag = fields.drag;
-    env.resonance = frame.resonance ?? null;
+    const { geometry: g, look } = frame, env = this.environment, system = this.system;
+    // The same field the world's tracers and lines follow.
+    readWorld(env, frame, this.topology);
     let view: StructureView = 'all';
     if (import.meta.env.DEV) {
       system.profile = true;

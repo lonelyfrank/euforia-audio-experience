@@ -37,6 +37,25 @@ const url = process.env.WORKSPACE_URL || (mode === 'before' ? 'http://127.0.0.1:
 const output = process.env.WORKSPACE_OUTPUT || `/tmp/euforia-workspace-${mode}.json`;
 const click = name => page.getByRole('button', { name, exact: true }).click();
 const navigate = view => page.locator(`[data-view="${view}"]`).click();
+const DASHBOARD = 'aside[aria-label="Euforia Engine Diagnostics"]';
+/** The three columns as laid out now, and what the renderer and the inspector's chart did about it. */
+const station = () => page.evaluate(() => {
+  const box = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom }; };
+  const body = document.querySelector('.ws-inspector-body'), chart = document.querySelector('.ws-debug canvas'), shell = document.querySelector('.euforia-workspace');
+  const audio = document.querySelector('.ws-audio'), deck = document.querySelector('.ws-deck');
+  return { nav: box('.ws-sidebar'), view: box('.ws-preview'), inspector: box('.ws-inspector'), body: box('.ws-inspector-body'),
+    deck: deck && deck.getBoundingClientRect().height,
+    // Audio & Analysis is panels, not a canvas: where they start, how many, whether the spectrum is drawn and how the level lists are laid out.
+    audio: audio && !audio.hidden && { top: audio.getBoundingClientRect().top, panels: audio.children.length, spectrum: audio.querySelector('.ws-bars path').getAttribute('d')?.length ?? 0,
+      meters: getComputedStyle(audio.querySelector('.ws-meters')).gridTemplateColumns.split(' ').length },
+    center: [...document.querySelector('.ws-center').children].map(el => el.className), layout: { ...shell.dataset },
+    position: getComputedStyle(document.querySelector('.ws-inspector')).position,
+    overflow: [document.documentElement.scrollWidth - innerWidth, shell.scrollWidth - shell.clientWidth, body.scrollWidth - body.clientWidth],
+    scrollable: body.scrollHeight - body.clientHeight, scrollTop: body.scrollTop,
+    chart: chart && { css: chart.clientWidth, pixels: chart.width, height: chart.clientHeight, top: chart.getBoundingClientRect().top },
+    canvas: [window.__originalCanvas.clientWidth, window.__originalCanvas.clientHeight], inner: [innerWidth, innerHeight], dpr: Math.min(devicePixelRatio, 2), resizes: window.__resizes };
+});
+const settle = () => page.waitForTimeout(350);
 const report = async () => {
   const pending = page.waitForEvent('download'); await click('Export JSON');
   return JSON.parse(await readFile(await (await pending).path(), 'utf8'));
@@ -66,29 +85,95 @@ try {
   } else if (mode === 'acceptance') {
     assert.equal(await page.locator('.euforia-workspace').count(), 0);
     const resources = await page.evaluate(() => ({ ...window.__resources }));
-    await page.evaluate(() => { window.__initialScene = window.app.directionDebug.current; });
+    await page.evaluate(() => {
+      window.__initialScene = window.app.directionDebug.current;
+      // Test-only counter on the one renderer: how many times the workspace made it size its targets.
+      // RenderEngine.resize sets the pixel ratio once per resize (three then calls setSize itself, so setSize would count twice).
+      const renderer = window.app.directionDebug.renderer, setPixelRatio = renderer.setPixelRatio.bind(renderer);
+      window.__resizes = 0; renderer.setPixelRatio = (...args) => { window.__resizes++; return setPixelRatio(...args); };
+      window.__session = window.app.audio.session; window.__worldTime = window.app.audio.experience.presented.world.time;
+    });
     await page.keyboard.press('Shift+D');
     await page.locator('.euforia-workspace').waitFor();
     assert.equal(await page.locator('h1').first().textContent(), 'Audio & Analysis');
+    // Shift+D is the Audio & Analysis station: navigation, the live scene, the analytics beside it, with no further click or scroll.
+    await settle();
+    const open = await station();
+    assert.ok(open.nav.right <= open.view.x && open.view.right <= open.inspector.x, 'navigation · viewport · inspector, left to right');
+    assert.ok(open.inspector.w >= 430 && open.inspector.w <= 470, `inspector ${open.inspector.w} px`);
+    assert.ok(open.nav.w >= 205 && open.nav.w <= 262, `navigation ${open.nav.w} px`);
+    assert.ok(open.view.w > open.inspector.w && open.view.w > open.nav.w, 'the viewport is the widest column');
+    assert.ok(open.view.h >= (open.inner[1] - 50) * 0.7, `the viewport takes the height the heading and the deck leave (${open.view.h} of ${open.inner[1]})`);
+    assert.deepEqual(open.center, ['ws-heading', 'ws-preview', 'ws-deck'], 'under the viewport, only the capture deck');
+    assert.equal(open.deck, 150, 'the deck has one height');
+    assert.ok(Math.abs(open.canvas[0] - (open.view.w - 2)) <= 1 && Math.abs(open.canvas[1] - (open.view.h - 2)) <= 1, 'the one canvas fills the viewport');
+    assert.equal(await page.evaluate(selector => ['.ws-metrics .ws-spark', '.ws-audio .ws-bars', selector].every(s => document.querySelector(`.ws-inspector-body ${s}`)) && !!window.__originalCanvas.closest('.ws-preview'), DASHBOARD), true, 'tiles, panels and registry live in the inspector');
+    assert.ok(open.audio.top < open.body.bottom - 200 && open.audio.panels >= 10, 'the audio panels are in view at once');
+    assert.ok(open.audio.spectrum > 100 && open.audio.meters === 1, 'the spectrum is drawn from the live frame; level lists in one column');
+    assert.equal(await page.evaluate(() => document.querySelector('.ws-deck .ws-wave polyline').getAttribute('points').length > 100 && document.querySelector('.ws-source[aria-current]').dataset.source), 'fake', 'the deck shows the signal and the source in use');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.euforia-workspace')).fontFamily.includes('Geist') && document.fonts.check('12px "Geist Variable"')), true, 'the cockpit is set in Geist');
+    assert.ok(open.scrollable > 0, 'the inspector scrolls by itself');
+    assert.deepEqual(open.overflow, [0, 0, 0], 'no horizontal overflow');
+    assert.equal(open.resizes, 1, 'entering the viewport sizes the renderer once');
+    // Folding the inspector away keeps everything it holds: the same nodes, the same scroll, the same width when it returns.
+    await page.evaluate(() => { window.__audio = document.querySelector('.ws-audio .ws-bars'); document.querySelector('.ws-inspector-body').scrollTop = 140; });
+    await click('Inspector'); await settle();
+    const folded = await station();
+    assert.equal(folded.inspector.w, 0); assert.ok(folded.view.w > open.view.w + 300, 'the viewport takes the inspector column');
+    assert.equal(folded.resizes, 2);
+    await page.locator('.ws-top').getByRole('button', { name: 'Inspector', exact: true }).click(); await settle();
+    const back = await station();
+    assert.equal(back.inspector.w, open.inspector.w); assert.equal(back.scrollTop, 140, 'scroll kept while hidden');
+    assert.equal(await page.evaluate(() => document.querySelector('.ws-audio .ws-bars') === window.__audio), true, 'audio panels reused');
+    // A wide inspector lays the same panels out in two columns; the viewport alone hides both side columns and the deck.
+    await page.getByTitle('Allarga / riduci inspector · tabelle e report').click(); await settle();
+    const wide = await station();
+    assert.ok(wide.inspector.w >= 560 && wide.audio.meters === 2, `wide inspector ${wide.inspector.w} px, level lists in ${wide.audio.meters} columns`);
+    assert.deepEqual(wide.overflow, [0, 0, 0]);
+    await page.getByTitle('Allarga / riduci inspector · tabelle e report').click(); await settle();
+    await page.getByTitle('Solo il viewport / le tre colonne').click(); await settle();
+    const alone = await station();
+    assert.ok(alone.nav.w === 0 && alone.inspector.w === 0 && alone.view.w >= alone.inner[0] - 30, 'viewport alone');
+    await page.getByTitle('Solo il viewport / le tre colonne').click(); await settle();
+    assert.equal((await station()).resizes, 7, 'one renderer resize per layout step, none in between');
+    // The shortcut always brings the station back whole, even if the inspector was folded when the workspace was closed.
+    await click('Inspector'); await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.euforia-workspace').count(), 0);
+    await page.keyboard.press('Shift+D'); await settle();
+    assert.equal((await station()).inspector.w, open.inspector.w, 'Shift+D reopens with the inspector');
     await page.keyboard.press('Shift+G');
     assert.equal(await page.locator('.euforia-workspace').count(), 1);
     await page.locator('.ws-top').getByRole('button', { name: 'REC', exact: true }).click();
     await page.waitForTimeout(700);
     const first = await report();
     await navigate('audio');
-    await page.locator('aside').evaluate(el => { window.__audioMetricRow = el.shadowRoot.querySelector('.row'); });
-    await navigate('experience'); await navigate('world'); await navigate('matter'); await navigate('render');
+    await page.locator(DASHBOARD).evaluate(el => { window.__audioMetricRow = el.shadowRoot.querySelector('.row'); window.__audio = document.querySelector('.ws-audio .ws-bars'); });
+    // The panels follow the live frame: the spectrum drawn now is not the one drawn a second ago.
+    const spectrum = () => page.evaluate(() => document.querySelector('.ws-audio .ws-bars path').getAttribute('d'));
+    const drawn = await spectrum(); await page.waitForTimeout(1200);
+    assert.notEqual(await spectrum(), drawn, 'audio panels are live');
+    const steady = (await station()).resizes;
+    for (const view of ['experience', 'world', 'matter']) {
+      await navigate(view); await settle();
+      const shown = await station();
+      assert.ok(shown.chart.height > 100 && shown.chart.pixels === Math.round(shown.chart.css * shown.dpr), `${view} charts drawn in the inspector`);
+      assert.deepEqual(shown.overflow, [0, 0, 0]);
+      assert.equal(shown.audio, false, 'the audio panels step out of the other views');
+      if (view === 'experience') await page.evaluate(() => { window.__chart = document.querySelector('.ws-debug canvas'); });
+    }
+    await navigate('render'); await navigate('overview');
     await navigate('audio');
-    assert.equal(await page.locator('aside').evaluate(el => el.shadowRoot.querySelector('.row') === window.__audioMetricRow), true, 'metric DOM reused on domain return');
+    assert.equal(await page.locator(DASHBOARD).evaluate(el => el.shadowRoot.querySelector('.row') === window.__audioMetricRow && document.querySelector('.ws-debug canvas') === window.__chart && document.querySelector('.ws-audio .ws-bars') === window.__audio), true, 'metric DOM, chart canvas and audio panels reused on domain return');
+    assert.equal((await station()).resizes, steady, 'changing section never resizes the renderer');
     await navigate('diagnostics');
     const second = await report();
     assert.equal(await page.evaluate(() => window.app.directionDebug.current === window.__initialScene), true, 'navigation preserves the scene instance');
     assert.ok(second.samples.length >= first.samples.length, 'REC survives navigation');
     assert.equal(await page.evaluate(() => window.app.directionDebug.renderer === window.__originalRenderer && window.app.directionDebug.renderer.domElement === window.__originalCanvas), true);
     await click('Freeze vista');
-    const before = await page.locator('aside').evaluate(el => el.shadowRoot.querySelector('.row .value')?.textContent);
+    const before = await page.locator(DASHBOARD).evaluate(el => el.shadowRoot.querySelector('.row .value')?.textContent);
     await page.waitForTimeout(500);
-    assert.equal(await page.locator('aside').evaluate(el => el.shadowRoot.querySelector('.row .value')?.textContent), before);
+    assert.equal(await page.locator(DASHBOARD).evaluate(el => el.shadowRoot.querySelector('.row .value')?.textContent), before);
     await click('Freeze vista');
     await click('Pausa acquisizione'); const paused = await report(); await page.waitForTimeout(500);
     assert.equal((await report()).samples.length, paused.samples.length); await click('Pausa acquisizione');
@@ -106,6 +191,9 @@ try {
     await page.getByLabel('Override coherence').check();
     await page.getByLabel('coherence', { exact: true }).fill('0.8');
     await click('Form');
+    const lab = await station();
+    assert.deepEqual(lab.overflow, [0, 0, 0], 'the laboratory fits the inspector');
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.ws-inspector-body .engine')].length), 3, 'cockpit blocks live in the inspector');
     await navigate('world');
     assert.equal(await page.evaluate(async () => (await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts')).structuralLab.active), true);
     await click('Termina laboratorio');
@@ -122,20 +210,45 @@ try {
       await page.setViewportSize(size); await page.waitForTimeout(300);
       const dimensions = await page.evaluate(() => { const canvas = window.__originalCanvas, host = canvas.parentElement; return [canvas.clientWidth, canvas.clientHeight, host.clientWidth, host.clientHeight]; });
       assert.equal(dimensions[0], dimensions[2]); assert.equal(dimensions[1], dimensions[3]);
+      const sized = await station();
+      assert.deepEqual(sized.overflow, [0, 0, 0], `no overflow at ${size.width}`);
+      assert.ok(sized.view.w >= 480 && sized.view.w > sized.inspector.w, `viewport ${sized.view.w} px at ${size.width}`);
     }
+    // A narrow window: the inspector lies over the viewport and folds away, the renderer is never squeezed by it.
+    await page.setViewportSize({ width: 800, height: 700 }); await settle();
+    const narrow = await station();
+    assert.equal(narrow.position, 'absolute'); assert.ok(narrow.view.w >= 800 - 52 - 30, `narrow viewport ${narrow.view.w} px`);
+    assert.deepEqual(narrow.overflow, [0, 0, 0]);
+    await click('Inspector'); await settle();
+    const uncovered = await station();
+    assert.equal(uncovered.inspector.w, 0); assert.equal(uncovered.view.w, narrow.view.w); assert.equal(uncovered.resizes, narrow.resizes, 'folding the overlay does not resize the renderer');
+    await click('Inspector');
+    await page.setViewportSize({ width: 1400, height: 900 }); await settle();
     await page.getByTitle('Espandi / comprimi navigazione').click();
     assert.equal(await page.locator('.euforia-workspace').getAttribute('data-collapsed'), 'true');
     await page.screenshot({ path: output.replace('.json', '.png') });
     await page.keyboard.press('Shift+G');
     assert.equal(await page.locator('.euforia-workspace').count(), 0);
     assert.deepEqual(await page.evaluate(async () => { const { matterLab } = await import('/src/render-systems/forms/MatterForms.ts'); const { worldLab } = await import('/src/visual-engine/VisualWorld.ts'); return [matterLab.form, worldLab.only, window.app.directionDebug.diagnostics, window.__originalCanvas.closest('.app-stage').parentElement.id]; }), ['auto', null, null, 'app']);
+    await page.waitForTimeout(1500);
+    const memory = () => page.evaluate(() => { const r = window.app.directionDebug.renderer; return { ...r.info.memory, programs: r.info.programs.length, lost: r.getContext().isContextLost() }; });
+    const gpu = await memory();
+    // The laboratory above pinned another world and gave the scene back: from here on the layer must stay the same object.
+    await page.evaluate(() => { window.__cycleScene = window.app.directionDebug.current; });
     for (let i = 0; i < 6; i++) { await page.keyboard.press('Shift+D'); await page.keyboard.press('Shift+G'); await page.keyboard.press('Shift+G'); }
+    await page.waitForTimeout(500);
+    assert.deepEqual(await memory(), gpu, 'no GPU resource left behind by opening and closing');
+    assert.equal(gpu.lost, false);
+    assert.deepEqual(await page.evaluate(() => [window.app.audio.session === window.__session, window.app.audio.experience.presented.world.time > window.__worldTime, window.app.directionDebug.current === window.__cycleScene,
+      window.__originalCanvas.clientWidth === innerWidth && window.__originalCanvas.clientHeight === innerHeight]), [true, true, true, true], 'audio session, world, scene and full-window stage survive the workspace');
     assert.equal(await page.locator('.euforia-workspace').count(), 0);
     assert.equal(await page.locator('.app-canvas canvas').count(), 1);
     assert.equal(await page.evaluate(() => window.__webglCreations), 1);
     assert.deepEqual(await page.evaluate(() => ({ ...window.__resources })), resources, 'observers and intervals restored after close');
     assert.deepEqual(errors, []);
-    await writeFile(output, JSON.stringify({ result: 'pass', checks: ['shortcuts', 'single canvas and renderer', 'REC continuity', 'freeze', 'pause', 'baseline import', 'compare', 'JSON CSV MD export', 'shadow input guard', 'lab lifecycle', 'override reset', 'pin restore', 'replay continuity', 'resize', 'collapse', 'repeated close/reopen'], errors }, null, 2));
+    await writeFile(output, JSON.stringify({ result: 'pass', checks: ['shortcuts', 'single canvas and renderer', 'REC continuity', 'freeze', 'pause', 'baseline import', 'compare', 'JSON CSV MD export', 'shadow input guard', 'lab lifecycle', 'override reset', 'pin restore', 'replay continuity', 'resize', 'collapse', 'repeated close/reopen',
+      'three-column station on Shift+D', 'viewport over the capture deck', 'inspector holds tiles/audio panels/registry', 'cockpit tokens and Geist', 'audio panels live and reused', 'inspector fold/wide/viewport-alone keep state', 'one renderer resize per layout step',
+      'narrow overlay', 'GPU resources and session unchanged after close'], errors }, null, 2));
   } else {
     await page.evaluate(() => { const host = window.__originalCanvas.parentElement; host.style.width = '960px'; host.style.height = '540px'; });
     const cdp = await page.context().newCDPSession(page); await cdp.send('Performance.enable');
@@ -161,7 +274,7 @@ try {
       await page.keyboard.press('Shift+G');
       await measure('overview', async()=>navigate('overview'));
       await measure('audio', async()=>navigate('audio'));
-      await measure('audio-charts-visible', async()=>page.locator('.ws-debug').scrollIntoViewIfNeeded());
+      await measure('audio-charts-visible', async()=>page.locator('.ws-audio .ws-meters').first().scrollIntoViewIfNeeded());
       await measure('diagnostics', async()=>navigate('diagnostics'));
       await measure('diagnostics-collapsed', async()=>page.getByTitle('Espandi / comprimi navigazione').click());
       await measure('REC', async()=>page.locator('.ws-top').getByRole('button',{name:'REC',exact:true}).click());

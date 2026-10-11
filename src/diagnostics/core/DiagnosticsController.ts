@@ -1,6 +1,7 @@
 import { settingsStore, resolveDirection } from '../../stores/settingsStore';
 import { matterLab } from '../../render-systems/forms/MatterForms';
 import { structuralLab } from '../../visual-engine/primitives/WirePolygonPrimitive';
+import { solidLab } from '../../visual-engine/structural/SolidTypes';
 import { TEST_SIGNALS } from '../../audio/capture/testSignals';
 import type { App } from '../../app/App';
 import type { AudioEvent, EventCursor } from '../../experience/EventStream';
@@ -185,7 +186,8 @@ export class DiagnosticsController {
     // Only settings, never PCM, device names or an engine snapshot.
     return [s.preset, s.quality, s.sensitivity, s.smoothing, s.beatResponse, s.audioDelay, s.reflection, s.reduceFlashing,
       s.direction, d.mood, d.moodIntensity, d.experience, d.autoDirection, d.rigMode, matterLab.form,
-      structuralLab.active, structuralLab.view, structuralLab.sides, ...Object.values(structuralLab.tuning)].join('|');
+      structuralLab.active, structuralLab.view, structuralLab.sides, ...Object.values(structuralLab.tuning),
+      solidLab.active, solidLab.kind, solidLab.view, ...Object.values(solidLab.tuning), ...Object.values(solidLab.material)].join('|');
   }
   private sourceCategory(): string {
     return this.app.audio.state.source === 'fake' ? `synthetic:${TEST_SIGNALS.find(s => s.label === this.app.audio.state.deviceName)?.id ?? 'unknown'}` : this.app.audio.state.source ?? 'none';

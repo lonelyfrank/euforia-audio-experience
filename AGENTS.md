@@ -6,7 +6,7 @@
   (thread, clock, stati, eventi, confidence, benchmark), `docs/refactor-report.md`,
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
-  `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md` e `docs/structural-dynamics.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md` e `docs/solid-dynamics.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -80,6 +80,18 @@
   un mondo vivo: il silenzio non crea energia. `ResonantPhysics` resta com'è. `wirePoint` è scritto in GLSL e in TS: cambiarli
   insieme. `structuralLab`, lo Structural Lab (fuori dal registry: `registerLaboratory`) e il cockpit (`?engine`, Shift+E) sono
   solo DEV e non scrivono impostazioni; la UI cinematica non si tocca.
+- Solid Dynamics (`docs/solid-dynamics.md`): un solido è ciò che link, facce e celle tengono insieme fra elementi del
+  sistema strutturale, non un oggetto animato né un secondo motore: `SolidSystem` è un componente di `StructuralSystem`
+  (`config.solids`) e un sistema senza corpi fa il passo di prima, bit per bit. Vincoli XPBD (compliance / h², moltiplicatori
+  per passo, iterazioni fisse del budget) sul moto predetto dal passo strutturale. Il suono sposta il riposo di link e celle,
+  mai un vertice, e sempre per coppie o per celle. Facce, celle e frammenti si leggono dai link (`SolidState.book`): uno
+  spigolo rotto non crea un frammento, una cella tiene solo un guscio chiuso e verificato, rompere non crea né rimuove nulla.
+  Un link si riforma solo a condizioni fisiche e topologiche valide (mondo vivo, capi assestati, distanza, velocità, verso
+  delle celle), alla lunghezza a cui si trova. `SolidState.measure` e `SolidSystem.volumeOf` sommano nello stesso ordine:
+  cambiarli insieme (è ciò che tiene fermo un corpo a riposo). Carico, fatica e memoria sono le funzioni di `BondSystem`
+  (`loadOf`, `tire`, `fade`): una legge per fili e link. Pool a budget esplicito: ciò che non entra è rifiutato e contato; qualità
+  grafica e FPS non toccano topologia né iterazioni. `SolidPrimitive` invia posizioni della simulazione: nessuno shader sposta
+  un vertice. `solidLab`, il laboratorio (fuori dal registry) e `SolidCockpit` sono solo DEV; nessun solido nelle scene del prodotto.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente e quella dell'analisi delle
   scene, non hop/beat. Le soglie (`DspBudget.ts` e `src-tauri/src/audio.rs`) sono le stesse nei due
   host: cambiarle insieme. Il wire e il WASM versionato devono corrispondere al backend:

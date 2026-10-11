@@ -10,8 +10,9 @@ import type { VisualWorld } from '../../visual-engine/VisualWorld';
 import { registerLaboratory, visualizers } from '../../visualizers/registry';
 import type { App } from '../App';
 
-/** Structural inspectors embedded in Engine Workspace. No independent window, listener or RAF.
+/** Structural inspectors embedded in the Engine Workspace inspector. No independent window, listener or RAF.
  * Register/pin on explicit laboratory entry; dispose releases its overrides and restores the previous pin.
+ * Its three blocks stack in the inspector's column and sit side by side in a wide one (`.ws-lab-grid`).
  */
 
 const BOTTOM = 176;
@@ -32,9 +33,7 @@ type TraceKey = typeof TRACES[number][0];
 const STYLE = /* css */ `
 .engine { box-sizing:border-box; color:var(--ws-text); font:13px/1.5 system-ui,sans-serif; min-width:0; }
 .engine * { box-sizing:border-box; }
-.engine-left,.engine-right,.engine-bottom { padding:16px; background:var(--ws-panel); border:1px solid var(--ws-border); border-radius:12px; }
-.engine-left { grid-column:1; }
-.engine-right { grid-column:2; }
+.engine-left,.engine-right,.engine-bottom { padding:12px; min-width:0; background:var(--ws-panel); border:1px solid var(--ws-border); border-radius:10px; }
 .engine-bottom { grid-column:1 / -1; overflow:hidden; }
 .engine h1 { margin: 0; font: 600 12px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
 .engine h2 { margin: 14px 0 6px; font: 600 10px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); }
@@ -43,7 +42,7 @@ const STYLE = /* css */ `
 .engine select { width: 100%; }
 .engine button:disabled { color: var(--ink-faint); border-color: var(--hairline); cursor: default; }
 .engine button[aria-pressed='true'] { border-color: var(--accent-live); color: var(--accent-live); }
-.engine-nav button, .engine-list button { display: block; width: 100%; text-align: left; margin-bottom: 3px; }
+.engine-nav, .engine-list { display: flex; flex-wrap: wrap; gap: 4px; }
 .engine-row { display: flex; gap: 4px; flex-wrap: wrap; }
 .engine-table { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 12px; }
 .engine-table span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -54,7 +53,7 @@ const STYLE = /* css */ `
 .engine-slider { display: grid; grid-template-columns: 16px 1fr 44px; align-items: center; gap: 6px; margin: 2px 0; }
 .engine-slider label { grid-column: 1 / -1; color: var(--ink-muted); }
 .engine-slider input[type='range'] { width: 100%; accent-color: var(--magenta); }
-.engine canvas { display: block; }
+.engine canvas { display: block; max-width: 100%; }
 .engine-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 `;
 
@@ -327,10 +326,12 @@ export class EngineCockpit {
     if (sample !== this.lastSample) { this.sample(); this.lastSample = sample; }
     if (!this.visible) return;
     this.frameMs = this.diagnostics.renderer?.frameMs ?? 0;
+    // Both widths are read before anything is written: one layout per refresh, not one per canvas.
+    const width = Math.max(100, this.bottom.clientWidth - 24), side = Math.max(100, this.right.clientWidth - 24);
     this.refresh();
     Object.assign(this.drawn, this.diagnostics.renderer?.drawn);
 
-    const width = Math.max(100, this.bottom.clientWidth - 24), height = BOTTOM - 62, ctx = this.fit(this.traces, width, height);
+    const height = BOTTOM - 62, ctx = this.fit(this.traces, width, height);
     if (ctx) {
       ctx.strokeStyle = 'rgba(255,255,255,0.08)';
       ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
@@ -344,11 +345,11 @@ export class EngineCockpit {
         ctx.stroke();
       }
     }
-    if (this.module === 'Resonance') this.drawResonance();
+    if (this.module === 'Resonance') this.drawResonance(side);
   };
 
-  private drawResonance(): void {
-    const width = Math.max(100, this.right.clientWidth - 32), row = 54, ctx = this.fit(this.bars, width, row * 3 + 8), r = this.app.audio.experience.presented.resonance;
+  private drawResonance(width: number): void {
+    const row = 54, ctx = this.fit(this.bars, width, row * 3 + 8), r = this.app.audio.experience.presented.resonance;
     if (!ctx || !this.app.audio.experience.ready) return;
     const strip = (values: Float32Array, levels: Float32Array | null, top: number, color: string, signed: boolean): void => {
       const w = width / values.length, mid = top + row / 2;

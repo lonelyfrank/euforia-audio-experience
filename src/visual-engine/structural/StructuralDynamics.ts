@@ -1,10 +1,12 @@
 import { Rng, seedOf } from '../../show/rng';
-import { canJoin, canSpan, compatibility, JOINT_RANGE, JOINT_REST, makeBond, remembered, stepBonds, stepMemory, type BondEvents } from './BondSystem';
+import { BOND_COST, canJoin, canSpan, compatibility, JOINT_RANGE, JOINT_REST, makeBond, remembered, stepBonds, stepMemory, type BondEvents } from './BondSystem';
+import { SolidSystem, type SolidOptions } from './SolidDynamics';
+import type { SolidKind } from './SolidTypes';
 import type { Population } from './StructuralIdentity';
 import { readLifecycle, stabilityOf, stepCohesion, stepRegime, stepRoles } from './StructuralLifecycle';
 import { StructuralState } from './StructuralState';
 import {
-  createTuning, DEFAULT_STRUCTURE, finite, JOINT, LIFECYCLE, MAX_JOINTS, MEMORY_SLOTS, ROLE, ROLE_COUNT, SPAN, unit,
+  createTuning, DEFAULT_STRUCTURE, finite, JOINT, LIFECYCLE, MAX_JOINTS, MEMORY_SLOTS, R_MAX, ROLE, ROLE_COUNT, SPAN, unit, V_MAX,
   type StructuralConfig, type StructuralEnvironment,
 } from './StructuralTypes';
 
@@ -16,6 +18,9 @@ import {
  *                + potential                                       the world's pressure, and the pull that keeps its body one
  *                + bonds + braces                                  structural constraints
  *                + memory                                          the pull back to a lost partner
+ *
+ * Volumetric bodies (SolidDynamics) are constraints on the same elements, solved
+ * in the same step on the motion predicted here: not a second simulation.
  *
  * The medium decides where an element goes; its resonance decides how it
  * answers where it is (its swing, its light, the load on its bonds): the
@@ -45,8 +50,6 @@ const NEAR_MAX = 20;
 const FORMS_AT = 0.2;
 const MEMORY_GAIN = 1.5;
 const LOYALTY = 1.6;
-/** What making a bond takes out of an element's cohesion: the next one has to settle again, so structures grow step by step. */
-const BOND_COST = 0.6;
 /** A wire is made between elements from this share of its length apart to that one. */
 const SPAN_NEAR = 0.5;
 const SPAN_FAR = 1.35;
@@ -55,9 +58,6 @@ const GATHER = 0.5;
 /** How long a fracture stays in an element (s), and the harmonics of a wire on the frequency axis (one octave is a tenth of it). */
 const SHOCK_TAU = 2.5;
 const OCTAVE = 0.1;
-/** Bounds no state passes, whatever the environment. */
-const V_MAX = 12;
-const R_MAX = 8;
 /** Pitch difference at which two neighbours no longer count as resonating alike. */
 const AGREE = 0.15;
 /** Below this speed an element has no direction of its own (units/s). */
@@ -112,6 +112,8 @@ const pushOut = new Float64Array(3);
 export class StructuralSystem {
   readonly config: StructuralConfig;
   readonly state: StructuralState;
+  /** The volumetric bodies held among the elements; null when the configuration gives them no pools. */
+  readonly solids: SolidSystem | null;
   /** Development overrides; the product leaves them as created. */
   readonly tuning = createTuning();
   readonly stats: StructuralStats = {
@@ -148,6 +150,7 @@ export class StructuralSystem {
     c.maxSides = Math.min(12, Math.max(3, Math.floor(c.maxSides)));
     c.neighbourhood = Math.max(0.05, c.neighbourhood);
     this.state = new StructuralState(c);
+    this.solids = c.solids ? new SolidSystem(this.state, c.solids) : null;
     this.acc = new Float64Array(c.capacity * 3);
     this.flow = new Float32Array(c.capacity * 3); this.push = new Float32Array(c.capacity * 3);
     this.decay = new Float32Array(c.capacity); this.gain = new Float32Array(c.capacity);
@@ -213,6 +216,15 @@ export class StructuralSystem {
   }
 
   /**
+   * Seeds a solid (tetrahedron, cube, icosahedron) of this circumradius: its vertices are elements of this system
+   * like any other, and its links, faces and cells hold them (SolidDynamics). Returns the body, or −1 when this
+   * system holds no bodies or has no room for one more.
+   */
+  seedSolid(kind: SolidKind, radius: number, options: SolidOptions = {}): number {
+    return this.solids ? this.solids.seed(kind, radius, this.config.seed, this.config.reach, options) : -1;
+  }
+
+  /**
    * Advances the simulation to `now` (s) in fixed steps: the heard audio time
    * when there is one. The first call, or a clock that went back (another
    * session), only sets the clock. Returns the steps taken.
@@ -225,10 +237,12 @@ export class StructuralSystem {
     const steps = Math.max(0, Math.floor((now - this.time) / h + 1e-9));
     const started = this.profile ? performance.now() : 0;
     this.bookTime = 0;
+    if (this.solids) this.solids.profile = this.profile;
     for (let k = 0; k < steps; k++) { this.step(env); this.time += h; }
     this.alpha = Math.max(0, now - this.time);
     this.ring(env);
     this.stats.steps = steps;
+    this.solids?.frame();
     if (this.profile) {
       this.stats.stepMs += (performance.now() - started - this.stats.stepMs) * 0.05;
       this.stats.bookMs += (this.bookTime - this.stats.bookMs) * 0.05;
@@ -239,6 +253,8 @@ export class StructuralSystem {
   /** One fixed step. */
   step(env: Readonly<StructuralEnvironment>): void {
     const s = this.state, h = this.config.step, acc = this.acc, p = s.position, v = s.velocity, U = this.flow, tuning = this.tuning;
+    // Bodies are solved only while there is one: a system without them steps exactly as it always did.
+    const solids = this.solids && this.solids.state.bodies > 0 ? this.solids : null;
     const resonance = env.resonance, hear = Math.max(0, finite(tuning.resonanceCoupling, 1)), carry = Math.max(0, finite(tuning.environmentCoupling, 1));
     const drag = Math.min(20, Math.max(0.2, finite(env.drag, 2)));
     // Micro response: what each element takes of the sound, by its own resonance.
@@ -251,6 +267,7 @@ export class StructuralSystem {
     acc.fill(0, 0, s.count * 3);
     stepBonds(s, acc, env, tuning, h, this.events);
     stepMemory(s, acc, env, this.config, h);
+    solids?.recall(acc, env, h);
     this.gather(env);
     // Macro motion: the medium carries each element as far as its matter lets it.
     const push = this.push, decay = this.decay, gains = this.gain, alive = unit(3 * env.energy);
@@ -271,6 +288,7 @@ export class StructuralSystem {
       }
     }
     const shockDecay = Math.exp(-h / SHOCK_TAU);
+    solids?.begin();
     for (let i = 0; i < s.count; i++) {
       const at = i * 3, ux = U[at], uy = U[at + 1], uz = U[at + 2], k = decay[i], gain = gains[i];
       const ax = acc[at] + push[at], ay = acc[at + 1] + push[at + 1], az = acc[at + 2] + push[at + 2];
@@ -291,6 +309,8 @@ export class StructuralSystem {
       s.age[i] += h;
       s.energy[i] = 0.5 * s.mass[i] * (vx * vx + vy * vy + vz * vz) + 0.5 * s.excitation[i] * s.excitation[i];
     }
+    // What the step predicted, held to the links and cells of the bodies.
+    solids?.solve(env, tuning, h);
     this.stats.fractures = this.events.fractures;
     this.stepIndex++;
     const started = this.profile ? performance.now() : 0;
@@ -321,6 +341,7 @@ export class StructuralSystem {
   /** Removes all matter and all bonds (the pools stay). */
   clear(): void {
     this.state.clear();
+    this.solids?.clear();
     this.mate.fill(-1);
     this.structures = 0; this.stepIndex = 0; this.events.fractures = 0;
     this.stats.formed = this.stats.fractures = this.stats.repairs = 0;
@@ -395,7 +416,8 @@ export class StructuralSystem {
       const at = i * 3, x = p[at], y = p[at + 1], z = p[at + 2], vx = v[at], vy = v[at + 1], vz = v[at + 2];
       const speed = Math.sqrt(vx * vx + vy * vy + vz * vz), moving = speed > STILL;
       let near = 0, spread = 0, agree = 0, hx = moving ? vx / speed : 0, hy = moving ? vy / speed : 0, hz = moving ? vz / speed : 0, headed = moving ? 1 : 0;
-      const seeking = s.cohesion[i] >= 1, spans = s.span[i] < 0, wire = s.spanPartner(i), room = s.joints[i] < most;
+      // A vertex of a volumetric body takes no wire: it settles (order, temperature, cohesion) and forms only its own links again.
+      const seeking = s.cohesion[i] >= 1 && s.body[i] < 0, spans = s.span[i] < 0, wire = s.spanPartner(i), room = s.joints[i] < most;
       let best = -1, bestScore = FORMS_AT, bestDistance = 0, mate = -1, mateDistance = Infinity;
       if (++this.tick > 0x7ffffff0) { this.tick = 1; this.mark.fill(-1); }
       const tick = this.tick, cx = Math.floor(x * inv), cy = Math.floor(y * inv), cz = Math.floor(z * inv);
@@ -416,7 +438,7 @@ export class StructuralSystem {
           agree += (1 - Math.abs(s.excitation[i] - s.excitation[j])) / (1 + pitch * pitch);
           if (!seeking) continue;
           // The nearest matter it could bond with, once both are near and settled enough: what it drifts towards.
-          if (d2 < mateDistance && s.cohesion[j] >= 0.5 && Math.abs(pitch) < 1 && (spans ? s.span[j] < 0 : room && j !== wire && s.span[j] >= 0 && s.joints[j] < most)) {
+          if (d2 < mateDistance && s.cohesion[j] >= 0.5 && Math.abs(pitch) < 1 && (spans ? s.span[j] < 0 && s.body[j] < 0 : room && j !== wire && s.span[j] >= 0 && s.joints[j] < most)) {
             mate = j; mateDistance = d2;
           }
           if (s.cohesion[j] < 1) continue;
@@ -529,7 +551,7 @@ export class StructuralSystem {
 
     let free = 0, nodes = 0, fragments = 0, order = 0, temperature = 0, excitation = 0, kinetic = 0;
     for (let i = 0; i < s.count; i++) {
-      if (s.span[i] < 0 && s.joints[i] === 0) free++;
+      if (s.span[i] < 0 && s.joints[i] === 0 && s.links[i] === 0) free++;
       if (s.role[i] === ROLE.node) nodes++;
       if (s.role[i] === ROLE.fragment || s.lifecycle[i] === LIFECYCLE.fractured) fragments++;
       order += s.order[i]; temperature += s.temperature[i]; excitation += s.excitation[i];

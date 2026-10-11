@@ -79,7 +79,8 @@ export function stepCohesion(s: StructuralState, i: number, env: Readonly<Struct
 
 /** Role weights of element `i` over `dt` (`speed`: its own, units/s), and its leading role with hysteresis. */
 export function stepRoles(s: StructuralState, i: number, dt: number, stability: number, speed: number): void {
-  const hasSpan = s.span[i] >= 0, hasJoint = s.joints[i] > 0, bonded = hasSpan || hasJoint;
+  // A vertex of a volumetric body is welded matter too: the links it holds count as joints.
+  const hasSpan = s.span[i] >= 0, hasJoint = s.joints[i] > 0 || s.links[i] > 0, bonded = hasSpan || hasJoint;
   const order = s.order[i], shock = s.shock[i];
   const w = tendency;
   // Stable, ordered matter is a node in waiting; a weld makes it one.
@@ -111,7 +112,7 @@ export function stepRoles(s: StructuralState, i: number, dt: number, stability: 
 /** The lifecycle of element `i` as its continuous state reads now; each threshold is lower on the way out than on the way in. */
 export function readLifecycle(s: StructuralState, i: number, speed: number): number {
   const was = s.lifecycle[i];
-  if (s.span[i] >= 0 || s.joints[i] > 0) return s.stress[i] > (was === LIFECYCLE.stressed ? 0.45 : 0.6) ? LIFECYCLE.stressed : LIFECYCLE.bound;
+  if (s.span[i] >= 0 || s.joints[i] > 0 || s.links[i] > 0) return s.stress[i] > (was === LIFECYCLE.stressed ? 0.45 : 0.6) ? LIFECYCLE.stressed : LIFECYCLE.bound;
   if (s.shock[i] > (was === LIFECYCLE.fractured ? 0.3 : 0.5)) return LIFECYCLE.fractured;
   let memory = 0;
   for (let slot = 0; slot < MEMORY_SLOTS; slot++) memory = Math.max(memory, s.memStrength[i * MEMORY_SLOTS + slot]);

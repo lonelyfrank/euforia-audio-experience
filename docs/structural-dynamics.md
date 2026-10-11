@@ -4,6 +4,12 @@ Data: 8 ottobre 2026. Continua [visual-engine](visual-engine.md), [physical-scen
 e [physics-engine](physics-engine.md). Prima milestone di un sottosistema additivo: nessuna scena
 esistente è stata modificata, sostituita o migrata.
 
+> 11 ottobre 2026: i corpi tridimensionali (link, facce, celle, frattura e ricomposizione di solidi)
+> sono un'estensione di questo sistema, descritta in [solid-dynamics](solid-dynamics.md). Per essa
+> le leggi di carico, fatica e memoria di `BondSystem` sono diventate funzioni (`loadOf`, `tire`,
+> `fade`) con la stessa aritmetica, l'ambiente del mondo è in `structural/WorldEnvironment.ts`, e ogni
+> elemento ha due campi in più (`body`, `links`): un vertice di un solido non prende fili.
+
 > L'audio inietta energia e struttura nel mondo. Il mondo la propaga. I sistemi di primitive
 > decidono come si comporta la forma fisica. Il rendering rivela soltanto il risultato.
 

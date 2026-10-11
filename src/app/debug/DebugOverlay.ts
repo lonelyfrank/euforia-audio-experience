@@ -1,7 +1,5 @@
 import type { DiagnosticsController } from '../../diagnostics/core/DiagnosticsController';
 import { settingsStore } from '../../stores/settingsStore';
-import { hzToPosition } from '../../audio/visual-response/spectrum';
-import type { AudioFrame, MusicalState, VisualResponseFrame } from '../../types/audio';
 import type { App } from '../App';
 import { SECTION_NAMES } from '../../audio/features/decode';
 import type { AudioEvent, EventCursor } from '../../experience/EventStream';
@@ -12,167 +10,52 @@ import { GEOMETRY_KEYS, SIGNED_TRAITS } from '../../visual-engine/geometry/Geome
 import { worldLab } from '../../visual-engine/VisualWorld';
 import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
 import { createMaterial, deriveMaterial, MATERIAL_KEYS } from '../../render-systems/materials/VisualMaterial';
+import { columnsFor, packRows } from './chartLayout';
 
-/** Development chart adapter: retained analyzer/interpretation/world graphs in Workspace sections.
+/** Development chart adapter: retained analyzer/interpretation/world graphs in the workspace inspector.
  * The workspace clocks refreshes; no independent overlay, shortcut or animation loop.
- * Numeric readouts are also available in the DOM metric registry below the plots.
+ * The canvas is as wide as its host, in CSS pixels: readouts flow into the rows and columns that width allows
+ * (one column in the inspector, two in a wide one) instead of being scaled down with it.
+ * Numeric readouts are also available in the DOM metric registry below the charts.
+ * Audio & Analysis is not drawn here: it has its own panels (diagnostics/workspace/AudioAnalysis.ts).
  */
 
-const COLUMN = 310;
 const GAP = 16;
-const WIDTH = COLUMN * 2 + GAP;
-const ROW = 14;
+const ROW = 15;
 const LABEL = 100;
-const BAR = 150;
-const COLORS = { low: '#f0a050', mid: '#6fd08c', high: '#6cc8f0', hit: '#e070d0', level: '#d8dcf0', tempo: '#f0e070', dim: '#a0a0a0' };
+/** Room after a bar for its value. */
+const VALUE = 46;
+const FONT = '11px "Geist Variable", Geist, system-ui, sans-serif';
+/** The cockpit's series colours (design system tokens), as canvas needs them. */
+const COLORS = { low: '#f08a3c', mid: '#2fd08a', high: '#38c6ff', hit: '#e27bd8', level: '#f3f1fa', tempo: '#f5b73b', dim: '#a6a4b8', track: '#1b1e46' };
 
-type Read = (a: AudioFrame, r: VisualResponseFrame) => number;
-type Row = [label: string, color: string, read: Read];
-type Section = [title: string, rows: Row[]];
+type Bar = readonly [label: string, color: string, value: number];
 
-const LEFT: Section[] = [
-  [
-    'AudioFrame · bands',
-    [
-      ['Bass', COLORS.low, (a) => a.bass],
-      ['LowMid', COLORS.low, (a) => a.lowMid],
-      ['Mid', COLORS.mid, (a) => a.mid],
-      ['HighMid', COLORS.high, (a) => a.highMid],
-      ['Treble', COLORS.high, (a) => a.treble],
-    ],
-  ],
-  [
-    'AudioFrame · levels & beat',
-    [
-      ['Volume', COLORS.level, (a) => a.volume],
-      ['Energy', COLORS.level, (a) => a.energy],
-      ['Loudness', COLORS.level, (a) => a.loudness],
-      ['Onset', COLORS.hit, (a) => a.onset],
-      ['BeatPulse', COLORS.hit, (a) => a.beatPulse],
-      ['TempoConf', COLORS.tempo, (a) => a.tempoConfidence],
-      ['BeatPhase', COLORS.tempo, (a) => a.beatPhase],
-    ],
-  ],
-  [
-    'AudioFrame · transients & texture',
-    [
-      ['LowFlux', COLORS.low, (a) => a.lowFlux],
-      ['MidFlux', COLORS.mid, (a) => a.midFlux],
-      ['HighFlux', COLORS.high, (a) => a.highFlux],
-      ['RMS', COLORS.level, (a) => a.rms],
-      ['Flatness', COLORS.level, (a) => a.flatness],
-    ],
-  ],
-];
-
-LEFT.push(['Section trends · −1…+1', [
-  ['EnergyTrend', COLORS.level, (_, r) => r.music.energyTrend],
-  ['MotionTrend', COLORS.mid, (_, r) => r.music.motionTrend],
-  ['DensityTrend', COLORS.high, (_, r) => r.music.densityTrend],
-  ['TensionTrend', COLORS.hit, (_, r) => r.music.tensionTrend],
-  ['OpenTrend', COLORS.tempo, (_, r) => r.music.opennessTrend],
-  ['RecentPeak', COLORS.level, (_, r) => r.music.recentPeak],
-  ['RecentDrop', COLORS.hit, (_, r) => r.music.recentDrop],
-]]);
-
-const RIGHT: Section[] = [
-  [
-    'MusicState · sonic roles',
-    [
-      ['Presence', COLORS.level, (_, r) => r.presence],
-      ['Weight', COLORS.low, (_, r) => r.weight],
-      ['Flow', COLORS.mid, (_, r) => r.flow],
-      ['Detail', COLORS.high, (_, r) => r.detail],
-      ['Shimmer', COLORS.high, (_, r) => r.shimmer],
-      ['Impact', COLORS.hit, (_, r) => r.impact],
-      ['Trace', COLORS.hit, (_, r) => r.trace],
-      ['Density', COLORS.level, (_, r) => r.density],
-      ['Motion', COLORS.mid, (_, r) => r.motion],
-      ['Openness', COLORS.level, (_, r) => r.openness],
-      ['Tension', COLORS.hit, (_, r) => r.tension],
-      ['Audible L', COLORS.low, (_, r) => r.lowAudible],
-      ['Audible M', COLORS.mid, (_, r) => r.midAudible],
-      ['Audible H', COLORS.high, (_, r) => r.highAudible],
-    ],
-  ],
-  [
-    'Music context',
-    [
-      ['State conf.', COLORS.level, (_, r) => r.stateConfidence],
-      ['TempoLock', COLORS.tempo, (_, r) => r.music.tempoLock],
-      ['Beat', COLORS.tempo, (_, r) => r.music.beats - Math.floor(r.music.beats)],
-      ['Bar', COLORS.tempo, (_, r) => (r.music.beats / 4) % 1],
-      ['Intensity', COLORS.level, (_, r) => r.music.intensity],
-      ['Build', COLORS.hit, (_, r) => r.music.build],
-      ['Drop', COLORS.hit, (_, r) => r.music.drop],
-      ['LowPerc', COLORS.low, (_, r) => r.music.lowPercussion],
-      ['MidPerc', COLORS.mid, (_, r) => r.music.midPercussion],
-      ['HighPerc', COLORS.high, (_, r) => r.music.highPercussion],
-      ['Brightness', COLORS.high, (_, r) => r.music.brightness],
-      ['Tonality', COLORS.mid, (_, r) => r.music.tonality],
-      ['SongLock', COLORS.level, (_, r) => r.music.songLock],
-    ],
-  ],
-];
-
-const rowsOf = (sections: Section[]) => sections.reduce((n, [, rows]) => n + rows.length + 1, 0);
-const COLUMNS_HEIGHT = 8 + Math.max(rowsOf(LEFT), rowsOf(RIGHT)) * ROW;
-const SPECTRUM_HEIGHT = 60;
-const SPECTRUM_TOP = COLUMNS_HEIGHT + 4 * ROW + 16;
-/** Ten seconds sampled at 5 Hz, independent of rendering frame rate. */
-const HISTORY_RATE = 5;
-const HISTORY = 10 * HISTORY_RATE;
-const HISTORY_HEIGHT = 40;
-const WAVE_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 32;
-const HISTORY_TOP = WAVE_TOP + 74 + ROW;
-const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
-const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
-const DYNAMICS_TOP = ANALYSIS_TOP + 6 * ROW + 6;
-/** Room for 20 Dynamics channels (two per row). */
-const DYNAMICS_ROWS = 11;
-const SHOW_TOP = DYNAMICS_TOP + DYNAMICS_ROWS * ROW + 6;
-const EXPERIENCE_TOP = SHOW_TOP + 7 * ROW;
-/** Experience block: text lines, then the ERB row. */
-const EXPERIENCE_LINES = 16;
-const WORLD_TOP = EXPERIENCE_TOP + (EXPERIENCE_LINES + 1) * ROW + 6;
-/** World block: title, six rows of paired bars, forces, adapter. */
-const WORLD_ROWS = 9;
-const MATTER_TOP = WORLD_TOP + WORLD_ROWS * ROW + 6;
-/** Matter block: title, morphology and material as paired bars, prediction, the scene's own numbers (two lines), the renderer. */
-const MORPHOLOGY_ROWS = Math.ceil(MORPHOLOGY_KEYS.length / 2);
-const MATERIAL_ROWS = Math.ceil(MATERIAL_KEYS.length / 2);
-const MATTER_ROWS = 1 + MORPHOLOGY_ROWS + 1 + MATERIAL_ROWS + 4;
-const WORLD_ENGINE_TOP = MATTER_TOP + MATTER_ROWS * ROW + 6;
-/** Visual World block: title, the geometry traits beyond the material as paired bars, the primitives, the fields. */
+/** The geometry traits beyond the material (those are shown with it). */
 const GEOMETRY_TRAITS = GEOMETRY_KEYS.filter((key) => !(MATERIAL_KEYS as readonly string[]).includes(key));
-const GEOMETRY_ROWS = Math.ceil(GEOMETRY_TRAITS.length / 2);
-const WORLD_ENGINE_ROWS = 1 + GEOMETRY_ROWS + 3;
-const HEIGHT = WORLD_ENGINE_TOP + WORLD_ENGINE_ROWS * ROW;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const STATE_COLORS: Record<MusicalState, string> = {
-  silent: COLORS.dim,
-  calm: COLORS.high,
-  rising: COLORS.tempo,
-  active: COLORS.mid,
-  peak: COLORS.hit,
-  falling: COLORS.low,
-};
-const LOW_END = hzToPosition(250);
-const MID_END = hzToPosition(2000);
+/** A labelled run of readouts: the label stays with the first one when the run wraps. */
+const labelled = (label: string, items: readonly string[]): string[] => [`${label} ${items[0] ?? '–'}`, ...items.slice(1)];
 
-export type DebugView = 'audio' | 'experience' | 'world' | 'matter';
+export type DebugView = 'experience' | 'world' | 'matter';
 
 export class DebugOverlay {
-  private view: DebugView = 'audio';
-  private top = 0;
-  private height = DIRECTOR_TOP;
+  private view: DebugView = 'experience';
   private readonly root: HTMLElement;
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private session = -1;
   private visible = true;
   private readonly observer = new IntersectionObserver(entries => { this.visible = entries.some(e => e.isIntersecting); });
-  private lastTime = performance.now();
+  /** The host's width as its observer last reported it: drawing never asks the layout for it. */
+  private hostWidth = 0;
+  private readonly sizes = new ResizeObserver(entries => { this.hostWidth = Math.floor(entries[entries.length - 1].contentRect.width); });
+  /** The canvas in CSS pixels: as wide as its host, as tall as the view's readouts need at that width. */
+  private width = 0;
+  private height = 0;
+  private columns: 1 | 2 = 1;
+  /** Where the next row goes (its vertical middle). */
+  private y = 0;
   private frameMs = 16;
   private lastBeat = 0;
   private readonly eventCursor: EventCursor = { time: -Infinity, seq: 0 };
@@ -184,371 +67,284 @@ export class DebugOverlay {
     if (this.recentEvents.length > 5) this.recentEvents.shift();
   };
   private lastCue = 0;
-  /** Ring buffers of the history strip. */
-  private readonly energy = new Float32Array(HISTORY);
-  private readonly presence = new Float32Array(HISTORY);
-  private readonly motion = new Float32Array(HISTORY);
-  private readonly openness = new Float32Array(HISTORY);
-  private readonly tension = new Float32Array(HISTORY);
-  private historyTime = 0;
-  private head = 0;
   /** The protagonist's material, derived here from the same world view and snapshot the scene uses. */
   private readonly material = createMaterial();
   /** What the renderer drew last frame (its counters are summed over the frame's passes while the overlay is open). */
   private readonly releaseDiagnostics: () => void;
   private readonly drawn = { calls: 0, triangles: 0, points: 0, lines: 0 };
+  private readonly fits = (row: string): boolean => this.ctx.measureText(row).width <= this.width;
+  private readonly emit = (row: string): void => { this.ctx.fillText(row, 0, this.y, this.width); this.y += ROW; };
 
   constructor(private readonly app: App, private readonly diagnostics: DiagnosticsController, parent: HTMLElement) {
     this.root = document.createElement('div');
     this.root.className = 'ws-debug';
     this.canvas = document.createElement('canvas');
     this.canvas.setAttribute('role', 'img');
-    this.canvas.setAttribute('aria-label', 'Grafici live; valori e unità disponibili nell’inspector sottostante');
+    this.canvas.setAttribute('aria-label', 'Grafici live; valori e unità disponibili nel registro metriche sottostante');
     this.ctx = this.canvas.getContext('2d')!;
+    this.ctx.font = FONT;
     this.root.append(this.canvas);
     parent.append(this.root);
     this.observer.observe(this.root);
-    this.setView('audio');
+    this.sizes.observe(this.root);
     // Shared totals are measured by the observer at the RenderEngine frame boundary.
     this.releaseDiagnostics = diagnostics.acquire();
   }
 
   dispose(): void {
     this.observer.disconnect();
+    this.sizes.disconnect();
     this.releaseDiagnostics();
     this.root.remove();
   }
 
   setView(view: DebugView): void {
+    if (view === this.view && this.height > 0) return;
     this.view = view;
-    this.top = view === 'audio' ? 0 : view === 'experience' ? DIRECTOR_TOP : view === 'world' ? WORLD_TOP : MATTER_TOP;
-    this.height = (view === 'audio' ? DIRECTOR_TOP : view === 'experience' ? WORLD_TOP : view === 'world' ? MATTER_TOP : HEIGHT) - this.top;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = WIDTH * dpr; this.canvas.height = this.height * dpr;
-    this.canvas.style.cssText = 'display:block;width:min(100%,960px);height:auto';
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, -this.top * dpr);
+    // Measured again by the next refresh.
+    this.height = 0;
   }
 
-  refresh(now: number): void {
+  /** Draws the current view, when somebody can see it. */
+  refresh(): void {
+    if (!this.visible) return;
     if (this.session !== this.app.audio.session) {
       this.session = this.app.audio.session;
-      this.energy.fill(0); this.presence.fill(0); this.motion.fill(0); this.openness.fill(0); this.tension.fill(0);
-      this.head = this.historyTime = this.lastBeat = this.lastCue = 0; this.recentEvents.length = 0;
+      this.lastBeat = this.lastCue = 0; this.recentEvents.length = 0;
       this.eventCursor.time = -Infinity; this.eventCursor.seq = 0;
     }
-    if (!this.visible) { this.lastTime = now; return; }
+    // Until its observer has spoken (the first draw after mounting) the host is asked once.
+    const width = this.hostWidth || Math.floor(this.root.clientWidth);
+    if (width <= 0) return;
+    if (width !== this.width) { this.width = width; this.columns = columnsFor(width); this.height = 0; }
     this.frameMs = this.diagnostics.renderer?.frameMs ?? 0;
-    const dt = Math.min((now - this.lastTime) / 1000, HISTORY / HISTORY_RATE);
-    this.lastTime = now;
-
-    const { ctx } = this;
     Object.assign(this.drawn, this.diagnostics.renderer?.drawn);
-    const audio = this.app.audio.frame;
-    const response = this.app.audio.visual;
-    const music = response.music;
-    ctx.clearRect(0, this.top, WIDTH, this.height);
-    if (this.view === 'world') { this.drawWorld(this.app.audio.experience.presented); return; }
-    if (this.view === 'matter') { this.drawMatter(this.app.audio.experience.presented); this.drawVisualWorld(); return; }
-    ctx.textBaseline = 'middle';
-    this.column(LEFT, 0, audio, response);
-    this.column(RIGHT, COLUMN + GAP, audio, response);
+    this.paint();
+    // The canvas grows to what the view needs at this width (and is drawn again); it never shrinks under a row that wrapped.
+    if (this.y > this.height) { this.resize(this.y); this.paint(); }
+  }
 
-    let y = COLUMNS_HEIGHT;
-    ctx.fillStyle = COLORS.tempo;
-    ctx.fillText(
-      `Tempo ${music.tempo.toFixed(1)} (detected ${audio.bpm ? audio.bpm.toFixed(1) : '–'})  pace ×${music.pace.toFixed(2)}   ` +
-        `song #${music.song}   ${this.frameMs.toFixed(1)} ms${audio.beat ? '   ● beat' : ''}`,
-      0,
-      y,
-    );
-    y += ROW;
-    ctx.fillStyle = STATE_COLORS[response.state];
-    ctx.fillText(`State: ${response.state} ${response.stateAge.toFixed(1)}s ← ${response.previousState}`, 0, y);
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(`noise floor ${this.app.audio.response.noiseFloor.toFixed(1)} dB`, COLUMN + GAP, y);
-    y += ROW;
+  private resize(height: number): void {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.height = Math.ceil(height);
+    this.canvas.width = Math.round(this.width * dpr); this.canvas.height = Math.round(this.height * dpr);
+    this.canvas.style.height = `${this.height}px`;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.font = FONT; this.ctx.textBaseline = 'middle';
+  }
 
-    // Spectral balance (left) and per-song variation (right).
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText('Balance L / M / H', 0, y);
-    ctx.fillText('Variation (per song)', COLUMN + GAP, y);
-    y += ROW - 4;
-    let x = 0;
-    for (const [share, color] of [
-      [response.lowShare, COLORS.low],
-      [response.midShare, COLORS.mid],
-      [response.highShare, COLORS.high],
-    ] as const) {
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, share * COLUMN, 8);
-      x += share * COLUMN;
-    }
-    const cell = COLUMN / music.variation.length;
-    for (let i = 0; i < music.variation.length; i++) {
-      ctx.fillStyle = '#1a1e36';
-      ctx.fillRect(COLUMN + GAP + i * cell, y - 10, cell - 3, 20);
-      ctx.fillStyle = COLORS.tempo;
-      const h = music.variation[i] * 20;
-      ctx.fillRect(COLUMN + GAP + i * cell, y + 10 - h, cell - 3, h);
-    }
+  private paint(): void {
+    this.ctx.clearRect(0, 0, this.width, this.height);
+    this.ctx.lineWidth = 1;
+    this.y = ROW / 2 + 2;
+    const snapshot = this.app.audio.experience.presented;
+    if (this.view === 'experience') { this.drawDirection(); this.drawAnalysis(snapshot); }
+    else if (this.view === 'world') this.drawWorld(snapshot);
+    else { this.drawMatter(snapshot); this.y += ROW / 2; this.drawVisualWorld(); }
+    this.y -= ROW / 2 - 4;
+  }
 
-    // Spectrum with the region boundaries used by the balance.
-    const top = SPECTRUM_TOP;
-    const { spectrum } = audio;
-    const w = WIDTH / spectrum.length;
-    for (let i = 0; i < spectrum.length; i++) {
-      const p = (i + 0.5) / spectrum.length;
-      ctx.fillStyle = p < LOW_END ? COLORS.low : p < MID_END ? COLORS.mid : COLORS.high;
-      const h = spectrum[i] * SPECTRUM_HEIGHT;
-      ctx.fillRect(i * w, top + SPECTRUM_HEIGHT - h, Math.max(w - 0.5, 0.5), h);
-    }
-    ctx.fillStyle = COLORS.dim;
-    for (const [p, label] of [
-      [LOW_END, '250'],
-      [MID_END, '2k'],
-    ] as const) {
-      ctx.fillRect(p * WIDTH, top, 1, SPECTRUM_HEIGHT);
-      ctx.fillText(label, p * WIDTH + 3, top + SPECTRUM_HEIGHT + 10);
-    }
+  // ---- layout: rows and columns that follow the host's width -----------------------------
 
-    ctx.strokeStyle = COLORS.level; ctx.beginPath();
-    const wave = audio.waveform;
-    for (let i = 0; i < wave.length; i++) {
-      const x = i / Math.max(1, wave.length - 1) * WIDTH, y = WAVE_TOP + 32 - wave[i] * 28;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke(); ctx.fillStyle = COLORS.dim; ctx.fillText('Waveform · AudioFrame · −1…1', 0, WAVE_TOP);
-    this.historyTime += dt;
-    while (this.historyTime >= 1 / HISTORY_RATE) {
-      this.historyTime -= 1 / HISTORY_RATE;
-      this.energy[this.head] = audio.loudness;
-      this.presence[this.head] = response.presence;
-      this.motion[this.head] = response.motion;
-      this.openness[this.head] = response.openness;
-      this.tension[this.head] = response.tension;
-      this.head = (this.head + 1) % HISTORY;
-    }
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText('History 10 s:', 0, HISTORY_TOP - ROW / 2 - 2);
-    ctx.fillStyle = COLORS.level;
-    ctx.fillText('loudness', 90, HISTORY_TOP - ROW / 2 - 2);
-    ctx.fillStyle = COLORS.low;
-    ctx.fillText('presence', 160, HISTORY_TOP - ROW / 2 - 2);
-    ctx.fillStyle = COLORS.mid;
-    ctx.fillText('motion', 230, HISTORY_TOP - ROW / 2 - 2);
-    ctx.fillStyle = COLORS.tempo;
-    ctx.fillText('openness', 290, HISTORY_TOP - ROW / 2 - 2);
-    ctx.fillStyle = COLORS.hit;
-    ctx.fillText('tension', 365, HISTORY_TOP - ROW / 2 - 2);
-    ctx.fillStyle = '#1a1e36';
-    ctx.fillRect(0, HISTORY_TOP, WIDTH, HISTORY_HEIGHT);
-    this.trace(this.energy, COLORS.level);
-    this.trace(this.presence, COLORS.low);
-    this.trace(this.motion, COLORS.mid);
-    this.trace(this.openness, COLORS.tempo);
-    this.trace(this.tension, COLORS.hit);
+  private get column(): number { return (this.width - GAP * (this.columns - 1)) / this.columns; }
+
+  /** Short readouts on as few rows as the width allows. */
+  private flow(color: string, parts: readonly string[], separator = ' · '): void {
+    this.ctx.fillStyle = color;
+    packRows(parts, separator, this.fits, this.emit);
+  }
+
+  /** Readouts in the host's columns: two side by side in a wide inspector, one under the other in a narrow one. */
+  private bars(rows: readonly Bar[]): void {
+    const step = this.column + GAP;
+    rows.forEach(([label, color, value], i) => this.bar(label, color, value, (i % this.columns) * step, this.y + Math.floor(i / this.columns) * ROW));
+    this.y += Math.ceil(rows.length / this.columns) * ROW;
+  }
+
+  // ---- Experience & Direction -------------------------------------------------------------
+
+  /** What the direction chose and how it modulates the scene. */
+  private drawDirection(): void {
+    const audio = this.app.audio.frame, state = this.app.audio.visual;
     const engine = this.app.directionDebug;
     const direction = engine.effectiveDirection;
     const modulation = engine.modulation;
-    ctx.fillStyle = COLORS.level;
-    ctx.fillText(`${settingsStore.get().scene} · ${direction.mood} · ${direction.experience} · auto ${direction.autoDirection ? engine.autoDirection.confidence.toFixed(2) : 'off'}`, 0, DIRECTOR_TOP);
-    ctx.fillText(`Centroid ${audio.centroidHz.toFixed(0)} Hz · rolloff ${audio.rolloffHz.toFixed(0)} Hz · spread ${audio.spreadHz.toFixed(0)} Hz`, 0, DIRECTOR_TOP + ROW);
-    const state = this.app.audio.visual;
-    ctx.fillText(`Short energy ${state.shortEnergy.toFixed(2)} · Δ ${state.energyDelta.toFixed(2)} · range ${state.dynamicRange.toFixed(2)} · transient ${state.transient.toFixed(2)}`, 0, DIRECTOR_TOP + ROW * 2);
+    this.flow(COLORS.level, [settingsStore.get().scene, direction.mood, direction.experience, `auto ${direction.autoDirection ? engine.autoDirection.confidence.toFixed(2) : 'off'}`]);
+    this.flow(COLORS.level, [`Centroid ${audio.centroidHz.toFixed(0)} Hz`, `rolloff ${audio.rolloffHz.toFixed(0)} Hz`, `spread ${audio.spreadHz.toFixed(0)} Hz`]);
+    this.flow(COLORS.level, [`Short energy ${state.shortEnergy.toFixed(2)}`, `Δ ${state.energyDelta.toFixed(2)}`, `range ${state.dynamicRange.toFixed(2)}`, `transient ${state.transient.toFixed(2)}`]);
     if (modulation) {
-      this.bar('Scale', COLORS.low, modulation.scale, 0, DIRECTOR_TOP + ROW * 3);
-      this.bar('Distortion', COLORS.mid, modulation.distortion, COLUMN + GAP, DIRECTOR_TOP + ROW * 3);
-      this.bar('Camera', COLORS.tempo, modulation.cameraMotion, 0, DIRECTOR_TOP + ROW * 4);
-      this.bar('Particles', COLORS.high, modulation.particleEmission, COLUMN + GAP, DIRECTOR_TOP + ROW * 4);
-      this.bar('Bloom', COLORS.level, modulation.bloom, 0, DIRECTOR_TOP + ROW * 5);
-      this.bar('Persistence', COLORS.hit, modulation.persistence, COLUMN + GAP, DIRECTOR_TOP + ROW * 5);
-      this.bar('Impact', COLORS.hit, modulation.impact, 0, DIRECTOR_TOP + ROW * 6);
-      this.bar('Visibility', COLORS.level, modulation.visibility, COLUMN + GAP, DIRECTOR_TOP + ROW * 6);
+      this.bars([
+        ['Scale', COLORS.low, modulation.scale], ['Distortion', COLORS.mid, modulation.distortion],
+        ['Camera', COLORS.tempo, modulation.cameraMotion], ['Particles', COLORS.high, modulation.particleEmission],
+        ['Bloom', COLORS.level, modulation.bloom], ['Persistence', COLORS.hit, modulation.persistence],
+        ['Impact', COLORS.hit, modulation.impact], ['Visibility', COLORS.level, modulation.visibility],
+      ]);
     }
-    if (this.view === 'experience') this.drawAnalysis();
-  };
+    this.y += 6;
+  }
 
-  /** The Rust analysis (spectrum-analysis), as received this frame: capture clock, levels, timbre, grid, key. */
-  private drawAnalysis(): void {
+  /** The Rust analysis (spectrum-analysis) as received this frame, then timing, dynamics, the show and the Experience snapshot. */
+  private drawAnalysis(e: ExperienceSnapshot): void {
     const { ctx } = this;
     const features = this.app.audio.features;
     const f = features.frame;
     if (features.beats.count > 0) this.lastBeat = performance.now();
     const beatLit = performance.now() - this.lastBeat < 90;
     const key = f.key < 0 ? '–' : `${KEYS[f.key % 12]}${f.key >= 12 ? 'm' : ''}`;
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(`Analysis (Rust) · capture clock ${f.time.toFixed(2)} s · ${features.frames ? 'live' : 'no frames'}`, 0, ANALYSIS_TOP);
-    ctx.fillStyle = COLORS.level;
-    ctx.fillText(
-      `presence ${f.presence.toFixed(2)} · ${f.loudnessMomentary.toFixed(1)} / ${f.loudnessShort.toFixed(1)} LUFS · slope ${f.loudnessSlope.toFixed(1)} LU/s · ` +
-        `centroid ${f.centroidHz.toFixed(0)} Hz · perc ${f.percussive.toFixed(2)} · width ${f.width.toFixed(2)}${f.clipping > 0.1 ? ' · CLIP' : ''}`,
-      0,
-      ANALYSIS_TOP + ROW,
-    );
-    ctx.fillStyle = beatLit ? COLORS.hit : COLORS.tempo;
-    ctx.fillText(
-      `${beatLit ? '●' : '○'} grid ${f.beatBpm.toFixed(1)} (${f.beatConfidence.toFixed(2)}) beat ${f.beatPhase.toFixed(2)} bar ${f.barPhase.toFixed(2)} ` +
-        `downbeat ${f.downbeatConfidence.toFixed(2)} · tempo ${f.tempoBpm.toFixed(1)} (${f.tempoConfidence.toFixed(2)}) · ` +
-        `onsets ${f.onsetDensity.toFixed(1)}/s · key ${key} (${f.keyConfidence.toFixed(2)})`,
-      0,
-      ANALYSIS_TOP + ROW * 2,
-    );
+    this.flow(COLORS.dim, ['Analysis (Rust)', `capture clock ${f.time.toFixed(2)} s`, features.frames ? 'live' : 'no frames']);
+    this.flow(COLORS.level, [
+      `presence ${f.presence.toFixed(2)}`, `${f.loudnessMomentary.toFixed(1)} / ${f.loudnessShort.toFixed(1)} LUFS`, `slope ${f.loudnessSlope.toFixed(1)} LU/s`,
+      `centroid ${f.centroidHz.toFixed(0)} Hz`, `perc ${f.percussive.toFixed(2)}`, `width ${f.width.toFixed(2)}`, f.clipping > 0.1 ? 'CLIP' : '',
+    ]);
+    this.flow(beatLit ? COLORS.hit : COLORS.tempo, [
+      `${beatLit ? '●' : '○'} grid ${f.beatBpm.toFixed(1)} (${f.beatConfidence.toFixed(2)})`, `beat ${f.beatPhase.toFixed(2)} bar ${f.barPhase.toFixed(2)}`,
+      `downbeat ${f.downbeatConfidence.toFixed(2)}`, `tempo ${f.tempoBpm.toFixed(1)} (${f.tempoConfidence.toFixed(2)})`,
+      `onsets ${f.onsetDensity.toFixed(1)}/s`, `key ${key} (${f.keyConfidence.toFixed(2)})`,
+    ]);
 
     // Timing: what this frame shows and the measured latencies.
     const { timing, clock } = this.app.audio;
     if (timing.beat) this.lastCue = performance.now();
     const cueLit = performance.now() - this.lastCue < 90;
     const ms = (s: number) => `${(s * 1000).toFixed(0)} ms`;
-    ctx.fillStyle = cueLit ? COLORS.hit : COLORS.level;
-    ctx.fillText(
-      `${cueLit ? '●' : '○'} cue · ${timing.mode} ${timing.gridWeight.toFixed(2)} · beat ${timing.beatPhase.toFixed(2)} bar ${timing.barPhase.toFixed(2)} · lead ${ms(timing.lead)} · ` +
-        `clock ${clock.ready ? 'synced' : '–'}`,
-      0,
-      ANALYSIS_TOP + ROW * 3,
-    );
+    this.flow(cueLit ? COLORS.hit : COLORS.level, [
+      `${cueLit ? '●' : '○'} cue`, `${timing.mode} ${timing.gridWeight.toFixed(2)}`, `beat ${timing.beatPhase.toFixed(2)} bar ${timing.barPhase.toFixed(2)}`,
+      `lead ${ms(timing.lead)}`, `clock ${clock.ready ? 'synced' : '–'}`,
+    ]);
+    this.flow(COLORS.dim, [
+      `Latency: attack→frame ${ms(timing.onsetDelay)} + render ${ms(timing.renderLatency)} = ${ms(timing.onsetDelay + timing.renderLatency)}`,
+      `attacks shown ${ms(timing.impactLate)} after heard`, `output ${ms(timing.latency.output)}`,
+    ]);
     const section = SECTION_NAMES[f.section] ?? '?';
     const nextPhrase = f.nextPhraseTime > 0 && clock.ready ? `${(clock.toHost(f.nextPhraseTime) - performance.now() / 1000).toFixed(1)} s` : '–';
-    ctx.fillStyle = COLORS.mid;
-    ctx.fillText(
-      `${section.toUpperCase()} #${f.sectionId}${f.sectionReturn >= 0 ? ` (returns #${f.sectionReturn})` : ''} · ${f.sectionBars} bars · bar ${f.barIndex} · phrase ${f.phraseBar + 1}/${f.phraseBars} next in ${nextPhrase} · ` +
-        `novelty ${f.novelty.toFixed(2)} · sim 4/8/16 ${[...f.similarity].map((x) => x.toFixed(2)).join('/')} · drop ${f.dropExpected.toFixed(2)} · meter ${f.meter || "?"} (${f.meterConfidence.toFixed(2)}) · conf ${f.structureConfidence.toFixed(2)}`,
-      0,
-      ANALYSIS_TOP + ROW * 5,
-    );
+    this.flow(COLORS.mid, [
+      `${section.toUpperCase()} #${f.sectionId}${f.sectionReturn >= 0 ? ` (returns #${f.sectionReturn})` : ''}`, `${f.sectionBars} bars`, `bar ${f.barIndex}`,
+      `phrase ${f.phraseBar + 1}/${f.phraseBars} next in ${nextPhrase}`, `novelty ${f.novelty.toFixed(2)}`,
+      `sim 4/8/16 ${[...f.similarity].map((x) => x.toFixed(2)).join('/')}`, `drop ${f.dropExpected.toFixed(2)}`,
+      `meter ${f.meter || '?'} (${f.meterConfidence.toFixed(2)})`, `conf ${f.structureConfidence.toFixed(2)}`,
+    ]);
+    this.y += 6;
+
     // Dynamics: every channel with its type and coefficients: springs ω, ζ (1 while snapped); followers rise/fall; envelopes decay.
     const dynamics = this.app.dynamics;
-    ctx.fillStyle = COLORS.dim;
     const guard = this.app.flashGuard;
-    ctx.fillText(
-      `Dynamics (${(1 / dynamics.step).toFixed(0)} Hz, audio clock ${dynamics.time.toFixed(2)} s${dynamics.dropped ? `, ${dynamics.dropped} events dropped` : ''}) · ` +
-        `flash guard ≥${ms(guard.limits.gap)} apart, max ${guard.limits.max}, ${guard.limited} limited`,
-      0,
-      DYNAMICS_TOP,
-    );
+    this.flow(COLORS.dim, [
+      `Dynamics (${(1 / dynamics.step).toFixed(0)} Hz, audio clock ${dynamics.time.toFixed(2)} s${dynamics.dropped ? `, ${dynamics.dropped} events dropped` : ''})`,
+      `flash guard ≥${ms(guard.limits.gap)} apart, max ${guard.limits.max}, ${guard.limited} limited`,
+    ]);
+    const step = this.column + GAP;
     for (let c = 0; c < dynamics.channelCount; c++) {
       const s = dynamics.inspect(c);
       const params = s.omega > 0 ? ` ω${s.omega.toFixed(1)} ζ${s.zeta.toFixed(2)}` : s.rise > 0 ? ` ↑${ms(s.rise)} ↓${ms(s.fall)}` : ` τ${ms(s.fall)}`;
+      const x = (c % this.columns) * step, y = this.y + Math.floor(c / this.columns) * ROW;
       ctx.fillStyle = s.value > 0.02 ? COLORS.hit : COLORS.dim;
-      ctx.fillText(`${s.name.padEnd(16)}${s.value.toFixed(2).padStart(6)} ${s.type}${params}`, (c % 2) * (COLUMN + GAP), DYNAMICS_TOP + ROW * (1 + (c >> 1)));
+      ctx.fillText(s.name, x, y, LABEL - 4);
+      ctx.fillText(`${s.value.toFixed(2)} ${s.type}${params}`, x + LABEL, y, this.column - LABEL);
     }
+    this.y += Math.ceil(dynamics.channelCount / this.columns) * ROW + 6;
+
     // Show: the director's mode, budget and effect, the slots, and its last decisions with why.
     const show = this.app.show;
-    ctx.fillStyle = COLORS.tempo;
-    const slots = show.slots.map((s, i) => (s.fixture ? `${i === 0 ? '★' : '·'}${s.fixture} ${s.intensity.toFixed(2)} h${s.hue}${s.tint > 0 ? `+${s.tint.toFixed(2)}` : ''}${s.mirror ? ' ⇋' : ''}` : '–')).join('  ');
-    ctx.fillText(`Show ${show.mode} · budget ${show.budget.toFixed(1)} · effect ${show.activeEffect}${show.activeEffect !== show.effect ? ` (${show.effect} needs a grid)` : ''} · ${slots}`, 0, SHOW_TOP);
-    ctx.fillStyle = COLORS.dim;
-    show.log.slice(-5).forEach((d, i) => ctx.fillText(`${d.time.toFixed(1)} s  ${d.what}  ← ${d.why}`, 0, SHOW_TOP + ROW * (i + 1)));
+    this.flow(COLORS.tempo, [
+      `Show ${show.mode}`, `budget ${show.budget.toFixed(1)}`, `effect ${show.activeEffect}${show.activeEffect !== show.effect ? ` (${show.effect} needs a grid)` : ''}`,
+      ...show.slots.map((s, i) => (s.fixture ? `${i === 0 ? '★' : '·'}${s.fixture} ${s.intensity.toFixed(2)} h${s.hue}${s.tint > 0 ? `+${s.tint.toFixed(2)}` : ''}${s.mirror ? ' ⇋' : ''}` : '–')),
+    ]);
+    for (const d of show.log.slice(-5)) this.flow(COLORS.dim, [`${d.time.toFixed(1)} s  ${d.what}`, `← ${d.why}`], '  ');
+    this.y += 6;
+
     const engine = this.app.audio;
-    const e = engine.experience.presented;
     const a = e.acoustic, state = e.state, plan = e.plan, physics = e.physics;
     const rt = engine.realtimeStats;
     const ahead = (time: number) => (time > 0 ? `+${ms(time - state.time)}` : '–');
     const q = a.loudnessQuantiles;
     engine.experience.events.forEachHeard(this.eventCursor, timing.heardTime, this.keepEvent);
-    const recent = this.recentEvents.map((x) => `${x.type}@${x.audioTime.toFixed(2)}${x.band >= 0 ? `/b${x.band}` : ''} ${x.strength.toFixed(2)}·${x.confidence.toFixed(2)}`).join('  ');
-    const lines = [
-      rt
-        ? `Realtime ${rt.mode} · DSP ${(rt.load * 100).toFixed(1)}% core q${rt.quality} · DSP age ${ms(rt.dspAge)} · transfer ${ms(rt.transfer)} · ring backlog ${rt.backlog} · staged ${rt.pending} dropped ${rt.dropped} · lost ${rt.lost} filled ${rt.filled} · ${rt.batches} batches`
-        : `Realtime native capture thread · attack→frame ${ms(timing.onsetDelay)}`,
-      `Experience · heard snapshot ${state.time.toFixed(2)} s · ${state.narrative} (${state.narrativeConfidence.toFixed(2)}) / ${state.trajectory} (${state.trajectoryConfidence.toFixed(2)})`,
-      `Physical RMS ${a.rms.toFixed(3)} peak ${a.peak.toFixed(3)} crest ${a.crest.toFixed(2)} entropy ${a.entropy.toFixed(2)} complexity ${a.complexity.toFixed(2)}`,
-      `Tonal H ${a.harmonicity.toFixed(2)} inH ${a.inharmonicity.toFixed(2)} rough ${a.roughness.toFixed(2)} phase ${a.phaseCoherence.toFixed(2)} · H/P/R ${a.harmonicShare.toFixed(2)}/${a.percussiveShare.toFixed(2)}/${a.residualShare.toFixed(2)}`,
-      `Perceptual M ${a.loudnessMomentary.toFixed(1)} S ${a.loudnessShort.toFixed(1)} range~ ${a.loudnessRange.toFixed(1)} LU · bright ${a.perceivedBrightness.toFixed(2)} DSP ${a.dspQuality}`,
-      `Context P10/50/90/95 ${q[0].toFixed(1)}/${q[1].toFixed(1)}/${q[2].toFixed(1)}/${q[3].toFixed(1)} pos ${a.loudnessPosition.toFixed(2)} · band above floor ${[...a.bandLevel].map((x) => x.toFixed(1)).join(' ')}`,
-      `Spatial width ${a.width.toFixed(2)} corr ${a.correlation.toFixed(2)} mid/side ${a.midEnergy.toFixed(4)}/${a.sideEnergy.toFixed(4)} pan ${a.balance.toFixed(2)}`,
-      `Music BPM ${a.beatBpm.toFixed(1)} meter ${a.meter || '?'} conf ${a.meterConfidence.toFixed(2)} bar ${state.barPhase.toFixed(2)} phrase ${state.phrasePhase.toFixed(2)} novelty ${state.novelty.toFixed(2)}`,
-      `Forecast beat ${ahead(state.nextBeatTime)} (${state.nextBeatConfidence.toFixed(2)}) downbeat ${ahead(state.nextDownbeatTime)} (${state.nextDownbeatConfidence.toFixed(2)}) phrase ${ahead(state.nextPhraseTime)} (${state.nextPhraseConfidence.toFixed(2)}) · horizon ${state.predictionHorizon.toFixed(1)} s`,
-      `Likely continue ${state.likelyContinuation.toFixed(2)} build ${state.likelyBuild.toFixed(2)} release ${state.likelyRelease.toFixed(2)} boundary ${state.likelyBoundary.toFixed(2)} · conf ${state.predictionConfidence.toFixed(2)}`,
-      `Anticipation ${state.anticipation.toFixed(2)} (${state.anticipationConfidence.toFixed(2)}) stored ${state.releasePotential.toFixed(2)} release ${state.release.toFixed(2)} · motif ${state.motif}/${state.recurrence} · dE ${state.energyVelocity.toFixed(2)}/s`,
-      `Entropy ${state.visualEntropy.toFixed(2)} fatigue ${state.fatigue.toFixed(2)} energy/complexity ${state.energy.toFixed(2)}/${state.complexity.toFixed(2)} rel loud ${state.relativeLoudness.toFixed(2)}`,
-      `Plan ${plan.currentIntent} → ${plan.nextIntent} ${plan.horizon.toFixed(1)} s · window ${ahead(plan.transitionStart)}…${ahead(plan.transitionEnd)} (${plan.transitionConfidence.toFixed(2)}) · confidence ${plan.confidence.toFixed(2)} continuity ${plan.sceneContinuity.toFixed(2)}`,
-      `Intents ${e.intents.filter((i) => i.strength * i.confidence > 0.05).map((i) => `${i.kind} ${(i.strength * i.confidence).toFixed(2)}`).join(' · ') || '–'}`,
-      `Physics ${physics.activeResonators} modes · E ${physics.energy.toFixed(3)} damping ${physics.damping.toFixed(2)} waves ${physics.waveActivity.toFixed(2)} · silence ${state.silenceKind} ${state.silenceDuration.toFixed(1)} s`,
-      `Events ${recent || '–'}`,
-    ];
-    ctx.fillStyle = COLORS.level;
-    lines.forEach((line, i) => ctx.fillText(line, 0, EXPERIENCE_TOP + i * ROW));
+    const level = COLORS.level;
+    this.flow(level, rt
+      ? [`Realtime ${rt.mode}`, `DSP ${(rt.load * 100).toFixed(1)}% core q${rt.quality}`, `DSP age ${ms(rt.dspAge)}`, `transfer ${ms(rt.transfer)}`, `ring backlog ${rt.backlog}`,
+        `staged ${rt.pending} dropped ${rt.dropped}`, `lost ${rt.lost} filled ${rt.filled}`, `${rt.batches} batches`]
+      : ['Realtime native capture thread', `attack→frame ${ms(timing.onsetDelay)}`]);
+    this.flow(level, ['Experience', `heard snapshot ${state.time.toFixed(2)} s`, `${state.narrative} (${state.narrativeConfidence.toFixed(2)})`, `${state.trajectory} (${state.trajectoryConfidence.toFixed(2)})`]);
+    this.flow(level, [`Physical RMS ${a.rms.toFixed(3)}`, `peak ${a.peak.toFixed(3)}`, `crest ${a.crest.toFixed(2)}`, `entropy ${a.entropy.toFixed(2)}`, `complexity ${a.complexity.toFixed(2)}`]);
+    this.flow(level, [`Tonal H ${a.harmonicity.toFixed(2)}`, `inH ${a.inharmonicity.toFixed(2)}`, `rough ${a.roughness.toFixed(2)}`, `phase ${a.phaseCoherence.toFixed(2)}`,
+      `H/P/R ${a.harmonicShare.toFixed(2)}/${a.percussiveShare.toFixed(2)}/${a.residualShare.toFixed(2)}`]);
+    this.flow(level, [`Perceptual M ${a.loudnessMomentary.toFixed(1)} S ${a.loudnessShort.toFixed(1)}`, `range~ ${a.loudnessRange.toFixed(1)} LU`, `bright ${a.perceivedBrightness.toFixed(2)}`, `DSP ${a.dspQuality}`]);
+    this.flow(level, [`Context P10/50/90/95 ${q[0].toFixed(1)}/${q[1].toFixed(1)}/${q[2].toFixed(1)}/${q[3].toFixed(1)}`, `pos ${a.loudnessPosition.toFixed(2)}`,
+      `band above floor ${[...a.bandLevel].map((x) => x.toFixed(1)).join(' ')}`]);
+    this.flow(level, [`Spatial width ${a.width.toFixed(2)}`, `corr ${a.correlation.toFixed(2)}`, `mid/side ${a.midEnergy.toFixed(4)}/${a.sideEnergy.toFixed(4)}`, `pan ${a.balance.toFixed(2)}`]);
+    this.flow(level, [`Music BPM ${a.beatBpm.toFixed(1)}`, `meter ${a.meter || '?'} conf ${a.meterConfidence.toFixed(2)}`, `bar ${state.barPhase.toFixed(2)}`, `phrase ${state.phrasePhase.toFixed(2)}`, `novelty ${state.novelty.toFixed(2)}`]);
+    this.flow(level, [`Forecast beat ${ahead(state.nextBeatTime)} (${state.nextBeatConfidence.toFixed(2)})`, `downbeat ${ahead(state.nextDownbeatTime)} (${state.nextDownbeatConfidence.toFixed(2)})`,
+      `phrase ${ahead(state.nextPhraseTime)} (${state.nextPhraseConfidence.toFixed(2)})`, `horizon ${state.predictionHorizon.toFixed(1)} s`]);
+    this.flow(level, [`Likely continue ${state.likelyContinuation.toFixed(2)}`, `build ${state.likelyBuild.toFixed(2)}`, `release ${state.likelyRelease.toFixed(2)}`, `boundary ${state.likelyBoundary.toFixed(2)}`,
+      `conf ${state.predictionConfidence.toFixed(2)}`]);
+    this.flow(level, [`Anticipation ${state.anticipation.toFixed(2)} (${state.anticipationConfidence.toFixed(2)})`, `stored ${state.releasePotential.toFixed(2)}`, `release ${state.release.toFixed(2)}`,
+      `motif ${state.motif}/${state.recurrence}`, `dE ${state.energyVelocity.toFixed(2)}/s`]);
+    this.flow(level, [`Entropy ${state.visualEntropy.toFixed(2)}`, `fatigue ${state.fatigue.toFixed(2)}`, `energy/complexity ${state.energy.toFixed(2)}/${state.complexity.toFixed(2)}`, `rel loud ${state.relativeLoudness.toFixed(2)}`]);
+    this.flow(level, [`Plan ${plan.currentIntent} → ${plan.nextIntent} ${plan.horizon.toFixed(1)} s`, `window ${ahead(plan.transitionStart)}…${ahead(plan.transitionEnd)} (${plan.transitionConfidence.toFixed(2)})`,
+      `confidence ${plan.confidence.toFixed(2)}`, `continuity ${plan.sceneContinuity.toFixed(2)}`]);
+    this.flow(level, labelled('Intents', e.intents.filter((i) => i.strength * i.confidence > 0.05).map((i) => `${i.kind} ${(i.strength * i.confidence).toFixed(2)}`)));
+    this.flow(level, [`Physics ${physics.activeResonators} modes`, `E ${physics.energy.toFixed(3)}`, `damping ${physics.damping.toFixed(2)}`, `waves ${physics.waveActivity.toFixed(2)}`,
+      `silence ${state.silenceKind} ${state.silenceDuration.toFixed(1)} s`]);
+    this.flow(level, labelled('Events', this.recentEvents.map((x) => `${x.type}@${x.audioTime.toFixed(2)}${x.band >= 0 ? `/b${x.band}` : ''} ${x.strength.toFixed(2)}·${x.confidence.toFixed(2)}`)), '  ');
     ctx.fillStyle = COLORS.high;
-    ctx.fillText('ERB', 0, EXPERIENCE_TOP + EXPERIENCE_LINES * ROW);
-    for (let b = 0; b < 24; b++) ctx.fillRect(40 + b * 12, EXPERIENCE_TOP + EXPERIENCE_LINES * ROW - 10, 8, a.erb[b] * 10);
-
-    this.drawWorld(e);
-    this.drawMatter(e);
-    this.drawVisualWorld();
-
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(
-      `Latency: attack→frame ${ms(timing.onsetDelay)} + render ${ms(timing.renderLatency)} = ${ms(timing.onsetDelay + timing.renderLatency)} · ` +
-        `attacks shown ${ms(timing.impactLate)} after heard · output ${ms(timing.latency.output)}`,
-      0,
-      ANALYSIS_TOP + ROW * 4,
-    );
+    ctx.fillText('ERB', 0, this.y);
+    const pitch = Math.min(12, (this.width - 40) / 24);
+    for (let b = 0; b < 24; b++) ctx.fillRect(40 + b * pitch, this.y - 10, pitch * 2 / 3, a.erb[b] * 10);
+    this.y += ROW;
   }
+
+  // ---- World & Physics ----------------------------------------------------------------------
 
   /** The persistent world as presented (heard time), its held forces and the protagonist's adapter output. */
   private drawWorld(e: ExperienceSnapshot): void {
-    const { ctx } = this;
     const w = e.world, f = w.forces;
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(`World · ${w.time.toFixed(2)} s · E ${w.energy.toFixed(3)} = kinetic ${w.kinetic.toFixed(3)} + elastic ${w.elastic.toFixed(3)} + stored ${w.stored.toFixed(3)} + waves ${w.wave.toFixed(3)} · Shift+T trace`, 0, WORLD_TOP);
-    const rows: [string, string, number][] = [
+    this.flow(COLORS.dim, [`World · ${w.time.toFixed(2)} s`, `E ${w.energy.toFixed(3)}`, `kinetic ${w.kinetic.toFixed(3)}`, `elastic ${w.elastic.toFixed(3)}`, `stored ${w.stored.toFixed(3)}`, `waves ${w.wave.toFixed(3)}`, 'Shift+T trace']);
+    this.bars([
       ['±Pressure', COLORS.low, w.radius], ['±Spin', COLORS.mid, w.spin / 3],
       ['Speed', COLORS.mid, w.speed / 6], ['±Lateral', COLORS.tempo, w.bias],
       ['Excitation', COLORS.hit, w.excitation], ['Shimmer', COLORS.high, w.shimmer],
       ['Turbulence', COLORS.hit, w.turbulence], ['Coherence', COLORS.mid, w.coherence],
       ['Potential', COLORS.tempo, w.potential], ['Illumination', COLORS.level, w.illumination],
       ['Openness', COLORS.level, w.openness], ['Energy /4', COLORS.level, w.energy / 4],
-    ];
-    rows.forEach(([label, color, value], i) => this.bar(label, color, value, (i % 2) * (COLUMN + GAP), WORLD_TOP + ROW * (1 + (i >> 1))));
+    ]);
     const age = (t: number) => (Number.isFinite(t) ? `${(w.time - t).toFixed(1)} s ago` : '–');
-    ctx.fillStyle = COLORS.level;
-    ctx.fillText(
-      `Forces rest ${f.radialRest.toFixed(2)} torque ${f.torque.toFixed(2)} (drag ${f.spinDrag.toFixed(2)}) thrust ${f.thrust.toFixed(2)} (drag ${f.travelDrag.toFixed(2)}) ` +
-        `lateral ${f.biasRest.toFixed(2)} charge ${f.charge.toFixed(2)} · impulse ${w.impulseStrength.toFixed(2)} ${age(w.impulseTime)} · release ${w.releaseStrength.toFixed(2)} ${age(w.releaseTime)}`,
-      0,
-      WORLD_TOP + ROW * 7,
-    );
+    this.y += 4;
+    this.flow(COLORS.level, [
+      `Forces rest ${f.radialRest.toFixed(2)}`, `torque ${f.torque.toFixed(2)} (drag ${f.spinDrag.toFixed(2)})`, `thrust ${f.thrust.toFixed(2)} (drag ${f.travelDrag.toFixed(2)})`,
+      `lateral ${f.biasRest.toFixed(2)}`, `charge ${f.charge.toFixed(2)}`, `impulse ${w.impulseStrength.toFixed(2)} ${age(w.impulseTime)}`, `release ${w.releaseStrength.toFixed(2)} ${age(w.releaseTime)}`,
+    ]);
     const view = this.app.directionDebug.current?.director.world;
-    if (view) ctx.fillText(`Adapter (protagonist) travel ${view.travel.toFixed(1)} turn ${view.turn.toFixed(2)} · per frame ${view.dTravel.toFixed(3)} / ${view.dTurn.toFixed(4)} · disorder ${view.disorder.toFixed(2)}`, 0, WORLD_TOP + ROW * 8);
+    if (view) this.flow(COLORS.level, [`Adapter (protagonist) travel ${view.travel.toFixed(1)}`, `turn ${view.turn.toFixed(2)}`, `per frame ${view.dTravel.toFixed(3)} / ${view.dTurn.toFixed(4)}`, `disorder ${view.disorder.toFixed(2)}`]);
   }
+
+  // ---- Matter & Geometry ----------------------------------------------------------------------
 
   /** Sound → material → matter: the morphology heard, the material derived from it, the protagonist's matter and the GPU's work. */
   private drawMatter(e: ExperienceSnapshot): void {
-    const { ctx } = this;
     const layer = this.app.directionDebug.current, scene = layer?.visualizer.debug;
     const state = e.state, m = e.morphology;
     const share = (key: string) => (scene && key in scene ? `${Math.round(scene[key] * 100)}%` : '–');
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(
-      `Matter · state ${matterLab.form === 'auto' ? 'auto' : `pinned ${matterLab.form}`}: wave ${share('wave')} · harmonic ${share('harmonic')} · particles ${share('free')}` +
-        ` · ${scene?.particles ?? '–'} elements · ${this.frameMs.toFixed(1)} ms (${this.app.directionDebug.measuredFps.toFixed(0)} fps)`,
-      0, MATTER_TOP);
-    let row = 1;
-    MORPHOLOGY_KEYS.forEach((key, i) => this.bar(key, COLORS.mid, m[key], (i % 2) * (COLUMN + GAP), MATTER_TOP + ROW * (row + (i >> 1))));
-    row += MORPHOLOGY_ROWS;
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText('Material (what kind of matter could stand for this sound)', 0, MATTER_TOP + ROW * row++);
+    this.flow(COLORS.dim, [
+      `Matter · state ${matterLab.form === 'auto' ? 'auto' : `pinned ${matterLab.form}`}`, `wave ${share('wave')}`, `harmonic ${share('harmonic')}`, `particles ${share('free')}`,
+      `${scene?.particles ?? '–'} elements`, `${this.frameMs.toFixed(1)} ms (${this.app.directionDebug.measuredFps.toFixed(0)} fps)`,
+    ]);
+    this.bars(MORPHOLOGY_KEYS.map((key): Bar => [key, COLORS.mid, m[key]]));
+    this.y += 4;
+    this.flow(COLORS.dim, ['Material (what kind of matter could stand for this sound)']);
     const view = layer?.director.world;
     if (view) deriveMaterial(this.material, view, e);
-    MATERIAL_KEYS.forEach((key, i) => this.bar(key, COLORS.high, this.material[key], (i % 2) * (COLUMN + GAP), MATTER_TOP + ROW * (row + (i >> 1))));
-    row += MATERIAL_ROWS;
-    ctx.fillStyle = COLORS.level;
-    ctx.fillText(
-      `Prediction conf ${state.predictionConfidence.toFixed(2)} · build ${state.likelyBuild.toFixed(2)} release ${state.likelyRelease.toFixed(2)} boundary ${state.likelyBoundary.toFixed(2)}` +
-        ` · anticipation ${state.anticipation.toFixed(2)} × ${state.anticipationConfidence.toFixed(2)} → charge ${e.world.forces.charge.toFixed(3)}/s → potential ${e.world.potential.toFixed(2)}`,
-      0, MATTER_TOP + ROW * row++);
+    this.bars(MATERIAL_KEYS.map((key): Bar => [key, COLORS.high, this.material[key]]));
+    this.y += 4;
+    this.flow(COLORS.level, [
+      `Prediction conf ${state.predictionConfidence.toFixed(2)}`, `build ${state.likelyBuild.toFixed(2)}`, `release ${state.likelyRelease.toFixed(2)}`, `boundary ${state.likelyBoundary.toFixed(2)}`,
+      `anticipation ${state.anticipation.toFixed(2)} × ${state.anticipationConfidence.toFixed(2)}`, `→ charge ${e.world.forces.charge.toFixed(3)}/s`, `→ potential ${e.world.potential.toFixed(2)}`,
+    ]);
     // What the protagonist reports about its render systems (Spectral Matter: state, forms, fields, fronts, memory, simulation).
-    const entries = scene ? Object.entries(scene).map(([key, value]) => `${key} ${Number.isInteger(value) ? value : value.toFixed(2)}`) : [];
-    const half = Math.ceil(entries.length / 2);
-    ctx.fillText(entries.length ? `Scene ${entries.slice(0, half).join(' · ')}` : 'Scene –', 0, MATTER_TOP + ROW * row++);
-    if (entries.length > 1) ctx.fillText(`      ${entries.slice(half).join(' · ')}`, 0, MATTER_TOP + ROW * row);
-    row++;
+    this.flow(COLORS.level, labelled('Scene', scene ? Object.entries(scene).map(([key, value]) => `${key} ${Number.isInteger(value) ? value : value.toFixed(2)}`) : []));
     const d = this.drawn, memory = this.app.directionDebug.renderer.info.memory;
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(
-      `GPU frame: ${d.calls} draw calls · ${d.triangles} triangles · ${d.points} points · ${d.lines} lines · ${memory.geometries} geometries · ${memory.textures} textures` +
-        ` · ${this.app.directionDebug.renderer.info.programs?.length ?? 0} programs · quality ${this.app.directionDebug.qualityTier}`,
-      0, MATTER_TOP + ROW * row);
+    this.flow(COLORS.dim, [
+      `GPU frame: ${d.calls} draw calls`, `${d.triangles} triangles`, `${d.points} points`, `${d.lines} lines`, `${memory.geometries} geometries`, `${memory.textures} textures`,
+      `${this.app.directionDebug.renderer.info.programs?.length ?? 0} programs`, `quality ${this.app.directionDebug.qualityTier}`,
+    ]);
   }
 
   /**
@@ -556,74 +352,36 @@ export class DebugOverlay {
    * sound asks for, how present each primitive is and what it submits, and the fields they all share.
    */
   private drawVisualWorld(): void {
-    const { ctx } = this;
     const scene = this.app.directionDebug.current?.visualizer;
-    ctx.fillStyle = COLORS.dim;
     if (!(scene instanceof RecipeVisualizer)) {
-      ctx.fillText('Visual World · the protagonist is a legacy scene (no world, no primitives)', 0, WORLD_ENGINE_TOP);
+      this.flow(COLORS.dim, ['Visual World', 'the protagonist is a legacy scene (no world, no primitives)']);
       return;
     }
     const world = scene.world, d = world.debug, g = world.mapper.state;
-    ctx.fillText(
-      `Visual World · recipe ${world.recipe.id} · entropy budget ${d.budget.toFixed(2)} (ceiling ${d.ceiling.toFixed(2)}) · ${d.present}/${d.primitives} primitives` +
-        ` · ${d.elements} elements · ${d.vertices} vertices${worldLab.only ? ` · pinned to ${[...worldLab.only].join(', ')}` : ''}`,
-      0, WORLD_ENGINE_TOP);
-    let row = 1;
-    GEOMETRY_TRAITS.forEach((key, i) => this.bar(SIGNED_TRAITS.includes(key) ? `± ${key}` : key, COLORS.tempo, g[key], (i % 2) * (COLUMN + GAP), WORLD_ENGINE_TOP + ROW * (row + (i >> 1))));
-    row += GEOMETRY_ROWS;
-    ctx.fillStyle = COLORS.level;
-    ctx.fillText(
-      `Primitives ${world.mounted.map((m) => `${m.slot.id} ${m.presence.value > 0.004 ? `${Math.round(m.presence.value * 100)}%` : 'off'} ${m.primitive.vertices}v`).join(' · ')}`,
-      0, WORLD_ENGINE_TOP + ROW * row++);
+    this.flow(COLORS.dim, [
+      'Visual World', `recipe ${world.recipe.id}`, `entropy budget ${d.budget.toFixed(2)} (ceiling ${d.ceiling.toFixed(2)})`, `${d.present}/${d.primitives} primitives`,
+      `${d.elements} elements`, `${d.vertices} vertices`, worldLab.only ? `pinned to ${[...worldLab.only].join(', ')}` : '',
+    ]);
+    this.bars(GEOMETRY_TRAITS.map((key): Bar => [SIGNED_TRAITS.includes(key) ? `± ${key}` : key, COLORS.tempo, g[key]]));
+    this.y += 4;
+    this.flow(COLORS.level, labelled('Primitives', world.mounted.map((m) => `${m.slot.id} ${m.presence.value > 0.004 ? `${Math.round(m.presence.value * 100)}%` : 'off'} ${m.primitive.vertices}v`)));
     const f = world.fields;
     const active = (Object.keys(f) as (keyof typeof f)[]).filter((key) => key !== 'turn' && !key.endsWith('Scale') && Math.abs(f[key]) > 0.01).map((key) => `${key} ${f[key].toFixed(1)}`);
-    const half = Math.ceil(active.length / 2);
-    ctx.fillStyle = COLORS.dim;
-    ctx.fillText(`Fields ${active.slice(0, half).join(' · ')}`, 0, WORLD_ENGINE_TOP + ROW * row++);
-    ctx.fillText(`       ${active.slice(half).join(' · ')} · fronts ${d.waves} · GPU budget ${this.app.show.budget.toFixed(1)} units`, 0, WORLD_ENGINE_TOP + ROW * row);
-  }
-
-  private trace(values: Float32Array, color: string): void {
-    const { ctx } = this;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i = 0; i < HISTORY; i++) {
-      const v = values[(this.head + i) % HISTORY];
-      const x = (i / (HISTORY - 1)) * WIDTH;
-      const y = HISTORY_TOP + HISTORY_HEIGHT - 1 - Math.max(0, Math.min(v, 1)) * (HISTORY_HEIGHT - 2);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-
-  private column(sections: Section[], x: number, audio: AudioFrame, response: VisualResponseFrame): void {
-    const { ctx } = this;
-    let y = 8;
-    for (const [title, rows] of sections) {
-      ctx.fillStyle = COLORS.dim;
-      ctx.fillText(title, x, y);
-      y += ROW;
-      for (const [label, color, read] of rows) {
-        this.bar(label, color, read(audio, response), x, y);
-        y += ROW;
-      }
-    }
+    this.flow(COLORS.dim, [...labelled('Fields', active), `fronts ${d.waves}`, `GPU budget ${this.app.show.budget.toFixed(1)} units`]);
   }
 
   private bar(label: string, color: string, value: number, x: number, y: number): void {
     const { ctx } = this;
-    ctx.fillStyle = '#9aa0bc';
-    ctx.fillText(label, x, y);
-    ctx.fillStyle = '#1a1e36';
-    ctx.fillRect(x + LABEL, y - 4, BAR, 8);
+    const width = this.column - LABEL - VALUE;
+    ctx.fillStyle = COLORS.dim;
+    ctx.fillText(label, x, y, LABEL - 4);
+    ctx.fillStyle = COLORS.track;
+    ctx.fillRect(x + LABEL, y - 4, width, 8);
     ctx.fillStyle = color;
     if (label.endsWith('Trend') || label.startsWith('±')) {
-      const width = Math.max(-1, Math.min(value, 1)) * BAR / 2;
-      ctx.fillRect(x + LABEL + BAR / 2, y - 4, width, 8);
-    } else ctx.fillRect(x + LABEL, y - 4, Math.max(0, Math.min(value, 1)) * BAR, 8);
-    ctx.fillStyle = '#d8dcf0';
-    ctx.fillText(value.toFixed(2), x + LABEL + BAR + 8, y);
+      ctx.fillRect(x + LABEL + width / 2, y - 4, Math.max(-1, Math.min(value, 1)) * width / 2, 8);
+    } else ctx.fillRect(x + LABEL, y - 4, Math.max(0, Math.min(value, 1)) * width, 8);
+    ctx.fillStyle = COLORS.level;
+    ctx.fillText(value.toFixed(2), x + LABEL + width + 8, y);
   }
 }

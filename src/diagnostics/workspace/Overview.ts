@@ -1,14 +1,14 @@
 import type { DiagnosticsController } from '../core/DiagnosticsController';
 import { h } from '../../ui/dom';
-import { metricCard, section, writeText } from './components';
+import { panel, tile, writeText } from './components';
 
 /** A small presentation of existing observations, with no second history or collector. */
 export class Overview {
-  private readonly cards = ['Sorgente', 'Frame medio', 'Carico DSP stimato', 'Layer', 'Clock', 'Experience'].map(metricCard);
+  private readonly cards = ['Sorgente', 'Frame medio', 'Carico DSP stimato', 'Layer', 'Clock', 'Experience'].map(label => tile(label));
   private readonly alert = h('p', { role: 'status' });
-  readonly element = section('Engine overview', h('div', { class: 'ws-metrics' }, ...this.cards.map(c => c.element)), this.alert);
+  readonly element = panel({ title: 'Engine Overview', icon: 'home', sub: 'stato del motore' }, h('div', { class: 'ws-metrics ws-metrics-text' }, ...this.cards.map(c => c.element)), this.alert);
   refresh(c: DiagnosticsController): void {
-    if (this.element.hidden) return;
+    if (this.element.hidden || !this.element.open) return;
     const audio = c.app.audio, snapshot = audio.experience.presented;
     const metrics = c.store?.registry.metrics;
     const read = (id: string) => metrics?.find(m => m.id === id)?.value;

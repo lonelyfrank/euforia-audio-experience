@@ -20,7 +20,8 @@ Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-plann
 [fisica](physics-engine.md), [World Engine](world-engine.md), [integrazione scene](visual-director.md),
 [Visual Systems e Spectral Matter](visual-systems.md), [Matter Engine](matter-engine.md),
 [Visual Engine](visual-engine.md), [Visual Grammar](visual-grammar.md), [scene fisiche](physical-scenes.md),
-[Spectral Shell](spectral-shell.md), [Structural Dynamics](structural-dynamics.md).
+[Spectral Shell](spectral-shell.md), [Structural Dynamics](structural-dynamics.md),
+[Solid Dynamics](solid-dynamics.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
 indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
@@ -50,7 +51,8 @@ frontend, backend e WASM della stessa revisione.
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
 | Visual Engine | `visual-engine/` | Mondo visuale persistente: `SonicGeometryMapper` (morfologia, mondo, planner, forma dei cicli delle voci → `GeometryState`, 36 tratti continui), `MaterialSystem` (luce comune), `VisualWorld` (campi e fronti impacchettati una volta, budget strutturale, presenze, memoria, osservatore), cinque primitive con legge GLSL + riferimento CPU, `WorldRecipe` e `RecipeVisualizer` (adattatore verso `Layer`: recipe e scene legacy convivono) |
 | Structural Dynamics | `physics/MultiscaleResonance.ts`, `visual-engine/structural/`, `visual-engine/primitives/WirePolygonPrimitive.ts` | Risonanza multiscala per hop in ExperienceEngine (`snapshot.resonance`; macro / meso / micro a conteggi configurabili; `ResonantPhysics` invariata). Elementi con identità procedurale, pool a capacità fissa, legami (campate, giunti, controventi), carico / danno / frattura, memoria strutturale, ordine / temperatura / ruoli continui, passo fisso sul clock udito, vicinato in griglia limitata. L'ambiente è quello del mondo (`fieldAt`, fronti, molla radiale); la primitiva lo disegna (fili istanziati, punti, facce). Esiste solo nello Structural Lab, fuori dal registry ([structural-dynamics](structural-dynamics.md)) |
-| Workspace tecnico | `diagnostics/workspace/`, `app/engine/EngineCockpit.ts` | Una shell per Shift+D/E/G, canvas originale e controller condiviso; diagnostica lazy in release, laboratori solo DEV. [Contratti e verifiche](engine-workspace.md). Inspector strutturali (`?engine`, Shift+E): moduli, viewport, ispettore, tracce. Fissa il mondo sul rig (`RigController.pinned`, `App.pinScene`), registra il laboratorio (`registerLaboratory`), scrive solo `structuralLab`; alla chiusura ripristina tutto. Nessuna impostazione utente toccata, UI cinematica invariata |
+| Solid Dynamics | `visual-engine/structural/Solid*.ts`, `WorldEnvironment.ts`, `visual-engine/primitives/SolidPrimitive.ts`, `app/engine/SolidCockpit.ts` | Corpi volumetrici come componente opzionale di `StructuralSystem` (`config.solids`): gli stessi elementi, tenuti da link (spigoli, controventi), cerniere di flessione, triangoli di superficie e celle (insiemi chiusi e orientati di triangoli con un volume). Solver XPBD nello stesso passo fisso, sul moto predetto; frattura con la legge di carico dei fili; componenti connesse e forma di ogni pezzo lette dai link; memoria di lunghezze e volumi, ricomposizione solo a condizioni fisiche e topologiche valide. Pool a budget esplicito. Esiste solo nel laboratorio Solid Dynamics, fuori dal registry ([solid-dynamics](solid-dynamics.md)) |
+| Workspace tecnico | `diagnostics/workspace/`, `app/engine/EngineCockpit.ts` | Una shell a tre colonne (navigazione · viewport live · inspector contestuale) per Shift+D/E/G, canvas originale e controller condiviso; diagnostica lazy in release, laboratori solo DEV. [Contratti e verifiche](engine-workspace.md). Inspector strutturali (`?engine`, Shift+E): moduli, viewport, ispettore, tracce. Fissa il mondo sul rig (`RigController.pinned`, `App.pinScene`), registra il laboratorio (`registerLaboratory`), scrive solo `structuralLab`; alla chiusura ripristina tutto. Nessuna impostazione utente toccata, UI cinematica invariata |
 | Scene fisiche | `render-systems/fields/vectorField.ts`, `wells.ts`, `particles/tracer*.ts`, `Tracer*.ts`, `visual-engine/primitives/Field*Primitive.ts` | Campo vettoriale F(P) e sua topologia, pozzi di potenziale, legge / passo / simulazione GPU / probe CPU / parità dei traccianti, primitive dei traccianti e delle linee di campo: leggi in GLSL e in TS come la legge dei campi ([scene fisiche](physical-scenes.md)) |
 | Visual Systems | `render-systems/` | Vocabolario condiviso: `VisualMaterial` (mondo + morfologia), campi spaziali, legge dei campi e legge delle forme (GLSL + riferimento CPU), forme della materia (storia della waveform, rete dei parziali), onde datate, materia GPU e probe CPU, disegno a punti / legami / faccette, memoria visiva, osservatore; nessuno stato musicale, solo storia di rendering |
 | Scene | `visualizers/` | Sei scene legacy interpretano il mondo (`modulation.world`) in una forma propria: moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. In Tunnel e Particle Field la trasformazione della struttura è una funzione pura della `WorldView` (`tunnel/topology.ts`, `particle-field/regimes.ts`). Quattro sono recipe: Spectral Matter (la sola materia), Resonant Field (la sola membrana; `?legacy=resonant-field` in DEV monta la precedente), Matter Field (tutte le primitive), Vector Field (traccianti e linee di un campo vettoriale; già `field`), Spectral Shell (la membrana a disco di Matter Field con il proprio passato come gusci, [spectral-shell](spectral-shell.md)) |
@@ -183,6 +185,24 @@ in ogni sessione; `ResonantPhysics` non va toccata per essa. `structuralLab`, lo
 cockpit esistono solo in DEV; il lab non entra in `visualizers` (menu, show, impostazioni).
 Dettagli, misure e limiti in [structural-dynamics](structural-dynamics.md).
 
+**Solid Dynamics.** Un solido non è un oggetto animato: è ciò che link, facce e celle tengono
+insieme fra elementi del sistema strutturale. Invarianti: (1) nessun secondo motore: `SolidSystem`
+è un componente di `StructuralSystem`, entra nel suo passo in tre punti (`recall`, `begin`, `solve`)
+e un sistema senza corpi fa esattamente il passo di prima; (2) il suono non scrive posizioni: sposta
+la lunghezza di riposo dei link e il volume di riposo delle celle, sempre per coppie o per celle
+(quantità di moto conservata); (3) tutto si legge dai link: un triangolo tiene con i suoi tre link,
+una cella con tutto il suo contorno **e** un volume verificato, un frammento è una componente
+connessa; uno spigolo rotto non crea un frammento; (4) rompere cambia lo stato di un link
+(`INTACT` → `BROKEN` → `LOST`), mai il numero di elementi, link, facce o celle; (5) un link si
+riforma solo in un mondo vivo, fra capi assestati, vicini alla lunghezza che aveva, lenti l'uno
+rispetto all'altro e con le celle dal verso giusto, alla lunghezza a cui si trova; (6) lunghezze e
+volumi di riposo sono misurati con la stessa aritmetica del solver (un corpo a riposo non si muove
+di un bit: cambiare `SolidState.measure` e `SolidSystem.volumeOf` insieme); (7) iterazioni e pool
+sono costanti del budget: la qualità grafica e gli FPS non toccano la topologia; (8) la primitiva
+invia posizioni della simulazione e nessuno shader sposta un vertice. `solidLab` (in
+`SolidTypes.ts`), il laboratorio e `SolidCockpit` esistono solo in DEV.
+Dettagli, misure e limiti in [solid-dynamics](solid-dynamics.md).
+
 **Visual Systems.** `render-systems/` non contiene significato musicale: legge
 `WorldView`, snapshot, intenti e lo stream di eventi, e tiene solo storia di rendering
 (particelle, fronti, buffer di memoria, inerzia dell'osservatore). Le onde nascono
@@ -291,6 +311,19 @@ cinematica, scene esistenti. Aggiunta a `ExperienceSnapshot` (`resonance`). Esit
 cockpit aperto e richiuso a runtime; non provati musica reale, movimento nel tempo a occhio, app
 desktop, tempo GPU.
 
+Solid Dynamics (11 ottobre 2026): nessuna modifica a DSP, wire, WASM, World Engine, Experience,
+UI cinematica, scene esistenti, `ResonantPhysics`. Toccati del sistema strutturale: due campi per
+elemento (`body`, `links`), leggi di `BondSystem` estratte a funzioni con la stessa aritmetica,
+ambiente del mondo estratto in `WorldEnvironment.ts` (i 27 test strutturali di prima passano
+invariati). `VITEST_MAX_WORKERS=2 npm run check`: typecheck, ESLint, **542 test passati, 1 saltato
+come prima, 67 file** (31 nuovi in 3 file), build di produzione. Il bundle principale non contiene
+codice dei solidi; il chunk lazy della diagnostica, che già portava il sistema strutturale per le
+sue sonde, ne porta ora anche il componente solido (non il laboratorio, la primitiva o il cockpit).
+Browser DEV con GPU reale (Intel UHD): shader compilati senza warning, tre solidi, sette viste,
+strumenti, passaggio fra i due laboratori, uscita con scena, pin e impostazioni ripristinati.
+Core Rust non toccato e non rieseguito. Non provati: musica reale, movimento nel tempo a occhio,
+app desktop, tempo GPU. Esiti e limiti in [solid-dynamics](solid-dynamics.md) §11–13.
+
 Spectral Shell (7 ottobre 2026, dopo): nessuna modifica a DSP, wire, WASM, World Engine. Esiti,
 misure e limiti in [spectral-shell](spectral-shell.md) §5–7: **388 test frontend in 51 file**
 (19 nuovi), shader della membrana a 1 / 3 / 4 / 5 layer compilati su Intel UHD, Matter Field
@@ -339,6 +372,8 @@ I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 | Alta | Visual Engine: Matter Field su musica reale e a occhio | Affinità, costi, guadagno del budget ed esposizioni tarati su un corpus; ogni struttura leggibile da sola e insieme; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Parità GPU ↔ CPU delle leggi nuove | Un `runLawParity()` che valuta filamenti, nodi, membrana e anelli per texel e li confronta con il riferimento CPU, come `runParity()` per la materia |
 | Alta | Structural Dynamics su musica reale e a occhio | Nel lab, con gli override del cockpit: carico, coesione, memoria e risonanza tarati su un corpus; il quadrato si forma, vibra, si rompe e si ritrova in modo leggibile con ambient, percussioni, mix densi, drop e silenzio |
+| Alta | Solid Dynamics su musica reale e a occhio | Nel laboratorio: rigidezze, ampiezze della spinta risonante, soglia di frattura e forza della memoria decise su un corpus; il corpo si deforma in modo leggibile, si rompe quando deve e si ritrova; costo e leggibilità a 1080p |
+| Media | Solid Dynamics: celle emergenti, collisioni, più corpi | Celle che nascono da superfici che si chiudono (la verifica esiste); contatto vertice–faccia dove serve; più corpi e selezione nell'inspector; frattura per celle su solidi suddivisi |
 | Media | Popolazione strutturale su GPU | Identità (`identityOf`) e tabella di risonanza in GLSL per decine di migliaia di elementi liberi, con parità GPU ↔ CPU; topologia rada su CPU; poi `WirePolygonPrimitive` come slot di Matter Field |
 | Alta | Spectral Shell su musica reale e a occhio | Gusci leggibili con ambient, voce, basso, mix densi e percussioni; età, apertura, chiusura e torsione tarate; polvere che vela senza coprire; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Scene fisiche su musica reale e a occhio | Vector Field, Tunnel e Particle Field con ambient, percussioni, basso elettronico, mix densi, stereo sbilanciato, silenzio, drop e build: ogni regime leggibile, nessun moto nel silenzio, tagli e pozzi tarati; costo a 1080p e in WebView2 su macchina scarica |
@@ -411,4 +446,15 @@ conserva REC e registry durante la navigazione; replay e baseline restano possed
 dal pannello report fino alla chiusura. Laboratori caricati soltanto in DEV, nessuna
 modifica a impostazioni, DSP, shader o Spectrum. Parità GPU: parametro opzionale per
 riusare il renderer live solo durante la prova esplicita, con ripristino del target.
+Dall'11 ottobre la shell è a tre colonne: navigazione, viewport (la stage, per tutta
+l'altezza disponibile) e inspector contestuale con scroll proprio, dove stanno card,
+grafici, laboratorio, registry e report. Le colonne cambiano a scatti (`nextLayout`),
+un resize del renderer per passo; i grafici DEV sono larghi quanto il loro host e
+vanno a capo (`app/debug/chartLayout.ts`); a ogni tick prima i canvas, poi il DOM.
+Dalla sera dell'11 ottobre la shell segue il design system «Euforia Engine» (token `--ws-*`,
+Geist, `panel`/`tile`/`meter` in `components.ts`, grafici SVG in `charts.ts`, icone in
+`icons.ts`). Audio & Analysis è `workspace/AudioAnalysis.ts` (pannelli DOM + SVG; legge solo
+`AudioFrame`, `MusicState` e il frame Rust già pubblicati) e `DebugOverlay` disegna solo
+Experience, World e Matter. Sotto il viewport, in DEV, un deck di altezza fissa (`Audio Input`,
+`Live Input`) uguale in ogni vista: cambiare sezione non ridimensiona il renderer.
 Mapping completo, istruzioni e limiti delle misure: [engine-workspace](engine-workspace.md).

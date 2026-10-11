@@ -34,8 +34,6 @@ const K_BRACE = 110;
 /** A joint takes this long to stiffen into a corner (s), and a brace answers no more than this much bending (units). */
 const BRACE_SET = 1.5;
 const BRACE_REACH = 0.12;
-/** A bond is made at the length it is found at and settles to its own over this time (s). */
-const SETTLE = 1;
 /** Share of its length a wire breathes with the macro mode it follows. */
 const BREATH = 0.06;
 
@@ -56,7 +54,11 @@ const FATIGUE = 0.55;
 const DAMAGE_RATE = 1.2;
 const HEALING = 0.08;
 /** What a fracture leaves in the two ends: activity. */
-const BREAK_HEAT = 0.3;
+export const BREAK_HEAT = 0.3;
+/** What making a bond takes out of an element's cohesion: the next one has to settle again, so structures grow step by step. */
+export const BOND_COST = 0.6;
+/** A bond is made at the length it is found at and settles to its own over this time (s). */
+const SETTLE = 1;
 
 /** Elements of like pitch bond: width of the match on the frequency axis. Elements moving apart do not: units/s. */
 const PITCH_MATCH = 0.12;
@@ -68,7 +70,7 @@ const KINSHIP = 1.25;
 export const MEMORY_TAU = 25;
 const MEMORY_PULL = 5;
 const MEMORY_MAX = 2;
-const MEMORY_RANGE = 4;
+export const MEMORY_RANGE = 4;
 
 /** What the bond pass reports. Reused. */
 export interface BondEvents {
@@ -91,6 +93,27 @@ function spring(s: StructuralState, acc: Float64Array, a: number, b: number, res
   const f = (stiffness * held + 2 * zeta * Math.sqrt(stiffness * reduced) * along) / len;
   acc[a * 3] += dx * f / ma; acc[a * 3 + 1] += dy * f / ma; acc[a * 3 + 2] += dz * f / ma;
   acc[b * 3] -= dx * f / mb; acc[b * 3 + 1] -= dy * f / mb; acc[b * 3 + 2] -= dz * f / mb;
+}
+
+/**
+ * What loads the bond between `a` and `b`, as a share of the strength of a joint of middle matter in an ordered world:
+ * its own strain and the rate it is pulled at, what its ends make of the sound (ends that swing together load nothing;
+ * ends of unlike pitch pull against each other), and what the world does to every structure (tension, heat, a release).
+ * One law for wires, joints and the links of a volumetric body.
+ */
+export function loadOf(s: StructuralState, a: number, b: number, strain: number, closing: number, coupling: number, tension: number, release: number): number {
+  const mismatch = Math.abs(s.vibration[a] - s.vibration[b]), swing = 0.5 * (s.excitation[a] + s.excitation[b]);
+  return strain + S_RATE * Math.abs(closing) / V_BREAK + coupling * (S_MISMATCH * mismatch + S_VIBRATION * swing)
+    + S_TENSION * tension + S_HEAT * 0.5 * (s.temperature[a] + s.temperature[b]) + S_RELEASE * release;
+}
+
+/** Damage after a step at this load (a share of the strength): above FATIGUE a bond tires; well below it an ordered, cold world heals it. */
+export function tire(damage: number, ratio: number, order: number, heat: number, h: number): number {
+  if (ratio > FATIGUE) {
+    const over = (Math.min(ratio, 1) - FATIGUE) / (1 - FATIGUE);
+    return Math.min(1, damage + DAMAGE_RATE * over * over * h);
+  }
+  return ratio < 0.4 ? Math.max(0, damage - HEALING * order * (1 - heat) * h) : damage;
 }
 
 /**
@@ -130,17 +153,11 @@ export function stepBonds(s: StructuralState, acc: Float64Array, env: Readonly<S
     const len = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 1e-6);
     const closing = ((v[b * 3] - v[a * 3]) * dx + (v[b * 3 + 1] - v[a * 3 + 1]) * dy + (v[b * 3 + 2] - v[a * 3 + 2]) * dz) / len;
     const strain = span ? S_SPAN * Math.abs(len - rest) / Math.max(rest, 0.05) : Math.max(0, len - rest) / JOINT_SCALE;
-    // Ends that swing together load nothing; ends of unlike pitch pull against each other.
-    const mismatch = Math.abs(s.vibration[a] - s.vibration[b]), swing = 0.5 * (s.excitation[a] + s.excitation[b]);
-    const load = strain + S_RATE * Math.abs(closing) / V_BREAK + coupling * (S_MISMATCH * mismatch + S_VIBRATION * swing)
-      + S_TENSION * tension + S_HEAT * 0.5 * (s.temperature[a] + s.temperature[b]) + S_RELEASE * release;
+    const load = loadOf(s, a, b, strain, closing, coupling, tension, release);
     const strength = s.bondStrength[at] * bear * (0.55 + 0.45 * order) * (1 - 0.5 * s.bondDamage[at]);
     const ratio = Number.isFinite(load) ? load / Math.max(strength, 1e-3) : 2;
     s.bondStress[at] += (Math.min(ratio, 2) - s.bondStress[at]) * follow;
-    if (ratio > FATIGUE) {
-      const over = (Math.min(ratio, 1) - FATIGUE) / (1 - FATIGUE);
-      s.bondDamage[at] = Math.min(1, s.bondDamage[at] + DAMAGE_RATE * over * over * h);
-    } else if (ratio < 0.4) s.bondDamage[at] = Math.max(0, s.bondDamage[at] - HEALING * order * (1 - 0.5 * (s.temperature[a] + s.temperature[b])) * h);
+    s.bondDamage[at] = tire(s.bondDamage[at], ratio, order, 0.5 * (s.temperature[a] + s.temperature[b]), h);
     if (ratio >= 1 || s.bondDamage[at] >= 1) {
       s.release(at);
       for (let end = 0; end < 2; end++) {
@@ -193,8 +210,8 @@ export function canJoin(s: StructuralState, i: number, j: number, config: Readon
   return wires + walk(s, j, limit).wires <= limit;
 }
 
-/** Whether `i` and `j` may be spanned by a wire: neither carries one yet. */
-export const canSpan = (s: StructuralState, i: number, j: number): boolean => i !== j && s.span[i] < 0 && s.span[j] < 0;
+/** Whether `i` and `j` may be spanned by a wire: neither carries one yet, and neither is a vertex of a volumetric body. */
+export const canSpan = (s: StructuralState, i: number, j: number): boolean => i !== j && s.span[i] < 0 && s.span[j] < 0 && s.body[i] < 0 && s.body[j] < 0;
 
 /**
  * How well two elements suit each other for a bond of ideal length `ideal`,
@@ -237,6 +254,26 @@ export function makeBond(s: StructuralState, i: number, j: number, span: boolean
   return at;
 }
 
+/** What is left of a memory after a step: hot matter forgets fast, cold matter keeps its shape for a long time. */
+export const fade = (strength: number, temperature: number, persistence: number, h: number): number =>
+  strength * Math.exp(-h * (0.2 + 3 * temperature) / (MEMORY_TAU * Math.max(0.1, persistence)));
+
+/**
+ * The pull of `i` back towards the partner `j` it remembers at the distance `rest` (into `acc`, on both, equal and
+ * opposite): the more so the more ordered and the colder `i` is, and only as far as the world is `alive`.
+ */
+function recall(s: StructuralState, acc: Float64Array, i: number, j: number, rest: number, strength: number, alive: number): void {
+  const p = s.position;
+  const dx = p[j * 3] - p[i * 3], dy = p[j * 3 + 1] - p[i * 3 + 1], dz = p[j * 3 + 2] - p[i * 3 + 2];
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz), stretch = d - rest;
+  if (!(d > 1e-4) || d > MEMORY_RANGE || stretch <= 0) return;
+  // Felt less from far away: it finds a partner that is near, it does not fetch one from across the world.
+  const reach = 1 - (d / MEMORY_RANGE) * (d / MEMORY_RANGE);
+  const f = Math.min(MEMORY_PULL * stretch, MEMORY_MAX) * reach * strength * s.order[i] * (1 - s.temperature[i]) * alive / d;
+  acc[i * 3] += dx * f / s.mass[i]; acc[i * 3 + 1] += dy * f / s.mass[i]; acc[i * 3 + 2] += dz * f / s.mass[i];
+  acc[j * 3] -= dx * f / s.mass[j]; acc[j * 3 + 1] -= dy * f / s.mass[j]; acc[j * 3 + 2] -= dz * f / s.mass[j];
+}
+
 /**
  * Structural memory, one step: it fades (hot matter forgets fast, cold matter
  * keeps its shape for a long time), and while the world is alive it draws an
@@ -244,25 +281,18 @@ export function makeBond(s: StructuralState, i: number, j: number, span: boolean
  * the colder it is. In silence it pulls nothing.
  */
 export function stepMemory(s: StructuralState, acc: Float64Array, env: Readonly<StructuralEnvironment>, config: Readonly<StructuralConfig>, h: number): void {
-  const p = s.position, alive = unit(3 * env.energy), most = Math.min(MAX_JOINTS, Math.max(1, config.maxJoints));
+  const alive = unit(3 * env.energy), most = Math.min(MAX_JOINTS, Math.max(1, config.maxJoints));
   for (let i = 0; i < s.count; i++) {
     for (let slot = 0; slot < MEMORY_SLOTS; slot++) {
       const at = i * MEMORY_SLOTS + slot, j = s.memPartner[at];
       if (j < 0) continue;
-      const strength = s.memStrength[at] * Math.exp(-h * (0.2 + 3 * s.temperature[i]) / (MEMORY_TAU * Math.max(0.1, s.persistence[i])));
+      const strength = fade(s.memStrength[at], s.temperature[i], s.persistence[i], h);
       if (strength < 0.01) { s.memPartner[at] = -1; s.memStrength[at] = 0; continue; }
       s.memStrength[at] = strength;
       if (alive <= 0) continue;
       const open = slot === SPAN ? s.span[i] < 0 && s.span[j] < 0 : s.joints[i] < most && s.joints[j] < most && !s.jointed(i, j);
       if (!open) continue;
-      const dx = p[j * 3] - p[i * 3], dy = p[j * 3 + 1] - p[i * 3 + 1], dz = p[j * 3 + 2] - p[i * 3 + 2];
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz), stretch = d - s.memRest[at];
-      if (!(d > 1e-4) || d > MEMORY_RANGE || stretch <= 0) continue;
-      // Felt less from far away: it finds a partner that is near, it does not fetch one from across the world.
-      const reach = 1 - (d / MEMORY_RANGE) * (d / MEMORY_RANGE);
-      const f = Math.min(MEMORY_PULL * stretch, MEMORY_MAX) * reach * strength * s.order[i] * (1 - s.temperature[i]) * alive / d;
-      acc[i * 3] += dx * f / s.mass[i]; acc[i * 3 + 1] += dy * f / s.mass[i]; acc[i * 3 + 2] += dz * f / s.mass[i];
-      acc[j * 3] -= dx * f / s.mass[j]; acc[j * 3 + 1] -= dy * f / s.mass[j]; acc[j * 3 + 2] -= dz * f / s.mass[j];
+      recall(s, acc, i, j, s.memRest[at], strength, alive);
     }
   }
 }

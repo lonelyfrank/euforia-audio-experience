@@ -8,12 +8,17 @@ import { exportReport } from '../replay/ReportExporter';
 import { compareReports } from '../replay/ReplayComparison';
 
 const STYLE = `
-:host{display:block;contain:content;color:var(--ws-text,#f0f0f0);background:var(--ws-panel,#242424);border:1px solid var(--ws-border,#ffffff18);border-radius:12px;font:13px/1.5 system-ui,sans-serif}
+:host{display:block;contain:content;color:var(--ws-text,#f3f1fa);background:linear-gradient(180deg,rgba(15,18,44,.92),rgba(10,12,32,.94));border:1px solid var(--ws-border,#22254b);border-radius:12px;font:inherit;font-variant-numeric:tabular-nums}
 :host([hidden]){display:none}
-*{box-sizing:border-box}header,nav,section,footer{padding:10px 14px;border-bottom:1px solid var(--ws-border,#ffffff18)}h1{font-size:14px;margin:0}button,select,input{font:inherit;background:var(--ws-raised,#2e2e2e);color:inherit;border:1px solid var(--ws-border,#ffffff18);border-radius:4px;padding:4px;margin:3px;max-width:100%}button{cursor:pointer}button:focus-visible,select:focus-visible{outline:2px solid #70d8bf}button[aria-pressed=true]{background:#24574f}small{color:#a4b6c9}summary{cursor:pointer;color:#70d8bf}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto}canvas{width:100%;height:100px}label{display:inline-block} .experimental{color:#ffc987} .labels{white-space:pre-wrap}
+*{box-sizing:border-box}header,nav,section,footer{padding:10px 12px;border-bottom:1px solid var(--ws-hairline,#ffffff14)}footer{border-bottom:0}h1{font-size:13px;line-height:18px;font-weight:600;margin:0}strong{font-weight:600}
+button,select,input{font:inherit;background:var(--ws-raised,#11142f);color:inherit;border:1px solid var(--ws-border,#22254b);border-radius:8px;padding:4px 10px;margin:3px;max-width:100%}button,select{cursor:pointer}button:hover,select:hover{border-color:var(--ws-border-strong,#363a72)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ws-focus,#c9b8ff);outline-offset:2px}button[aria-pressed=true]{border-color:var(--ws-accent,#9b7bff);background:rgba(123,77,255,.22)}input[type=checkbox]{accent-color:var(--ws-accent-strong,#7b4dff);padding:0}
+small{color:var(--ws-muted,#a6a4b8)}summary{cursor:pointer;color:var(--ws-accent,#9b7bff);font-weight:500;line-height:26px}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto;font-size:11.5px;color:var(--ws-muted,#a6a4b8)}canvas{width:100%;height:100px}label{display:inline-block} .experimental{color:var(--ws-warning,#f5b73b)} .labels{white-space:pre-wrap;color:var(--ws-muted,#a6a4b8)}
 /* A row is its own layout boundary (fixed height, strict containment): a value that changes re-lays out that row alone. */
-.row{display:flex;gap:8px;height:28px;padding:0 4px;border-bottom:1px solid #1d2939;contain:strict}.row span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.id{flex:1 1 auto;min-width:0}.value{flex:0 0 auto;max-width:60%;font-variant-numeric:tabular-nums}
+.row{display:flex;align-items:center;gap:8px;height:28px;padding:0 4px;border-bottom:1px solid var(--ws-hairline,#ffffff14);contain:strict}.row span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.id{flex:1 1 auto;min-width:0;color:var(--ws-muted,#a6a4b8)}.value{flex:0 0 auto;max-width:60%}
 `;
+/** The plot's stroke: the cockpit's accent (design token violet), as a canvas needs it. */
+const PLOT = '#9b7bff';
 export function download(name: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
   const a = h('a', { href: url, download: name }); a.click();
@@ -205,7 +210,7 @@ export class DiagnosticsDashboard {
   }
   private draw(): void {
     const ctx = this.plot.getContext('2d'); if (!ctx) return;
-    ctx.clearRect(0, 0, 500, 100); ctx.strokeStyle = ctx.fillStyle = '#70d8bf';
+    ctx.clearRect(0, 0, 500, 100); ctx.strokeStyle = ctx.fillStyle = PLOT;
     const world = visualWorld(this.controller.app);
     if (this.domain === 'physics' && world) {
       setText(this.caption, 'Flusso condiviso flowAt(P), sezione z=0; non forza totale');

@@ -1,0 +1,80 @@
+{
+ "date": "2026-10-11",
+ "host": "Fedora 44, i7-10510U, UHD Graphics (ANGLE GL/EGL), Chromium headless 1243, WebGL2 real context, PL1 51 W, machine not isolated",
+ "method": "scripts/workspace-browser.mjs after; render host fixed at 960x540 CSS px (480x270 buffer, quality low), Spectrum (Structural Lab in lab cases), beat124; 2 s settling + 6 s per case; CDP CPU/heap/layout counters, external RAF observer. Same script against both trees, runs alternated base/work/work/base after a first base run.",
+ "note": "The 403 console line of the before runs is its dev server refusing a file outside its root; unrelated to the workspace.",
+ "before": {"commit": "dedfa4c", "layout": "single scrolling column under a 48vh viewport", "runs": [
+  [
+   {"name": "closed", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 105.105, "scriptMsPerSecond": 71.612, "heapMB": 21.188, "nodes": 221, "layoutCount": 0},
+   {"name": "overview", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 110.724, "scriptMsPerSecond": 68.711, "heapMB": 19.323, "nodes": 1486, "layoutCount": 27},
+   {"name": "audio", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 121.292, "scriptMsPerSecond": 76.803, "heapMB": 20.646, "nodes": 2303, "layoutCount": 30},
+   {"name": "audio-charts-visible", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 117.057, "scriptMsPerSecond": 72.72, "heapMB": 28.705, "nodes": 2347, "layoutCount": 30},
+   {"name": "diagnostics", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 123.341, "scriptMsPerSecond": 80.624, "heapMB": 19.394, "nodes": 2359, "layoutCount": 28},
+   {"name": "diagnostics-collapsed", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 115.072, "scriptMsPerSecond": 74.442, "heapMB": 19.439, "nodes": 2229, "layoutCount": 28},
+   {"name": "REC", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 118.466, "scriptMsPerSecond": 78.48, "heapMB": 20.966, "nodes": 2508, "layoutCount": 28},
+   {"name": "laboratories", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 176.472, "scriptMsPerSecond": 122.161, "heapMB": 22.405, "nodes": 2964, "layoutCount": 60},
+   {"name": "lab-override", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 151.82, "scriptMsPerSecond": 98.375, "heapMB": 25.234, "nodes": 2923, "layoutCount": 60},
+   {"name": "rapid-navigation", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 283.036, "scriptMsPerSecond": 135.303, "heapMB": 22.803, "nodes": 3165, "layoutCount": 76},
+   {"name": "closed-again", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 134.472, "scriptMsPerSecond": 90.007, "heapMB": 23.106, "nodes": 3169, "layoutCount": 0},
+   {"name": "closed-after-GC", "heapMB": 18.361, "nodes": 306, "resources": {"intervals": 2, "observers": 2}}
+  ],
+  [
+   {"name": "closed", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 176.993, "scriptMsPerSecond": 116.873, "heapMB": 21.049, "nodes": 221, "layoutCount": 0},
+   {"name": "overview", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 155.087, "scriptMsPerSecond": 93.157, "heapMB": 18.839, "nodes": 1362, "layoutCount": 27},
+   {"name": "audio", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 114.177, "scriptMsPerSecond": 69.162, "heapMB": 21.725, "nodes": 2215, "layoutCount": 30},
+   {"name": "audio-charts-visible", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 108.063, "scriptMsPerSecond": 63.493, "heapMB": 18.536, "nodes": 2201, "layoutCount": 31},
+   {"name": "diagnostics", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 101.873, "scriptMsPerSecond": 64.386, "heapMB": 19.53, "nodes": 2231, "layoutCount": 28},
+   {"name": "diagnostics-collapsed", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 99.52, "scriptMsPerSecond": 65.154, "heapMB": 20.69, "nodes": 2489, "layoutCount": 27},
+   {"name": "REC", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 107.149, "scriptMsPerSecond": 69.999, "heapMB": 18.633, "nodes": 2275, "layoutCount": 26},
+   {"name": "laboratories", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 158.885, "scriptMsPerSecond": 109.677, "heapMB": 23.025, "nodes": 3406, "layoutCount": 60},
+   {"name": "lab-override", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 140.259, "scriptMsPerSecond": 95.576, "heapMB": 23.383, "nodes": 3354, "layoutCount": 60},
+   {"name": "rapid-navigation", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 254.917, "scriptMsPerSecond": 112.83, "heapMB": 22.763, "nodes": 3160, "layoutCount": 77},
+   {"name": "closed-again", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 93.272, "scriptMsPerSecond": 61.171, "heapMB": 23.076, "nodes": 3164, "layoutCount": 0},
+   {"name": "closed-after-GC", "heapMB": 18.352, "nodes": 306, "resources": {"intervals": 2, "observers": 2}}
+  ],
+  [
+   {"name": "closed", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 108.048, "scriptMsPerSecond": 72.132, "heapMB": 20.913, "nodes": 221, "layoutCount": 0},
+   {"name": "overview", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 113.786, "scriptMsPerSecond": 68.266, "heapMB": 19.003, "nodes": 1370, "layoutCount": 27},
+   {"name": "audio", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 115.064, "scriptMsPerSecond": 71.131, "heapMB": 22.504, "nodes": 2231, "layoutCount": 30},
+   {"name": "audio-charts-visible", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 108.97, "scriptMsPerSecond": 64.278, "heapMB": 19.243, "nodes": 2218, "layoutCount": 30},
+   {"name": "diagnostics", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 99.527, "scriptMsPerSecond": 62.98, "heapMB": 20.229, "nodes": 2238, "layoutCount": 28},
+   {"name": "diagnostics-collapsed", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 96.577, "scriptMsPerSecond": 62.541, "heapMB": 21.259, "nodes": 2497, "layoutCount": 28},
+   {"name": "REC", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 100.145, "scriptMsPerSecond": 63.661, "heapMB": 18.8, "nodes": 2274, "layoutCount": 28},
+   {"name": "laboratories", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 148.686, "scriptMsPerSecond": 100.634, "heapMB": 23.228, "nodes": 3386, "layoutCount": 60},
+   {"name": "lab-override", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 121.292, "scriptMsPerSecond": 79.384, "heapMB": 24.336, "nodes": 3389, "layoutCount": 60},
+   {"name": "rapid-navigation", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 242.615, "scriptMsPerSecond": 105.104, "heapMB": 22.811, "nodes": 3162, "layoutCount": 78},
+   {"name": "closed-again", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 92.41, "scriptMsPerSecond": 61.645, "heapMB": 23.148, "nodes": 3166, "layoutCount": 0},
+   {"name": "closed-after-GC", "heapMB": 18.351, "nodes": 306, "resources": {"intervals": 2, "observers": 2}}
+  ]
+ ]},
+ "after": {"layout": "navigation | live viewport | contextual inspector", "runs": [
+  [
+   {"name": "closed", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 108.71, "scriptMsPerSecond": 71.561, "heapMB": 21.563, "nodes": 229, "layoutCount": 0},
+   {"name": "overview", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 119.463, "scriptMsPerSecond": 71.44, "heapMB": 19.301, "nodes": 1414, "layoutCount": 27},
+   {"name": "audio", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 111.126, "scriptMsPerSecond": 69.398, "heapMB": 21.784, "nodes": 2257, "layoutCount": 27},
+   {"name": "audio-charts-visible", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 125.26, "scriptMsPerSecond": 76.208, "heapMB": 18.581, "nodes": 2245, "layoutCount": 28},
+   {"name": "diagnostics", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 134.943, "scriptMsPerSecond": 84.258, "heapMB": 19.593, "nodes": 2279, "layoutCount": 28},
+   {"name": "diagnostics-collapsed", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 122.261, "scriptMsPerSecond": 79.69, "heapMB": 20.69, "nodes": 2507, "layoutCount": 28},
+   {"name": "REC", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 124.236, "scriptMsPerSecond": 79.374, "heapMB": 19.191, "nodes": 2371, "layoutCount": 28},
+   {"name": "laboratories", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 178.333, "scriptMsPerSecond": 126.848, "heapMB": 23.1, "nodes": 3406, "layoutCount": 30},
+   {"name": "lab-override", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 168.634, "scriptMsPerSecond": 117.215, "heapMB": 22.315, "nodes": 3337, "layoutCount": 30},
+   {"name": "rapid-navigation", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 301.265, "scriptMsPerSecond": 139.464, "heapMB": 22.763, "nodes": 3195, "layoutCount": 66},
+   {"name": "closed-again", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 143.967, "scriptMsPerSecond": 98.083, "heapMB": 23.073, "nodes": 3199, "layoutCount": 0},
+   {"name": "closed-after-GC", "heapMB": 18.414, "nodes": 255, "resources": {"intervals": 2, "observers": 2}}
+  ],
+  [
+   {"name": "closed", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 158.389, "scriptMsPerSecond": 106.316, "heapMB": 20.808, "nodes": 229, "layoutCount": 0},
+   {"name": "overview", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 140.244, "scriptMsPerSecond": 84.546, "heapMB": 21.396, "nodes": 1705, "layoutCount": 27},
+   {"name": "audio", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 124.527, "scriptMsPerSecond": 75.69, "heapMB": 22.985, "nodes": 2362, "layoutCount": 27},
+   {"name": "audio-charts-visible", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 114.852, "scriptMsPerSecond": 71.648, "heapMB": 19.028, "nodes": 2403, "layoutCount": 28},
+   {"name": "diagnostics", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 109.094, "scriptMsPerSecond": 69.653, "heapMB": 19.599, "nodes": 2422, "layoutCount": 28},
+   {"name": "diagnostics-collapsed", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 111.052, "scriptMsPerSecond": 69.501, "heapMB": 20.105, "nodes": 2339, "layoutCount": 29},
+   {"name": "REC", "renderSize": [480, 270], "frames": 359, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 115.361, "scriptMsPerSecond": 73.698, "heapMB": 20.768, "nodes": 2294, "layoutCount": 28},
+   {"name": "laboratories", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 172.314, "scriptMsPerSecond": 116.949, "heapMB": 21.916, "nodes": 2872, "layoutCount": 30},
+   {"name": "lab-override", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 164.643, "scriptMsPerSecond": 110.885, "heapMB": 21.658, "nodes": 3445, "layoutCount": 30},
+   {"name": "rapid-navigation", "renderSize": [480, 270], "frames": 357, "mean": 16.806, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0.008, "taskMsPerSecond": 294.742, "scriptMsPerSecond": 122.139, "heapMB": 22.45, "nodes": 3189, "layoutCount": 77},
+   {"name": "closed-again", "renderSize": [480, 270], "frames": 360, "mean": 16.666, "p50": 16.665, "p95": 16.67, "p99": 16.67, "jank": 0, "taskMsPerSecond": 92.383, "scriptMsPerSecond": 59.263, "heapMB": 22.68, "nodes": 3193, "layoutCount": 0},
+   {"name": "closed-after-GC", "heapMB": 18.441, "nodes": 255, "resources": {"intervals": 2, "observers": 2}}
+  ]
+ ]}
+}

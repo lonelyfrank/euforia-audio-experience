@@ -76,6 +76,9 @@ export class StructuralState {
   /** Sides of the closed loop it is part of (0: none) and that loop's index. */
   readonly loop: Uint8Array;
   readonly loopOf: Int32Array;
+  /** The volumetric body it is a vertex of (−1: none: such matter takes no wire), and the links of that body it holds now (SolidState). */
+  readonly body: Int32Array;
+  readonly links: Uint8Array;
 
   // ---- structural memory: what a broken bond leaves in its two ends ----
   readonly memPartner: Int32Array;
@@ -135,6 +138,7 @@ export class StructuralState {
     this.density = f(); this.alignment = f().fill(1); this.agreement = f();
     this.span = new Int32Array(n).fill(-1); this.joint = new Int32Array(n * MAX_JOINTS).fill(-1); this.joints = new Uint8Array(n);
     this.loop = new Uint8Array(n); this.loopOf = new Int32Array(n).fill(-1);
+    this.body = new Int32Array(n).fill(-1); this.links = new Uint8Array(n);
     this.memPartner = new Int32Array(n * MEMORY_SLOTS).fill(-1); this.memRest = new Float32Array(n * MEMORY_SLOTS);
     this.memStrength = new Float32Array(n * MEMORY_SLOTS); this.memRole = new Uint8Array(n);
     this.bondA = new Int32Array(b); this.bondB = new Int32Array(b); this.bondAlive = new Uint8Array(b); this.bondSpan = new Uint8Array(b);
@@ -264,6 +268,7 @@ export class StructuralState {
     for (let r = 0; r < ROLE_COUNT; r++) this.roles[i * ROLE_COUNT + r] = r === ROLE.free ? 1 : 0;
     this.role[i] = ROLE.free; this.lifecycle[i] = 0;
     this.span[i] = -1; this.joints[i] = 0; this.loop[i] = 0; this.loopOf[i] = -1;
+    this.body[i] = -1; this.links[i] = 0;
     for (let s = 0; s < MAX_JOINTS; s++) this.joint[i * MAX_JOINTS + s] = -1;
     for (let s = 0; s < MEMORY_SLOTS; s++) { this.memPartner[i * MEMORY_SLOTS + s] = -1; this.memRest[i * MEMORY_SLOTS + s] = this.memStrength[i * MEMORY_SLOTS + s] = 0; }
     this.memRole[i] = ROLE.free;
