@@ -1,29 +1,24 @@
 import type { App } from '../app/App';
-import { installDebugOverlay } from '../app/debug/DebugOverlay';
-import { installEngineCockpit } from '../app/engine/EngineCockpit';
 import { DiagnosticsController } from './core/DiagnosticsController';
-import { DiagnosticsDashboard } from './ui/DiagnosticsDashboard';
+import { EngineWorkspace } from './workspace/EngineWorkspace';
 
-/**
- * The one entry point of diagnostics. Development builds load it at start, with every tool; a
- * production build loads it only when diagnostics are asked for (`?diagnostics`, or
- * Ctrl+Alt+Shift+D: see App), and then only the dashboard: an observer that reads the engine and
- * writes no setting. The overlay and the cockpit stay development tools (`tools` false leaves them out).
- */
+/** One controller, one workspace. The release entry remains lazy and observation-only. */
 export function installDiagnostics(app: App, tools = true, open = false): () => void {
   const controller = new DiagnosticsController(app);
-  let dashboard: DiagnosticsDashboard | null = null;
-  const toggle = () => {
-    if (dashboard) { dashboard.dispose(); dashboard = null; }
-    else dashboard = new DiagnosticsDashboard(controller, toggle);
+  let workspace: EngineWorkspace | null = null;
+  let disposed = false;
+  const show = () => {
+    const query = new URLSearchParams(location.search);
+    if (open || query.has('diagnostics')) workspace?.open('diagnostics');
+    else if (tools && query.has('engine')) workspace?.open('laboratories');
+    else if (tools && (query.has('debug') || query.has('matter') || query.has('primitives'))) workspace?.open('audio');
   };
-  const onKey = (event: KeyboardEvent) => {
-    if (event.repeat || (event.target instanceof HTMLElement && (event.target.isContentEditable || /INPUT|SELECT|TEXTAREA/.test(event.target.tagName)))) return;
-    if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyG') toggle();
-  };
-  const overlay = tools ? installDebugOverlay(app, controller) : () => {};
-  const cockpit = tools ? installEngineCockpit(app, controller, () => { if (!dashboard) toggle(); }) : () => {};
-  window.addEventListener('keydown', onKey);
-  if (open || new URLSearchParams(location.search).has('diagnostics')) toggle();
-  return () => { window.removeEventListener('keydown', onKey); dashboard?.dispose(); dashboard = null; overlay(); cockpit(); controller.dispose(); };
+  if (import.meta.env.DEV && tools) {
+    void import('./workspace/DevelopmentTools').then(({ DevelopmentTools }) => {
+      if (disposed) return;
+      workspace = new EngineWorkspace(app, controller, parent => new DevelopmentTools(app, controller, parent));
+      show();
+    });
+  } else { workspace = new EngineWorkspace(app, controller); show(); }
+  return () => { disposed = true; workspace?.dispose(); controller.dispose(); };
 }

@@ -1,8 +1,6 @@
 import type { DiagnosticsController } from '../../diagnostics/core/DiagnosticsController';
-import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { FIELD } from '../../render-systems/fields/fieldLaw';
 import { TOPOLOGY } from '../../render-systems/fields/vectorField';
-import { settingsStore } from '../../stores/settingsStore';
 import { h } from '../../ui/dom';
 import { STRUCTURE_VIEWS, structuralLab, WirePolygonPrimitive, type StructureCommand, type StructureView } from '../../visual-engine/primitives/WirePolygonPrimitive';
 import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
@@ -12,34 +10,17 @@ import type { VisualWorld } from '../../visual-engine/VisualWorld';
 import { registerLaboratory, visualizers } from '../../visualizers/registry';
 import type { App } from '../App';
 
-/*
- * Engine cockpit: the technical view of the engine, beside the cinematic one
- * (docs/structural-dynamics.md). Not a consumer UI and not in the product:
- * loaded only when import.meta.env.DEV, opened with ?engine or Shift+E.
- *
- *   left    module navigation, the world in the viewport, the test signal, the geometry to single out
- *   centre  the live world (the application's own stage, unchanged, in a smaller frame)
- *   right   the inspector of the selected module: live values and development overrides
- *   bottom  traces and the cost of the structural engine
- *
- * This milestone carries what the structural engine needs: Structures,
- * Resonance, Environment and Diagnostics. The other modules are listed as the
- * map of what the cockpit will hold. Nothing here writes user settings: the
- * world in the viewport is pinned on the rig, the test signal is the debug
- * one, and the overrides live in `structuralLab` until the cockpit closes.
+/** Structural inspectors embedded in Engine Workspace. No independent window, listener or RAF.
+ * Register/pin on explicit laboratory entry; dispose releases its overrides and restores the previous pin.
  */
 
-const LEFT = 232;
-const RIGHT = 316;
 const BOTTOM = 176;
-/** Thirty seconds of traces at 20 Hz, whatever the frame rate. */
-const TRACE_RATE = 20;
+/** Thirty seconds of traces at 5 Hz, whatever the frame rate. */
+const TRACE_RATE = 5;
 const TRACE = 30 * TRACE_RATE;
 
 const MODULES = ['Structures', 'Resonance', 'Environment', 'Diagnostics'] as const;
 type Module = typeof MODULES[number];
-/** Related domains open the shared Diagnostics dashboard. */
-const PLANNED = ['Input', 'Analysis', 'World', 'Matter', 'Geometry', 'Recipes', 'Render'];
 const VIEW_LABELS: Record<StructureView, string> = {
   all: 'Everything', particles: 'Particle system', nodes: 'Nodes', edges: 'Edges', polygon: 'Polygon', surface: 'Surface', fragments: 'Fragments',
 };
@@ -49,12 +30,12 @@ const TRACES = [
 type TraceKey = typeof TRACES[number][0];
 
 const STYLE = /* css */ `
-.engine-mode .app-stage { inset: 0 ${RIGHT}px ${BOTTOM}px ${LEFT}px; }
-.engine { position: fixed; z-index: 9000; box-sizing: border-box; background: var(--void); color: var(--ink); font: 11px/1.45 ui-monospace, monospace; overflow: auto; }
-.engine * { box-sizing: border-box; }
-.engine-left { left: 0; top: 0; bottom: 0; width: ${LEFT}px; border-right: 1px solid var(--hairline); padding: 12px; }
-.engine-right { right: 0; top: 0; bottom: 0; width: ${RIGHT}px; border-left: 1px solid var(--hairline); padding: 12px; }
-.engine-bottom { left: ${LEFT}px; right: ${RIGHT}px; bottom: 0; height: ${BOTTOM}px; border-top: 1px solid var(--hairline); padding: 8px 12px; overflow: hidden; }
+.engine { box-sizing:border-box; color:var(--ws-text); font:13px/1.5 system-ui,sans-serif; min-width:0; }
+.engine * { box-sizing:border-box; }
+.engine-left,.engine-right,.engine-bottom { padding:16px; background:var(--ws-panel); border:1px solid var(--ws-border); border-radius:12px; }
+.engine-left { grid-column:1; }
+.engine-right { grid-column:2; }
+.engine-bottom { grid-column:1 / -1; overflow:hidden; }
 .engine h1 { margin: 0; font: 600 12px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
 .engine h2 { margin: 14px 0 6px; font: 600 10px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); }
 .engine small { color: var(--ink-faint); }
@@ -77,24 +58,6 @@ const STYLE = /* css */ `
 .engine-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 `;
 
-export function installEngineCockpit(app: App, diagnostics: DiagnosticsController, openDiagnostics: () => void): () => void {
-  let cockpit: EngineCockpit | null = null;
-  const toggle = (): void => {
-    if (cockpit) { cockpit.dispose(); cockpit = null; }
-    else cockpit = new EngineCockpit(app, diagnostics, openDiagnostics);
-  };
-  const onKey = (event: KeyboardEvent): void => {
-    if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyE') toggle();
-  };
-  window.addEventListener('keydown', onKey);
-  if (new URLSearchParams(location.search).has('engine')) toggle();
-  return () => {
-    window.removeEventListener('keydown', onKey);
-    cockpit?.dispose();
-    cockpit = null;
-  };
-}
-
 /** One override of the Structures panel: a factor (always on) or a level that replaces the world's own (when ticked). */
 interface Override {
   key: keyof StructuralTuning;
@@ -114,7 +77,9 @@ const OVERRIDES: Override[] = [
   { key: 'environmentCoupling', label: 'environment coupling ×', min: 0, max: 3, level: false },
 ];
 
-class EngineCockpit {
+export class EngineCockpit {
+  readonly element = h('div', { class: 'ws-lab-grid' });
+  visible = true;
   private readonly style = h('style', {}, STYLE);
   private readonly left = h('aside', { class: 'engine engine-left' });
   private readonly right = h('aside', { class: 'engine engine-right' });
@@ -126,46 +91,43 @@ class EngineCockpit {
   private readonly bars = h('canvas');
   private readonly history: Record<TraceKey, Float32Array> = Object.fromEntries(TRACES.map(([key]) => [key, new Float32Array(TRACE)])) as Record<TraceKey, Float32Array>;
   private head = 0;
+  private session = -1;
+  private readonly roles = new Float64Array(ROLE_COUNT);
+  private readonly lives = new Uint32Array(LIFECYCLES.length);
   private module: Module = 'Structures';
   private world = STRUCTURAL_LAB;
+  private readonly previousPin: string | null;
   private readonly withdraw: () => void;
-  private readonly timer: number;
-  private readonly sampler: number;
-  private lastFrame = performance.now();
+  private lastSample = -1;
   private frameMs = 16;
-  private rafId = 0;
   private readonly releaseDiagnostics: () => void;
   private readonly drawn = { calls: 0, triangles: 0, points: 0, lines: 0 };
 
-  constructor(private readonly app: App, private readonly diagnostics: DiagnosticsController, private readonly openDiagnostics: () => void) {
+  constructor(private readonly app: App, private readonly diagnostics: DiagnosticsController, parent: HTMLElement) {
+    this.previousPin = app.pinnedScene;
     this.withdraw = registerLaboratory(structuralLabScene);
     structuralLab.active = true;
     document.head.append(this.style);
-    document.documentElement.classList.add('engine-mode');
     this.buildLeft();
     this.right.append(this.inspector);
     this.bottom.append(
       h('div', { class: 'engine-legend' }, ...TRACES.map(([key, color]) => h('span', { style: { color } }, `■ ${key}`)), h('small', {}, '30 s · structural engine')),
       this.traces, this.metrics,
     );
-    document.body.append(this.left, this.right, this.bottom);
+    this.element.append(this.left, this.right, this.bottom);
+    parent.append(this.element);
     this.select('Structures');
     app.pinScene(this.world);
-    this.timer = window.setInterval(() => this.refresh(), 120);
-    this.sampler = window.setInterval(() => this.sample(), 1000 / TRACE_RATE);
     this.releaseDiagnostics = diagnostics.acquire();
-    this.rafId = requestAnimationFrame(this.frame);
   }
 
   dispose(): void {
-    window.clearInterval(this.timer); window.clearInterval(this.sampler);
-    cancelAnimationFrame(this.rafId);
     this.releaseDiagnostics();
     this.left.remove(); this.right.remove(); this.bottom.remove(); this.style.remove();
-    document.documentElement.classList.remove('engine-mode');
+    this.element.remove();
     // Nothing of the cockpit outlives it: the overrides, the view and the pinned world go back to the product's.
     Object.assign(structuralLab, { active: false, tuning: createTuning(), view: 'all', sides: 4, command: null });
-    this.app.pinScene(null);
+    this.app.pinScene(this.previousPin);
     this.withdraw();
   }
 
@@ -186,19 +148,9 @@ class EngineCockpit {
   private buildLeft(): void {
     const nav = h('nav', { class: 'engine-nav' });
     for (const module of MODULES) nav.append(h('button', { type: 'button', dataset: { module }, onclick: () => this.select(module) }, module));
-    for (const module of PLANNED) nav.append(h('button', { type: 'button', onclick: this.openDiagnostics, title: 'Engine Diagnostics 1.0' }, module));
 
-    const world = h('select', { onchange: () => { this.world = world.value; this.app.pinScene(this.world); world.blur(); } },
+    const world = h('select', { ariaLabel: 'Mondo del laboratorio', onchange: () => { this.world = world.value; this.app.pinScene(this.world); world.blur(); } },
       new Option('Structural Lab', STRUCTURAL_LAB), ...visualizers.map((v) => new Option(v.name, v.id)));
-    const signal = h('select', {
-      onchange: () => {
-        // The live source comes back as it was chosen; a test signal is the debug one and is not saved.
-        if (signal.value) void this.app.playTestSignal(signal.value as TestSignal);
-        else void this.app.audio.setSource(settingsStore.get().source);
-        signal.blur();
-      },
-    }, new Option('Live source', ''), ...TEST_SIGNALS.map((s) => new Option(s.label, s.id)));
-
     const views = h('div', { class: 'engine-list' });
     for (const view of STRUCTURE_VIEWS) {
       views.append(h('button', { type: 'button', dataset: { view }, onclick: () => { structuralLab.view = view; this.mark(views, 'view', view); } }, VIEW_LABELS[view]));
@@ -211,10 +163,9 @@ class EngineCockpit {
     this.mark(sides, 'sides', String(structuralLab.sides));
 
     this.left.append(
-      h('h1', {}, 'Euforia engine'), h('small', {}, 'development cockpit · Shift+E'),
+      h('h1', {}, 'Structural Dynamics'), h('small', {}, 'Experiment · temporaneo, non salvato'),
       h('h2', {}, 'Modules'), nav,
       h('h2', {}, 'Viewport'), world,
-      h('h2', {}, 'Test signal'), signal,
       h('h2', {}, 'Geometry'), views,
       h('h2', {}, 'Polygon'), sides,
     );
@@ -241,8 +192,8 @@ class EngineCockpit {
     const sync: (() => void)[] = [];
     for (const override of OVERRIDES) {
       const readout = h('span', {});
-      const range = h('input', { type: 'range', min: String(override.min), max: String(override.max), step: '0.01' });
-      const tick = h('input', { type: 'checkbox', title: override.level ? 'Replace the world\'s own value' : 'Always applied' });
+      const range = h('input', { type: 'range', ariaLabel: override.label, min: String(override.min), max: String(override.max), step: '0.01' });
+      const tick = h('input', { type: 'checkbox', ariaLabel: `Override ${override.label}`, title: override.level ? 'Replace the world\'s own value' : 'Always applied' });
       const write = (): void => {
         const value = Number(range.value);
         (structuralLab.tuning[override.key] as number | null) = override.level && !tick.checked ? null : value;
@@ -277,9 +228,12 @@ class EngineCockpit {
   // ---- live values -------------------------------------------------------------------
 
   private table(rows: [string, string][]): void {
-    const cells: HTMLElement[] = [];
-    for (const [label, value] of rows) cells.push(h('span', {}, label), h('span', {}, value));
-    this.values.replaceChildren(...cells);
+    if (this.values.childElementCount !== rows.length * 2) this.values.replaceChildren(...rows.flatMap(() => [h('span'), h('span')]));
+    rows.forEach(([label, value], i) => {
+      const a = this.values.children[i * 2], b = this.values.children[i * 2 + 1];
+      if (a.textContent !== label) a.textContent = label;
+      if (b.textContent !== value) b.textContent = value;
+    });
   }
 
   private refresh(): void {
@@ -288,7 +242,7 @@ class EngineCockpit {
       if (!structure) this.table([['structural system', 'none in this world']]);
       else {
         const s = structure.system.stats, state = structure.system.state;
-        const roles = new Float64Array(ROLE_COUNT), lives = new Array<number>(LIFECYCLES.length).fill(0);
+        const roles = this.roles, lives = this.lives; roles.fill(0); lives.fill(0);
         for (let i = 0; i < state.count; i++) {
           lives[state.lifecycle[i]]++;
           for (let r = 0; r < ROLE_COUNT; r++) roles[r] += state.roles[i * ROLE_COUNT + r] / Math.max(1, state.count);
@@ -364,10 +318,16 @@ class EngineCockpit {
     return ctx;
   }
 
-  private readonly frame = (now: number): void => {
-    this.rafId = requestAnimationFrame(this.frame);
-    this.frameMs += (now - this.lastFrame - this.frameMs) * 0.05;
-    this.lastFrame = now;
+  refreshPanel(now: number): void {
+    if (this.session !== this.app.audio.session) {
+      this.session = this.app.audio.session; this.head = 0; this.lastSample = -1;
+      for (const [key] of TRACES) this.history[key].fill(0);
+    }
+    const sample = Math.floor(now * TRACE_RATE / 1000);
+    if (sample !== this.lastSample) { this.sample(); this.lastSample = sample; }
+    if (!this.visible) return;
+    this.frameMs = this.diagnostics.renderer?.frameMs ?? 0;
+    this.refresh();
     Object.assign(this.drawn, this.diagnostics.renderer?.drawn);
 
     const width = Math.max(100, this.bottom.clientWidth - 24), height = BOTTOM - 62, ctx = this.fit(this.traces, width, height);
@@ -388,7 +348,7 @@ class EngineCockpit {
   };
 
   private drawResonance(): void {
-    const width = RIGHT - 24, row = 54, ctx = this.fit(this.bars, width, row * 3 + 8), r = this.app.audio.experience.presented.resonance;
+    const width = Math.max(100, this.right.clientWidth - 32), row = 54, ctx = this.fit(this.bars, width, row * 3 + 8), r = this.app.audio.experience.presented.resonance;
     if (!ctx || !this.app.audio.experience.ready) return;
     const strip = (values: Float32Array, levels: Float32Array | null, top: number, color: string, signed: boolean): void => {
       const w = width / values.length, mid = top + row / 2;

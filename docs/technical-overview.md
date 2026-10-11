@@ -1,6 +1,6 @@
 # Euforia-Audio-Experience — scheda tecnica e audit
 
-Aggiornata l'**8 ottobre 2026** (Structural Dynamics, cockpit del motore). Il [README](../README.md) è la fonte di verità per
+Aggiornata il **10 ottobre 2026** (Engine Workspace unificato). Il [README](../README.md) è la fonte di verità per
 funzionalità, avvio e architettura; questa scheda contiene i dettagli operativi per
 chi modifica il progetto. [experience-engine.md](experience-engine.md) conserva
 le decisioni e misure delle fasi precedenti. Il prodotto usa solo sorgenti live;
@@ -50,7 +50,7 @@ frontend, backend e WASM della stessa revisione.
 | Rendering | `renderer/RenderEngine.ts`, `renderer/Layer.ts` | Engine: RAF, slot, layout e composizione; Layer: scena, camera, Director, target e pass |
 | Visual Engine | `visual-engine/` | Mondo visuale persistente: `SonicGeometryMapper` (morfologia, mondo, planner, forma dei cicli delle voci → `GeometryState`, 36 tratti continui), `MaterialSystem` (luce comune), `VisualWorld` (campi e fronti impacchettati una volta, budget strutturale, presenze, memoria, osservatore), cinque primitive con legge GLSL + riferimento CPU, `WorldRecipe` e `RecipeVisualizer` (adattatore verso `Layer`: recipe e scene legacy convivono) |
 | Structural Dynamics | `physics/MultiscaleResonance.ts`, `visual-engine/structural/`, `visual-engine/primitives/WirePolygonPrimitive.ts` | Risonanza multiscala per hop in ExperienceEngine (`snapshot.resonance`; macro / meso / micro a conteggi configurabili; `ResonantPhysics` invariata). Elementi con identità procedurale, pool a capacità fissa, legami (campate, giunti, controventi), carico / danno / frattura, memoria strutturale, ordine / temperatura / ruoli continui, passo fisso sul clock udito, vicinato in griglia limitata. L'ambiente è quello del mondo (`fieldAt`, fronti, molla radiale); la primitiva lo disegna (fili istanziati, punti, facce). Esiste solo nello Structural Lab, fuori dal registry ([structural-dynamics](structural-dynamics.md)) |
-| Cockpit del motore | `app/engine/EngineCockpit.ts` | Solo DEV (`?engine`, Shift+E): moduli, viewport, ispettore, tracce. Fissa il mondo sul rig (`RigController.pinned`, `App.pinScene`), registra il laboratorio (`registerLaboratory`), scrive solo `structuralLab`; alla chiusura ripristina tutto. Nessuna impostazione utente toccata, UI cinematica invariata |
+| Workspace tecnico | `diagnostics/workspace/`, `app/engine/EngineCockpit.ts` | Una shell per Shift+D/E/G, canvas originale e controller condiviso; diagnostica lazy in release, laboratori solo DEV. [Contratti e verifiche](engine-workspace.md). Inspector strutturali (`?engine`, Shift+E): moduli, viewport, ispettore, tracce. Fissa il mondo sul rig (`RigController.pinned`, `App.pinScene`), registra il laboratorio (`registerLaboratory`), scrive solo `structuralLab`; alla chiusura ripristina tutto. Nessuna impostazione utente toccata, UI cinematica invariata |
 | Scene fisiche | `render-systems/fields/vectorField.ts`, `wells.ts`, `particles/tracer*.ts`, `Tracer*.ts`, `visual-engine/primitives/Field*Primitive.ts` | Campo vettoriale F(P) e sua topologia, pozzi di potenziale, legge / passo / simulazione GPU / probe CPU / parità dei traccianti, primitive dei traccianti e delle linee di campo: leggi in GLSL e in TS come la legge dei campi ([scene fisiche](physical-scenes.md)) |
 | Visual Systems | `render-systems/` | Vocabolario condiviso: `VisualMaterial` (mondo + morfologia), campi spaziali, legge dei campi e legge delle forme (GLSL + riferimento CPU), forme della materia (storia della waveform, rete dei parziali), onde datate, materia GPU e probe CPU, disegno a punti / legami / faccette, memoria visiva, osservatore; nessuno stato musicale, solo storia di rendering |
 | Scene | `visualizers/` | Sei scene legacy interpretano il mondo (`modulation.world`) in una forma propria: moto, pressione, turbolenza, coerenza, potenziale e rilasci; voci/tracce/spettri restano grafici; senza clock `REST_VIEW` (ferme); dispose GPU espliciti. In Tunnel e Particle Field la trasformazione della struttura è una funzione pura della `WorldView` (`tunnel/topology.ts`, `particle-field/regimes.ts`). Quattro sono recipe: Spectral Matter (la sola materia), Resonant Field (la sola membrana; `?legacy=resonant-field` in DEV monta la precedente), Matter Field (tutte le primitive), Vector Field (traccianti e linee di un campo vettoriale; già `field`), Spectral Shell (la membrana a disco di Matter Field con il proprio passato come gusci, [spectral-shell](spectral-shell.md)) |
@@ -399,3 +399,16 @@ a Spectrum o alla UI cinematica. Aggiunti replay/report sul percorso esistente,
 query GPU opt-in, campione materia limitato e isolamento da recipe.
 Contratti, disponibilità e verifiche: [engine-diagnostics](engine-diagnostics.md),
 [diagnostics-metrics](diagnostics-metrics.md), [diagnostics-validation](diagnostics-validation.md).
+
+## Engine Workspace — 10 ottobre 2026
+
+Le finestre autonome DebugOverlay, EngineCockpit e DiagnosticsDashboard sono sostituite
+da adattatori incorporati nell'unica shell `diagnostics/workspace/EngineWorkspace.ts`.
+Un solo listener di routing e un timer UI a 5 Hz; nessun RAF aggiuntivo dei pannelli.
+La stage originale si monta nel viewport e torna al suo segnaposto alla chiusura;
+ResizeObserver, camera e pass rimangono quelli del RenderEngine. Il lease della shell
+conserva REC e registry durante la navigazione; replay e baseline restano posseduti
+dal pannello report fino alla chiusura. Laboratori caricati soltanto in DEV, nessuna
+modifica a impostazioni, DSP, shader o Spectrum. Parità GPU: parametro opzionale per
+riusare il renderer live solo durante la prova esplicita, con ripristino del target.
+Mapping completo, istruzioni e limiti delle misure: [engine-workspace](engine-workspace.md).

@@ -1,0 +1,52 @@
+/* Scoped tokens: cinematic UI never inherits the workspace theme. */
+.euforia-workspace {
+  --ws-bg:#1a1a1a; --ws-panel:#242424; --ws-raised:#2e2e2e; --ws-text:#f0f0f0;
+  --ws-muted:#a0a0a0; --ws-border:#ffffff18; --ws-accent:#8fd5c8; --ws-warning:#e6b57c;
+  --ws-sidebar:220px;
+  position:fixed; inset:0; z-index:9000; display:grid;
+  grid-template:48px minmax(0,1fr) / var(--ws-sidebar) minmax(0,1fr);
+  background:var(--ws-bg); color:var(--ws-text); font:13px/1.5 system-ui,sans-serif;
+}
+.euforia-workspace[hidden], .euforia-workspace [hidden] { display:none!important; }
+.euforia-workspace * { box-sizing:border-box; }
+.euforia-workspace button,.euforia-workspace select,.euforia-workspace input { font:inherit; color:inherit; }
+.euforia-workspace button,.euforia-workspace select { background:var(--ws-raised); border:1px solid var(--ws-border); border-radius:8px; padding:7px 10px; cursor:pointer; }
+.euforia-workspace button:hover { background:#383838; }
+.euforia-workspace button[aria-pressed=true] { color:var(--ws-accent); border-color:var(--ws-accent); }
+.euforia-workspace :focus-visible { outline:2px solid var(--ws-accent); outline-offset:3px; }
+.euforia-workspace small,.euforia-workspace p { color:var(--ws-muted); }
+.euforia-workspace h1 { font-size:20px; font-weight:500; margin:0; }
+.euforia-workspace h2 { font-size:14px; font-weight:500; margin:0 0 12px; }
+.ws-top { grid-column:1 / -1; display:flex; align-items:center; gap:14px; padding:0 18px; background:var(--ws-panel); border-bottom:1px solid var(--ws-border); }
+.ws-brand { font-weight:600; letter-spacing:.02em; margin-right:auto; }
+.ws-status { color:var(--ws-accent); font-size:12px; }
+.ws-sidebar { padding:16px 8px; background:var(--ws-panel); border-right:1px solid var(--ws-border); display:flex; flex-direction:column; gap:4px; overflow:auto; }
+.ws-sidebar button { display:flex; align-items:center; gap:10px; width:100%; text-align:left; white-space:nowrap; background:transparent; border-color:transparent; }
+.ws-sidebar button[aria-current=page] { background:var(--ws-bg); border-color:var(--ws-border); color:var(--ws-accent); }
+.ws-icon { flex:0 0 16px; width:16px; text-align:center; }
+.ws-collapse { margin-top:auto; }
+.euforia-workspace[data-collapsed=true] { --ws-sidebar:52px; }
+.euforia-workspace[data-collapsed=true] .ws-nav-label { display:none; }
+.euforia-workspace[data-collapsed=true] .ws-sidebar button { padding:8px; }
+.ws-main { overflow:auto; min-width:0; padding:22px 28px 40px; scrollbar-gutter:stable; }
+.ws-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; }
+.ws-heading p { margin:4px 0 0; }
+.ws-preview { position:relative; height:clamp(220px,48vh,650px); border:1px solid var(--ws-border); border-radius:12px; overflow:hidden; background:#05070d; }
+.ws-preview[data-expanded=true] { height:75vh; }
+.ws-preview .app-stage { position:absolute; inset:0; }
+.ws-preview .app-stage > :not(.app-canvas):not(.app-vignette) { display:none!important; }
+.ws-preview .app-stage,.ws-preview .app-stage * { cursor:auto!important; }
+.ws-preview-label { position:absolute; left:14px; bottom:12px; z-index:2; color:#ddd; background:#111b; padding:4px 10px; border-radius:6px; pointer-events:none; font-size:12px; }
+.ws-metrics { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin:16px 0; }
+.ws-card { padding:12px 14px; background:var(--ws-panel); border:1px solid var(--ws-border); border-radius:10px; }
+.ws-card span { display:block; font-size:11px; color:var(--ws-muted); }
+.ws-card strong { display:block; font-size:18px; font-weight:500; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.ws-section { margin:16px 0; padding:16px; background:var(--ws-panel); border:1px solid var(--ws-border); border-radius:12px; }
+.ws-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.ws-lab-status { color:var(--ws-warning); }
+.ws-debug { overflow:auto; padding:16px; margin-bottom:16px; border:1px solid var(--ws-border); border-radius:12px; background:var(--ws-panel); }
+.ws-lab-grid { display:grid; grid-template-columns:minmax(230px,1fr) minmax(0,2fr); gap:16px; margin:16px 0; }
+.euforia-workspace .engine { --void:var(--ws-bg); --ink:var(--ws-text); --ink-faint:var(--ws-muted); --ink-muted:var(--ws-muted); --abyss:var(--ws-raised); --line:var(--ws-border); --hairline:var(--ws-border); --accent-live:var(--ws-accent); --magenta:var(--ws-warning); }
+@media(max-width:1000px) { .ws-main { padding:16px; } .ws-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); } .ws-lab-grid { grid-template-columns:1fr; } .ws-lab-grid .engine-right { grid-column:1; } }
+@media(max-width:700px) { .euforia-workspace { --ws-sidebar:52px; } .ws-nav-label { display:none; } .ws-sidebar button { padding:8px; } .ws-top { gap:8px; padding:0 8px; } .ws-top small { display:none; } .ws-main { padding:12px; } }
+@media(prefers-reduced-motion:no-preference) { .ws-sidebar button { transition:background .15s,color .15s; } }

@@ -218,7 +218,7 @@ src/
   app/              App (UI/lifecycle), RigController (collegamento regia), menus, shortcuts
     calibration/    click di prova e regolazione della sincronizzazione
     debug/          diagnostica caricata solo in sviluppo
-    engine/         cockpit del motore (solo sviluppo: ?engine o Shift+E), vista tecnica accanto a quella cinematica
+    engine/         inspector Structural Lab incorporato nel workspace (solo DEV)
   audio/
     AudioEngine.ts  provider attivo + analizzatore
     capture/        AudioCaptureProvider e implementazioni
@@ -226,6 +226,7 @@ src/
     features/       decoder, layout generato, WASM, worker di analisi, ring PCM, staging dei record
     interpretation/ MusicInterpreter (entry point), DynamicsMemory
     visual-response/ ruoli, presenza, memoria sezioni e voci; alias VisualResponse compatibile
+  diagnostics/      controller/probes condivisi, replay e report; workspace/ = shell tecnica unificata
   director/         mood, Experience, matrice, VisualDirector, AutoDirection
   timing/           clock capture→host, cue percepiti, gate del ritmo, calibrazione
   experience/       memoria, narrativa, trajectory, previsione, event stream, planner, intenti, history
@@ -359,7 +360,7 @@ Forme delle voci, tracce e spettri disegnati restano su questo percorso grafico;
 
 Architettura, mood/modalità, Director, capacità e istruzioni di estensione: [docs/visual-director.md](docs/visual-director.md).
 
-Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). Il cockpit del motore è anch'esso solo di sviluppo (`?engine` o Shift+E: moduli a sinistra, mondo al centro, ispettore a destra, tracce in basso; [docs/structural-dynamics.md](docs/structural-dynamics.md)). L'overlay è solo di sviluppo (`?debug` o Shift+D), con dieci secondi di history; il blocco Matter mostra morfologia, materiale, stato della materia e lavoro della GPU, e può bloccare la materia in uno stato (`?matter=wave|harmonic|particles`). Il blocco Visual World mostra budget di entropia, geometria, presenza e vertici di ogni primitiva e campi attivi; `?primitives=matter,surface` blocca un mondo su alcune primitive, `?legacy=resonant-field` monta la scena precedente alla migrazione.
+Audit precedente, costanti temporali, matrice delle scene, segnali deterministici e procedura di verifica: [docs/musical-semantics.md](docs/musical-semantics.md). Gli strumenti tecnici sono ora raccolti in **Euforia Engine Workspace**: Shift+D apre Audio, Shift+E apre Laboratories, Shift+G apre Diagnostics. La stessa scorciatoia sulla vista attiva chiude il workspace. Sidebar e inspector accompagnano il canvas originale, con controlli e grafici sotto il viewport. I laboratori DEV mantengono pinning, override, segnali, Matter e isolamento delle primitive; **Termina esperimento** li ripristina senza chiudere il workspace. `?engine`, `?debug`, `?diagnostics`, `?matter=wave|harmonic|particles` e `?primitives=matter,surface` restano disponibili; `?legacy=resonant-field` mantiene il suo significato. Architettura, mapping e verifiche: [docs/engine-workspace.md](docs/engine-workspace.md).
 
 ## Aggiungere una scena
 
@@ -518,15 +519,16 @@ Software proprietario, tutti i diritti riservati: vedi [LICENSE](LICENSE). La pu
 
 In sviluppo: aprire `http://localhost:1420/?diagnostics` con `npm run dev`, oppure premere
 **Shift+G**. In una build di produzione il modulo non viene caricato finché non lo si chiede
-con **Ctrl+Alt+Shift+D** (o `?diagnostics`): si apre la sola dashboard, che osserva e non scrive
-impostazioni; overlay e cockpit restano strumenti di sviluppo. Oltre alle metriche della 1.0
+con **Ctrl+Alt+Shift+D** (o `?diagnostics`): si apre il workspace di osservazione, che non scrive
+impostazioni e non espone laboratori DEV. Oltre alle metriche della 1.0
 misura ciò che dura un frame (scatti, passi del clock udito, hop decodificati per frame), il
 trasporto (batch, buchi di sequenza, frame persi, carico e qualità DSP anche per la cattura
 nativa), la mappa dei clock e il limite del frame rate (GPU o CPU). Dashboard locale per audio, Experience/Planner, mondo, fisica,
 materia, geometria e renderer; **REC**, pausa della raccolta e freeze della vista
 sono distinti. Export JSON/CSV/Markdown e confronto di acquisizioni; replay
 sintetici a 30/60/144 FPS nel worker, parità GPU e readback materia su richiesta.
-L'overlay (Shift+D) e il cockpit (Shift+E) condividono ora contatori e lifecycle;
+Audio (Shift+D), Laboratories (Shift+E) e Diagnostics (Shift+G) sono viste dello stesso
+[workspace](docs/engine-workspace.md), con un unico controller e il canvas originale;
 **Shift+T esporta WorldTrace solo dopo aver avviato REC**. A diagnostica chiusa
 non rimangono tracce o query GPU, e nessun codice diagnostico gira nel frame. Dettagli e limiti: [guida](docs/engine-diagnostics.md),
 [metriche](docs/diagnostics-metrics.md), [audit](docs/diagnostics-audit.md),

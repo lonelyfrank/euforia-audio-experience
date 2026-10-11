@@ -45,8 +45,9 @@ export interface ParityReport {
  * some elements re-form. Expect a mean around 1e-5 units and a maximum below
  * 1e-3 with full-float targets (see docs/matter-engine.md).
  */
-export function runParity(count = 1024, steps = 240, detail = true): ParityReport {
-  const renderer = new WebGLRenderer({ canvas: document.createElement('canvas') });
+export function runParity(count = 1024, steps = 240, detail = true, sharedRenderer?: WebGLRenderer): ParityReport {
+  const renderer = sharedRenderer ?? new WebGLRenderer({ canvas: document.createElement('canvas') });
+  const previousTarget = renderer.getRenderTarget();
   const forms = new MatterForms();
   const probe = new MatterProbe(count, 20261007, detail, forms);
   const simulation = new MatterSimulation(renderer, probe.seeds, detail, forms);
@@ -106,7 +107,7 @@ export function runParity(count = 1024, steps = 240, detail = true): ParityRepor
       wave: summary(groups.wave), harmonic: summary(groups.harmonic), free: summary(groups.free), invalid, travelled: travelled / n,
     };
     return report;
-  } finally { simulation.dispose(); renderer.dispose(); }
+  } finally { simulation.dispose(); renderer.setRenderTarget(previousTarget); if (!sharedRenderer) renderer.dispose(); }
 }
 
 interface Group { elements: number; sum: number; max: number }

@@ -83,11 +83,11 @@ export class App {
     this.cleanup.push(settingsStore.subscribe((s, previous) => this.applySettings(s, previous)));
     this.cleanup.push(this.audio.subscribe((state) => this.onAudioState(state)));
     this.installInput();
-    // A single coordinator owns diagnostics (and, in development, the legacy overlay and the structural cockpit).
+    // A single coordinator owns the technical workspace and its development laboratories.
     // A production build loads none of it unless asked: `?diagnostics`, or Ctrl+Alt+Shift+D at any time.
     if (import.meta.env.DEV || new URLSearchParams(location.search).has('diagnostics')) this.loadDiagnostics(false);
     else window.addEventListener('keydown', (event) => {
-      if (event.ctrlKey && event.altKey && event.shiftKey && event.code === 'KeyD' && !event.repeat) this.loadDiagnostics(true);
+      if (event.ctrlKey && event.altKey && event.shiftKey && event.code === 'KeyD' && !event.repeat && !event.composedPath().some(node => node instanceof HTMLElement && (node.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(node.tagName)))) this.loadDiagnostics(true);
     }, { signal: this.inputEvents.signal });
   }
 
@@ -285,6 +285,8 @@ export class App {
    * Holds a scene in the viewport whatever the settings say (development tools), or releases it with `null`; the
    * persisted scene is left unchanged. Without a synchronized clock the show is not directing, so it is mounted at once.
    */
+  get pinnedScene(): string | null { return this.rigController.pinned; }
+
   pinScene(id: string | null): void {
     this.rigController.pinned = id;
     this.rigController.showScene(id ?? settingsStore.get().scene);

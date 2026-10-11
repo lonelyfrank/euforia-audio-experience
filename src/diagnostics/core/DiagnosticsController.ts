@@ -61,7 +61,7 @@ export class DiagnosticsController {
     this.collector.register({ id: 'engine', sample: (store, now) => {
       collectEngine(this.app, store, this.renderer!, now, this.detailed, this.presentation!);
       metric(store, 'diagnostics', 'diagnostics.collection', this.collectionMs, now, 'ms', 'DiagnosticsController', 'render', 'valid', 'previous collection incl aggregation and trace copy', true);
-      metric(store, 'diagnostics', 'diagnostics.ui', this.uiMs, now, 'ms', 'DiagnosticsDashboard', 'render', 'valid', 'previous UI refresh incl DOM and chart', true);
+      metric(store, 'diagnostics', 'diagnostics.ui', this.uiMs, now, 'ms', 'EngineWorkspace', 'render', 'valid', 'previous workspace refresh incl cards, DOM and visible charts', true);
       metric(store, 'diagnostics', 'diagnostics.bufferBytes', store.bytes, now, 'bytes', 'DiagnosticsStore', 'render', 'valid', 'typed buffers only, excludes objects/DOM');
       if (this.readback) {
         if (now - this.sampledAt >= 1) {

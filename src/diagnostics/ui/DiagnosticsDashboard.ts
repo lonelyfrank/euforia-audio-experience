@@ -1,5 +1,4 @@
 import { h } from '../../ui/dom';
-import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { flowAt } from '../../render-systems/fields/flowLaw';
 import { visualWorld } from '../probes/EngineProbes';
 import type { DiagnosticsController } from '../core/DiagnosticsController';
@@ -9,10 +8,11 @@ import { exportReport } from '../replay/ReportExporter';
 import { compareReports } from '../replay/ReplayComparison';
 
 const STYLE = `
-:host{position:fixed;right:12px;top:12px;bottom:12px;width:min(540px,96vw);z-index:11000;contain:strict;color:#d9e1ed;background:#0b1019f5;border:1px solid #435266;border-radius:8px;font:12px/1.5 ui-monospace,monospace;box-shadow:0 8px 40px #0008;overflow:auto}
-*{box-sizing:border-box}header,nav,section,footer{padding:10px 14px;border-bottom:1px solid #283342}h1{font-size:14px;margin:0}button,select,input{font:inherit;background:#142131;color:inherit;border:1px solid #435266;border-radius:4px;padding:4px;margin:3px;max-width:100%}button{cursor:pointer}button:focus-visible,select:focus-visible{outline:2px solid #70d8bf}button[aria-pressed=true]{background:#24574f}small{color:#a4b6c9}summary{cursor:pointer;color:#70d8bf}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto}canvas{width:100%;height:100px}label{display:inline-block} .experimental{color:#ffc987} .labels{white-space:pre-wrap}
+:host{display:block;contain:content;color:var(--ws-text,#f0f0f0);background:var(--ws-panel,#242424);border:1px solid var(--ws-border,#ffffff18);border-radius:12px;font:13px/1.5 system-ui,sans-serif}
+:host([hidden]){display:none}
+*{box-sizing:border-box}header,nav,section,footer{padding:10px 14px;border-bottom:1px solid var(--ws-border,#ffffff18)}h1{font-size:14px;margin:0}button,select,input{font:inherit;background:var(--ws-raised,#2e2e2e);color:inherit;border:1px solid var(--ws-border,#ffffff18);border-radius:4px;padding:4px;margin:3px;max-width:100%}button{cursor:pointer}button:focus-visible,select:focus-visible{outline:2px solid #70d8bf}button[aria-pressed=true]{background:#24574f}small{color:#a4b6c9}summary{cursor:pointer;color:#70d8bf}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto}canvas{width:100%;height:100px}label{display:inline-block} .experimental{color:#ffc987} .labels{white-space:pre-wrap}
 /* A row is its own layout boundary (fixed height, strict containment): a value that changes re-lays out that row alone. */
-.row{display:flex;gap:8px;height:21px;padding:0 4px;border-bottom:1px solid #1d2939;contain:strict}.row span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.id{flex:1 1 auto;min-width:0}.value{flex:0 0 auto;max-width:60%}
+.row{display:flex;gap:8px;height:28px;padding:0 4px;border-bottom:1px solid #1d2939;contain:strict}.row span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.id{flex:1 1 auto;min-width:0}.value{flex:0 0 auto;max-width:60%;font-variant-numeric:tabular-nums}
 `;
 export function download(name: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
@@ -38,7 +38,11 @@ export class DiagnosticsDashboard {
   private readonly plot = h('canvas', { width: 500, height: 100 });
   private readonly primitives = h('select', { ariaLabel: 'Isolamento sperimentale primitive' });
   private readonly release: () => void;
-  private readonly timer: number;
+  private readonly domainSelect: HTMLSelectElement;
+  private readonly record: HTMLButtonElement;
+  private readonly acquire: HTMLButtonElement;
+  private readonly reports: HTMLElement[] = [];
+  private session = -1;
   private frozen = false;
   private domain: Domain = 'audio';
   private recipe = '';
@@ -50,8 +54,10 @@ export class DiagnosticsDashboard {
   private readonly history = new Float32Array(150);
   private head = 0;
   /** The shown domain's rows, built once per registry and domain: a refresh only rewrites the cells in view whose value changed. */
-  private readonly rows: Row[] = [];
-  private readonly groups = new Map<string, HTMLDetailsElement>();
+  private rows: Row[] = [];
+  private readonly domains = new Map<Domain, { rows: Row[]; groups: Map<string, HTMLDetailsElement>; placed: number }>();
+  private reporting = false;
+  private groups = new Map<string, HTMLDetailsElement>();
   private readonly rowOf = new WeakMap<Element, Row>();
   /** Which rows are in the panel's viewport (a collapsed group's are not): hundreds of rows cost nothing while out of sight. */
   private readonly seen = new IntersectionObserver(entries => {
@@ -61,13 +67,13 @@ export class DiagnosticsDashboard {
       row.visible = entry.isIntersecting;
       if (row.visible && !this.frozen) this.write(row);
     }
-  }, { root: this.host, rootMargin: '120px 0px' });
+  }, { rootMargin: '120px 0px' });
   private registry: MetricRegistry | null = null;
   /** Metrics of the registry already looked at (its vocabulary only grows). */
   private placed = 0;
   private plotted: DiagnosticMetric | null = null;
   private lastEvent: DiagnosticEvent | null = null;
-  constructor(private readonly controller: DiagnosticsController, close: () => void) {
+  constructor(private readonly controller: DiagnosticsController, parent: HTMLElement, tools: boolean) {
     this.release = controller.acquire();
     this.history.fill(NaN);
     const button = (label: string, action: () => void) => h('button', { type: 'button', onclick: action }, label);
@@ -75,17 +81,15 @@ export class DiagnosticsDashboard {
       const input = h('input', { type: 'checkbox', checked, onchange: () => action(input.checked) });
       return h('label', {}, input, label);
     };
-    const select = h('select', { ariaLabel: 'Dominio diagnostico', onchange: () => { this.domain = select.value as Domain; this.clearRows(); this.history.fill(NaN); this.refresh(); } },
+    const select = this.domainSelect = h('select', { ariaLabel: 'Dominio diagnostico', onchange: () => this.setView(select.value as Domain, this.reporting) },
       ...(['audio', 'experience', 'world', 'physics', 'matter', 'geometry', 'render', 'diagnostics'] as const).map(x => new Option(x, x)));
-    const signal = h('select', { ariaLabel: 'Segnale sintetico live', onchange: () => { if (signal.value) void controller.app.playTestSignal(signal.value as TestSignal); } },
-      new Option('Segnale live di test…', ''), ...TEST_SIGNALS.map(s => new Option(s.label, s.id)));
     this.primitives.onchange = () => controller.isolate(this.primitives.value || null);
     const gpu = toggle('Profiling GPU', on => controller.setProfiling(on), controller.renderer?.timer.enabled);
     const gpuInput = gpu.querySelector('input')!;
     gpuInput.disabled = !controller.renderer?.timer.supported;
     gpu.title = controller.renderer?.timer.supported ? 'Query asincrone, massimo 4 in volo' : 'Unavailable: EXT_disjoint_timer_query_webgl2';
-    const record = button('REC', () => { controller.setRecording(!controller.recording); record.setAttribute('aria-pressed', String(controller.recording)); });
-    const acquire = button('Pausa acquisizione', () => { controller.paused = !controller.paused; acquire.setAttribute('aria-pressed', String(controller.paused)); });
+    const record = this.record = button('REC', () => { controller.setRecording(!controller.recording); record.setAttribute('aria-pressed', String(controller.recording)); });
+    const acquire = this.acquire = button('Pausa acquisizione', () => { controller.paused = !controller.paused; acquire.setAttribute('aria-pressed', String(controller.paused)); });
     const freeze = button('Freeze vista', () => { this.frozen = !this.frozen; freeze.setAttribute('aria-pressed', String(this.frozen)); });
     const formats = (['json', 'csv', 'md'] as const).map(format => button(`Export ${format.toUpperCase()}`, () => download(`euforia-diagnostics.${format}`, exportReport(this.report ?? controller.report(), format))));
     const upload = h('input', { type: 'file', accept: '.json', ariaLabel: 'Carica report baseline JSON' });
@@ -95,18 +99,19 @@ export class DiagnosticsDashboard {
     const replayBatch = h('select', { ariaLabel: 'Replay batch' }, ...[256, 480, 2048].map(n => new Option(`${n} campioni/batch`, String(n)))); replayBatch.value = '480';
     const replayPause = button('Pausa replay', () => { this.replayPaused = !this.replayPaused; this.worker?.postMessage({ pause: this.replayPaused }); replayPause.setAttribute('aria-pressed', String(this.replayPaused)); });
     this.root.append(h('style', {}, STYLE),
-      h('header', {}, h('h1', {}, 'EUFORIA · ENGINE DIAGNOSTICS 1.0 · DEV'), this.status, button('Chiudi · Shift+G', close)),
+      h('header', {}, h('h1', {}, 'Observation · metric registry'), this.status),
       h('nav', {}, select, record, acquire, freeze, button('Reset buffer', () => { controller.reset(); this.report = null; }),
         toggle('Detailed (10 Hz)', on => controller.setDetailed(on), controller.detailed), gpu, toggle('Readback materia 1 Hz', on => controller.setReadback(on), controller.readback)),
       h('section', {}, h('small', {}, 'Il freeze ferma solo questa vista. La pausa acquisizione non ferma audio, rendering o replay. REC conserva gli ultimi 120 campioni.'), this.plot, this.caption),
       this.values,
-      h('section', { class: 'experimental' }, 'Laboratorio · interventi sulla visualizzazione', this.primitives, signal,
-        button('Parità Matter', () => { void this.parity(false); }), button('Parità Tracer', () => { void this.parity(true); })),
-      h('section', {}, h('strong', {}, 'Replay locale · worker separato · 20 s · seed 1'), replaySignal, replayFps, replayBatch,
+      tools ? h('section', { class: 'experimental' }, 'Experiment · isolamento temporaneo', this.primitives,
+        button('Reset isolamento', () => { controller.isolate(null); this.primitives.value = ''; }),
+        button('Parità Matter', () => { void this.parity(false); }), button('Parità Tracer', () => { void this.parity(true); })) : document.createTextNode(''),
+      h('section', { class: 'reports' }, h('strong', {}, 'Replay locale · worker separato · 20 s · seed 1'), replaySignal, replayFps, replayBatch,
         button('Avvia replay', () => this.replay(replaySignal.value, +replayFps.value, +replayBatch.value)), replayPause,
         button('Ferma replay', () => { this.worker?.terminate(); this.worker = null; this.result.textContent = 'Replay interrotto'; }),
         h('small', {}, 'La sorgente live continua. Il PCM sintetico resta nel worker. Corpus WAV tramite npm run replay.')),
-      h('section', {}, h('strong', {}, 'Report e confronto'), ...formats,
+      h('section', { class: 'reports' }, h('strong', {}, 'Report e confronto'), ...formats,
         button('Memorizza baseline', () => { this.baseline = this.report ?? controller.report(); this.result.textContent = 'Baseline acquisita'; }), upload,
         button('Confronta', () => { this.result.textContent = this.baseline ? JSON.stringify(compareReports(this.baseline, this.report ?? controller.report()), null, 2) : 'Acquisire o importare prima la baseline'; }),
         button('Usa dati live', () => { this.report = null; this.result.textContent = 'Export dei dati live'; }), this.result),
@@ -117,15 +122,15 @@ export class DiagnosticsDashboard {
       const row = (event.target as Element).closest<HTMLElement>('.row'), m = row && this.rowOf.get(row)?.metric;
       if (row && m && !this.frozen) row.title = `${m.id} · ${m.method}; ${m.clock} @ ${m.timestamp.toFixed(4)} s`;
     });
-    document.body.append(this.host);
-    this.timer = window.setInterval(() => this.refresh(), 200);
+    parent.append(this.host);
+    this.reports.push(...this.root.querySelectorAll<HTMLElement>('.reports'));
     this.refresh();
   }
-  dispose(): void { this.closed = true; clearInterval(this.timer); this.seen.disconnect(); this.worker?.terminate(); this.worker = null; this.host.remove(); this.release(); }
+  dispose(): void { this.closed = true; this.seen.disconnect(); this.worker?.terminate(); this.worker = null; this.host.remove(); this.domains.clear(); this.rows.length = 0; this.groups.clear(); this.release(); }
   private clearRows(): void {
     this.seen.disconnect();
     for (const details of this.groups.values()) details.remove();
-    this.groups.clear(); this.rows.length = 0; this.placed = 0; this.plotted = null;
+    this.domains.clear(); this.groups = new Map(); this.rows = []; this.placed = 0; this.plotted = null;
   }
   private addRow(m: DiagnosticMetric): void {
     let group = this.groups.get(m.source);
@@ -139,9 +144,34 @@ export class DiagnosticsDashboard {
     if (m.value === row.value && m.status === row.status) return;
     row.value = m.value; row.status = m.status; row.cell.data = format(m);
   }
-  private refresh(): void {
-    if (this.frozen || this.closed) return;
+  setView(domain: Domain, reports = false): void {
+    this.host.hidden = false;
+    this.domainSelect.value = domain;
+    this.reporting = reports;
+    if (this.domain !== domain) {
+      this.seen.disconnect();
+      for (const group of this.groups.values()) group.remove();
+      this.domains.set(this.domain, { rows: this.rows, groups: this.groups, placed: this.placed });
+      this.domain = domain;
+      const cached = this.domains.get(domain);
+      this.rows = cached?.rows ?? []; this.groups = cached?.groups ?? new Map(); this.placed = cached?.placed ?? 0;
+      for (const group of this.groups.values()) this.values.append(group);
+      for (const row of this.rows) {
+        row.visible = false;
+        this.seen.observe(row.cell.parentElement!.parentElement!);
+      }
+      this.plotted = null; this.history.fill(NaN);
+    }
+    for (const section of this.reports) section.hidden = !reports;
+    this.refresh();
+  }
+  set visible(on: boolean) { this.host.hidden = !on; }
+  refresh(): void {
+    this.record.setAttribute('aria-pressed', String(this.controller.recording));
+    this.acquire.setAttribute('aria-pressed', String(this.controller.paused));
+    if (this.frozen || this.closed || this.host.hidden) return;
     const start = performance.now(), c = this.controller, store = c.store, registry = store?.registry ?? null;
+    if (this.session !== c.app.audio.session) { this.session = c.app.audio.session; this.history.fill(NaN); this.head = 0; this.lastEvent = null; this.timeline.replaceChildren(); }
     setText(this.status, `${c.recording ? 'REC ●' : 'LIVE'} · ${c.paused ? 'acquisizione in pausa' : `${c.detailed ? 10 : 5} Hz`} · sessione ${c.app.audio.session} · ${c.app.audio.state.status} · report ${this.report ? 'REPLAY' : 'LIVE'}`);
     if (registry !== this.registry) { this.registry = registry; this.clearRows(); }
     if (registry) for (; this.placed < registry.metrics.length; this.placed++) {
@@ -156,7 +186,7 @@ export class DiagnosticsDashboard {
     this.showEvents(store?.events ?? null);
     const world = visualWorld(c.app), ids = world?.mounted.map(m => m.slot.id) ?? [], recipe = `${world?.recipe.id}:${ids.join(',')}`;
     if (recipe !== this.recipe) { this.recipe = recipe; this.primitives.replaceChildren(new Option('Tutte le primitive', ''), ...ids.map(id => new Option(id, id))); }
-    this.draw(); c.uiMs = performance.now() - start;
+    this.draw(); c.uiMs += performance.now() - start;
   }
   /** The last 15 events, one entry each: only the new ones are added (and shaped), instead of rewriting the whole text at every event. */
   private showEvents(events: readonly DiagnosticEvent[] | null): void {
@@ -213,7 +243,7 @@ export class DiagnosticsDashboard {
     try {
       const run = tracer ? (await import('../../render-systems/particles/tracerParity')).runTracerParity : (await import('../../render-systems/particles/parity')).runParity;
       if (this.closed) return;
-      const r = run();
+      const r = run(undefined, undefined, undefined, this.controller.app.directionDebug.renderer);
       if (this.closed) return;
       this.result.textContent = JSON.stringify(r, null, 2);
       download(`euforia-parity-${tracer ? 'tracer' : 'matter'}.json`, JSON.stringify(r, null, 2));

@@ -1,6 +1,5 @@
 import type { DiagnosticsController } from '../../diagnostics/core/DiagnosticsController';
 import { settingsStore } from '../../stores/settingsStore';
-import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { hzToPosition } from '../../audio/visual-response/spectrum';
 import type { AudioFrame, MusicalState, VisualResponseFrame } from '../../types/audio';
 import type { App } from '../App';
@@ -8,26 +7,15 @@ import { SECTION_NAMES } from '../../audio/features/decode';
 import type { AudioEvent, EventCursor } from '../../experience/EventStream';
 import type { ExperienceSnapshot } from '../../experience/types';
 import { MORPHOLOGY_KEYS } from '../../morphology/SoundMorphology';
-import { matterLab, type FormPin } from '../../render-systems/forms/MatterForms';
+import { matterLab } from '../../render-systems/forms/MatterForms';
 import { GEOMETRY_KEYS, SIGNED_TRAITS } from '../../visual-engine/geometry/GeometryState';
-import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
 import { worldLab } from '../../visual-engine/VisualWorld';
+import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
 import { createMaterial, deriveMaterial, MATERIAL_KEYS } from '../../render-systems/materials/VisualMaterial';
 
-/*
- * Development-only audio/visual debug overlay. Shows the analyzer output
- * (bands, levels, transients, spectrum) next to the derived visual response
- * and musical context, to tell whether a problem comes from the analysis, the
- * mapping or the scene. Also switches the synthetic test signals.
- * Open with ?debug or Shift+D. Loaded only when import.meta.env.DEV, so it
- * never ships in production. The shared DiagnosticsController records WorldTrace only after REC
- * in the Diagnostics dashboard; Shift+T exports that trace.
- *
- * The Matter block is the matter engine's laboratory view (docs/matter-engine.md):
- * the sound's morphology, the visual material derived from it, the state the
- * protagonist's matter is in, what it submits to the GPU and what the renderer
- * drew this frame. The second menu (or ?matter=wave|harmonic|particles) pins
- * the matter to one state, so each experiment can be looked at on its own.
+/** Development chart adapter: retained analyzer/interpretation/world graphs in Workspace sections.
+ * The workspace clocks refreshes; no independent overlay, shortcut or animation loop.
+ * Numeric readouts are also available in the DOM metric registry below the plots.
  */
 
 const COLUMN = 310;
@@ -36,7 +24,7 @@ const WIDTH = COLUMN * 2 + GAP;
 const ROW = 14;
 const LABEL = 100;
 const BAR = 150;
-const COLORS = { low: '#f0a050', mid: '#6fd08c', high: '#6cc8f0', hit: '#e070d0', level: '#d8dcf0', tempo: '#f0e070', dim: '#5a607a' };
+const COLORS = { low: '#f0a050', mid: '#6fd08c', high: '#6cc8f0', hit: '#e070d0', level: '#d8dcf0', tempo: '#f0e070', dim: '#a0a0a0' };
 
 type Read = (a: AudioFrame, r: VisualResponseFrame) => number;
 type Row = [label: string, color: string, read: Read];
@@ -131,11 +119,12 @@ const rowsOf = (sections: Section[]) => sections.reduce((n, [, rows]) => n + row
 const COLUMNS_HEIGHT = 8 + Math.max(rowsOf(LEFT), rowsOf(RIGHT)) * ROW;
 const SPECTRUM_HEIGHT = 60;
 const SPECTRUM_TOP = COLUMNS_HEIGHT + 4 * ROW + 16;
-/** Ten seconds sampled at 20 Hz, independent of rendering frame rate. */
-const HISTORY_RATE = 20;
+/** Ten seconds sampled at 5 Hz, independent of rendering frame rate. */
+const HISTORY_RATE = 5;
 const HISTORY = 10 * HISTORY_RATE;
 const HISTORY_HEIGHT = 40;
-const HISTORY_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 22 + ROW;
+const WAVE_TOP = SPECTRUM_TOP + SPECTRUM_HEIGHT + 32;
+const HISTORY_TOP = WAVE_TOP + 74 + ROW;
 const DIRECTOR_TOP = HISTORY_TOP + HISTORY_HEIGHT + 20;
 const ANALYSIS_TOP = DIRECTOR_TOP + 7 * ROW + 6;
 const DYNAMICS_TOP = ANALYSIS_TOP + 6 * ROW + 6;
@@ -159,7 +148,6 @@ const GEOMETRY_TRAITS = GEOMETRY_KEYS.filter((key) => !(MATERIAL_KEYS as readonl
 const GEOMETRY_ROWS = Math.ceil(GEOMETRY_TRAITS.length / 2);
 const WORLD_ENGINE_ROWS = 1 + GEOMETRY_ROWS + 3;
 const HEIGHT = WORLD_ENGINE_TOP + WORLD_ENGINE_ROWS * ROW;
-const FORM_PINS: readonly FormPin[] = ['auto', 'particles', 'wave', 'harmonic'];
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const STATE_COLORS: Record<MusicalState, string> = {
   silent: COLORS.dim,
@@ -172,51 +160,18 @@ const STATE_COLORS: Record<MusicalState, string> = {
 const LOW_END = hzToPosition(250);
 const MID_END = hzToPosition(2000);
 
-export function installDebugOverlay(app: App, diagnostics: DiagnosticsController): () => void {
-  let overlay: DebugOverlay | null = null;
-  const toggle = () => {
-    if (overlay) {
-      overlay.dispose();
-      overlay = null;
-    } else {
-      overlay = new DebugOverlay(app, diagnostics);
-    }
-  };
-  const onKey = (event: KeyboardEvent) => {
-    if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.code === 'KeyD') toggle();
-    if (event.code === 'KeyT') download(`euforia-audio-experience-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, diagnostics.trace?.toCsv() ?? 'time\n');
-  };
-  window.addEventListener('keydown', onKey);
-  const query = new URLSearchParams(location.search);
-  const pin = query.get('matter') as FormPin | null;
-  if (pin && FORM_PINS.includes(pin)) matterLab.form = pin;
-  // ?primitives=matter,surface: a visual world shows exactly these primitive systems, whatever the sound.
-  const only = query.get('primitives');
-  if (only) worldLab.only = new Set(only.split(',').filter(Boolean));
-  if (query.has('debug')) toggle();
-  return () => {
-    window.removeEventListener('keydown', onKey);
-    overlay?.dispose();
-    matterLab.form = 'auto';
-    worldLab.only = null;
-  };
-}
+export type DebugView = 'audio' | 'experience' | 'world' | 'matter';
 
-function download(name: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-class DebugOverlay {
+export class DebugOverlay {
+  private view: DebugView = 'audio';
+  private top = 0;
+  private height = DIRECTOR_TOP;
   private readonly root: HTMLElement;
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  private rafId = 0;
+  private session = -1;
+  private visible = true;
+  private readonly observer = new IntersectionObserver(entries => { this.visible = entries.some(e => e.isIntersecting); });
   private lastTime = performance.now();
   private frameMs = 16;
   private lastBeat = 0;
@@ -243,54 +198,46 @@ class DebugOverlay {
   private readonly releaseDiagnostics: () => void;
   private readonly drawn = { calls: 0, triangles: 0, points: 0, lines: 0 };
 
-  constructor(private readonly app: App, private readonly diagnostics: DiagnosticsController) {
+  constructor(private readonly app: App, private readonly diagnostics: DiagnosticsController, parent: HTMLElement) {
     this.root = document.createElement('div');
-    this.root.style.cssText =
-      'position:fixed;top:12px;right:12px;z-index:9999;padding:8px;border-radius:8px;background:rgba(6,8,18,.82);' +
-      'font:11px ui-monospace,monospace;color:#d8dcf0;user-select:none;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow:auto;';
-
-    const select = document.createElement('select');
-    select.style.cssText = 'width:100%;margin-bottom:6px;font:inherit;background:#12152a;color:inherit;border:1px solid #2a2f4a;';
-    select.append(new Option('Test signal…', ''));
-    for (const s of TEST_SIGNALS) select.append(new Option(s.label, s.id));
-    select.addEventListener('change', () => {
-      if (select.value) void app.playTestSignal(select.value as TestSignal);
-      select.blur();
-    });
-
-    const dpr = window.devicePixelRatio || 1;
+    this.root.className = 'ws-debug';
     this.canvas = document.createElement('canvas');
-    this.canvas.width = WIDTH * dpr;
-    this.canvas.height = HEIGHT * dpr;
-    this.canvas.style.cssText = `display:block;width:${WIDTH}px;height:${HEIGHT}px;`;
+    this.canvas.setAttribute('role', 'img');
+    this.canvas.setAttribute('aria-label', 'Grafici live; valori e unità disponibili nell’inspector sottostante');
     this.ctx = this.canvas.getContext('2d')!;
-    this.ctx.scale(dpr, dpr);
-
-    const pin = document.createElement('select');
-    pin.style.cssText = select.style.cssText;
-    for (const form of FORM_PINS) pin.append(new Option(`Matter: ${form}`, form));
-    pin.value = matterLab.form;
-    pin.addEventListener('change', () => {
-      matterLab.form = pin.value as FormPin;
-      pin.blur();
-    });
-
-    this.root.append(select, pin, this.canvas);
-    document.body.append(this.root);
+    this.root.append(this.canvas);
+    parent.append(this.root);
+    this.observer.observe(this.root);
+    this.setView('audio');
     // Shared totals are measured by the observer at the RenderEngine frame boundary.
     this.releaseDiagnostics = diagnostics.acquire();
-    this.rafId = requestAnimationFrame(this.draw);
   }
 
   dispose(): void {
-    cancelAnimationFrame(this.rafId);
+    this.observer.disconnect();
     this.releaseDiagnostics();
     this.root.remove();
   }
 
-  private readonly draw = (now: number): void => {
-    this.rafId = requestAnimationFrame(this.draw);
-    this.frameMs += (now - this.lastTime - this.frameMs) * 0.05;
+  setView(view: DebugView): void {
+    this.view = view;
+    this.top = view === 'audio' ? 0 : view === 'experience' ? DIRECTOR_TOP : view === 'world' ? WORLD_TOP : MATTER_TOP;
+    this.height = (view === 'audio' ? DIRECTOR_TOP : view === 'experience' ? WORLD_TOP : view === 'world' ? MATTER_TOP : HEIGHT) - this.top;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = WIDTH * dpr; this.canvas.height = this.height * dpr;
+    this.canvas.style.cssText = 'display:block;width:min(100%,960px);height:auto';
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, -this.top * dpr);
+  }
+
+  refresh(now: number): void {
+    if (this.session !== this.app.audio.session) {
+      this.session = this.app.audio.session;
+      this.energy.fill(0); this.presence.fill(0); this.motion.fill(0); this.openness.fill(0); this.tension.fill(0);
+      this.head = this.historyTime = this.lastBeat = this.lastCue = 0; this.recentEvents.length = 0;
+      this.eventCursor.time = -Infinity; this.eventCursor.seq = 0;
+    }
+    if (!this.visible) { this.lastTime = now; return; }
+    this.frameMs = this.diagnostics.renderer?.frameMs ?? 0;
     const dt = Math.min((now - this.lastTime) / 1000, HISTORY / HISTORY_RATE);
     this.lastTime = now;
 
@@ -299,7 +246,9 @@ class DebugOverlay {
     const audio = this.app.audio.frame;
     const response = this.app.audio.visual;
     const music = response.music;
-    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    ctx.clearRect(0, this.top, WIDTH, this.height);
+    if (this.view === 'world') { this.drawWorld(this.app.audio.experience.presented); return; }
+    if (this.view === 'matter') { this.drawMatter(this.app.audio.experience.presented); this.drawVisualWorld(); return; }
     ctx.textBaseline = 'middle';
     this.column(LEFT, 0, audio, response);
     this.column(RIGHT, COLUMN + GAP, audio, response);
@@ -362,6 +311,13 @@ class DebugOverlay {
       ctx.fillText(label, p * WIDTH + 3, top + SPECTRUM_HEIGHT + 10);
     }
 
+    ctx.strokeStyle = COLORS.level; ctx.beginPath();
+    const wave = audio.waveform;
+    for (let i = 0; i < wave.length; i++) {
+      const x = i / Math.max(1, wave.length - 1) * WIDTH, y = WAVE_TOP + 32 - wave[i] * 28;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke(); ctx.fillStyle = COLORS.dim; ctx.fillText('Waveform · AudioFrame · −1…1', 0, WAVE_TOP);
     this.historyTime += dt;
     while (this.historyTime >= 1 / HISTORY_RATE) {
       this.historyTime -= 1 / HISTORY_RATE;
@@ -409,7 +365,7 @@ class DebugOverlay {
       this.bar('Impact', COLORS.hit, modulation.impact, 0, DIRECTOR_TOP + ROW * 6);
       this.bar('Visibility', COLORS.level, modulation.visibility, COLUMN + GAP, DIRECTOR_TOP + ROW * 6);
     }
-    this.drawAnalysis();
+    if (this.view === 'experience') this.drawAnalysis();
   };
 
   /** The Rust analysis (spectrum-analysis), as received this frame: capture clock, levels, timbre, grid, key. */

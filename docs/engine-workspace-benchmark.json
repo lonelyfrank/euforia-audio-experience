@@ -1,0 +1,305 @@
+{
+  "date": "2026-10-10",
+  "baselineCommit": "6af452b279738a1ccc33f1f95b4271b036200542",
+  "limitations": [
+    "One short run per case; machine not isolated; CPU changes during warm-up prohibit treating differences as causal savings.",
+    "CPU is Chromium main-thread TaskDuration, not process CPU or audio-worker DSP. Heap excludes driver, GPU and worker memory.",
+    "Low uses a 480x270 drawing buffer for the fixed 960x540 CSS host; these are not 1080p performance results.",
+    "Rapid navigation measures 30 module switches during the sample. Structural cases have a different scene from Spectrum."
+  ],
+  "before": {
+    "mode": "before",
+    "url": "http://127.0.0.1:1422",
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    },
+    "quality": "low",
+    "renderHost": "960x540 CSS px fixed across all cases",
+    "signal": "beat124",
+    "scene": "spectrum (Structural Lab in lab cases)",
+    "method": "2 s settling + 6 s per case; CDP CPU and heap, external RAF intervals; machine not isolated",
+    "result": [
+      {
+        "name": "closed",
+        "frames": 358,
+        "mean": 16.759106145251398,
+        "p50": 16.665000000000873,
+        "p95": 16.670000000000073,
+        "p99": 16.670000000000073,
+        "jank": 0.00558659217877095,
+        "taskMsPerSecond": 150.86577174986428,
+        "scriptMsPerSecond": 106.96519732109334,
+        "heapMB": 20.830467224121094,
+        "nodes": 210,
+        "layoutCount": 0
+      },
+      {
+        "name": "audio-legacy",
+        "frames": 335,
+        "mean": 17.909746268656715,
+        "p50": 16.665000000000873,
+        "p95": 33.330000000001746,
+        "p99": 33.33499999999913,
+        "jank": 0.07462686567164178,
+        "taskMsPerSecond": 557.6644564746618,
+        "scriptMsPerSecond": 285.994371453883,
+        "heapMB": 22.26858139038086,
+        "nodes": 524,
+        "layoutCount": 0
+      },
+      {
+        "name": "diagnostics-legacy",
+        "frames": 341,
+        "mean": 17.594604105571843,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000189,
+        "p99": 33.33499999999913,
+        "jank": 0.04985337243401759,
+        "taskMsPerSecond": 342.2110473248352,
+        "scriptMsPerSecond": 113.44882639985148,
+        "heapMB": 17.821128845214844,
+        "nodes": 1627,
+        "layoutCount": 27
+      },
+      {
+        "name": "lab-legacy",
+        "frames": 355,
+        "mean": 16.853774647887334,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 33.330000000001746,
+        "jank": 0.011267605633802818,
+        "taskMsPerSecond": 343.6022583483734,
+        "scriptMsPerSecond": 195.09253571672798,
+        "heapMB": 22.631473541259766,
+        "nodes": 7366,
+        "layoutCount": 50
+      }
+    ],
+    "errors": []
+  },
+  "after": {
+    "mode": "after",
+    "url": "http://127.0.0.1:1420",
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    },
+    "quality": "low",
+    "renderHost": "960x540 CSS px fixed across all cases",
+    "signal": "beat124",
+    "scene": "spectrum (Structural Lab in lab cases)",
+    "method": "2 s settling + 6 s per case; CDP CPU and heap, external RAF intervals; machine not isolated",
+    "result": [
+      {
+        "name": "closed",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 360,
+        "mean": 16.665986111111113,
+        "p50": 16.664999999999964,
+        "p95": 16.670000000000073,
+        "p99": 16.670000000000073,
+        "jank": 0,
+        "taskMsPerSecond": 158.6972590183871,
+        "scriptMsPerSecond": 99.7457708007995,
+        "heapMB": 20.90395736694336,
+        "nodes": 221,
+        "layoutCount": 0
+      },
+      {
+        "name": "overview",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.666002785515325,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000189,
+        "p99": 16.67000000000189,
+        "jank": 0,
+        "taskMsPerSecond": 130.03626037557586,
+        "scriptMsPerSecond": 77.58111622822216,
+        "heapMB": 20.919780731201172,
+        "nodes": 1695,
+        "layoutCount": 27
+      },
+      {
+        "name": "audio",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.666016713091917,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000189,
+        "p99": 16.67000000000189,
+        "jank": 0,
+        "taskMsPerSecond": 119.0531127233904,
+        "scriptMsPerSecond": 72.70748727247809,
+        "heapMB": 25.68988800048828,
+        "nodes": 2782,
+        "layoutCount": 30
+      },
+      {
+        "name": "audio-charts-visible",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.666002785515325,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000189,
+        "p99": 16.67000000000553,
+        "jank": 0,
+        "taskMsPerSecond": 106.80383951103009,
+        "scriptMsPerSecond": 65.28048926944777,
+        "heapMB": 19.337074279785156,
+        "nodes": 2402,
+        "layoutCount": 30
+      },
+      {
+        "name": "diagnostics",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.66598885793873,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 16.67000000000553,
+        "jank": 0,
+        "taskMsPerSecond": 109.2591207392275,
+        "scriptMsPerSecond": 71.20068250295562,
+        "heapMB": 18.81534194946289,
+        "nodes": 2420,
+        "layoutCount": 28
+      },
+      {
+        "name": "diagnostics-collapsed",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.666002785515325,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 16.67000000000553,
+        "jank": 0,
+        "taskMsPerSecond": 111.83492074925486,
+        "scriptMsPerSecond": 74.21248211725525,
+        "heapMB": 18.802627563476562,
+        "nodes": 2401,
+        "layoutCount": 28
+      },
+      {
+        "name": "REC",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 360,
+        "mean": 16.665999999999986,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 16.67000000000553,
+        "jank": 0,
+        "taskMsPerSecond": 111.60109197908477,
+        "scriptMsPerSecond": 72.44517240089668,
+        "heapMB": 20.465511322021484,
+        "nodes": 2685,
+        "layoutCount": 27
+      },
+      {
+        "name": "laboratories",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 360,
+        "mean": 16.665986111111124,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 16.670000000012806,
+        "jank": 0,
+        "taskMsPerSecond": 179.61881302433457,
+        "scriptMsPerSecond": 122.38363289973628,
+        "heapMB": 20.666248321533203,
+        "nodes": 3226,
+        "layoutCount": 60
+      },
+      {
+        "name": "lab-override",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.666002785515325,
+        "p50": 16.66500000000815,
+        "p95": 16.669999999998254,
+        "p99": 16.670000000012806,
+        "jank": 0,
+        "taskMsPerSecond": 136.77279198081936,
+        "scriptMsPerSecond": 87.20373777913667,
+        "heapMB": 24.304290771484375,
+        "nodes": 3055,
+        "layoutCount": 60
+      },
+      {
+        "name": "rapid-navigation",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.666002785515325,
+        "p50": 16.66500000000815,
+        "p95": 16.669999999998254,
+        "p99": 16.670000000012806,
+        "jank": 0,
+        "taskMsPerSecond": 247.77200527446328,
+        "scriptMsPerSecond": 105.5520154200308,
+        "heapMB": 22.230182647705078,
+        "nodes": 3150,
+        "layoutCount": 79
+      },
+      {
+        "name": "closed-again",
+        "renderSize": [
+          480,
+          270
+        ],
+        "frames": 359,
+        "mean": 16.666002785515325,
+        "p50": 16.66500000000815,
+        "p95": 16.669999999998254,
+        "p99": 16.670000000012806,
+        "jank": 0,
+        "taskMsPerSecond": 88.05611021498787,
+        "scriptMsPerSecond": 58.65893827674898,
+        "heapMB": 22.53423309326172,
+        "nodes": 3161,
+        "layoutCount": 0
+      },
+      {
+        "name": "closed-after-GC",
+        "heapMB": 17.86233139038086,
+        "nodes": 228,
+        "resources": {
+          "intervals": 2,
+          "observers": 2
+        }
+      }
+    ],
+    "errors": []
+  }
+}

@@ -41,8 +41,9 @@ export interface TracerParityReport {
  * short; expect a mean around 1e-5 units and a maximum below 1e-3 with
  * full-float targets.
  */
-export function runTracerParity(count = 1024, steps = 120, detail = true): TracerParityReport {
-  const renderer = new WebGLRenderer({ canvas: document.createElement('canvas') });
+export function runTracerParity(count = 1024, steps = 120, detail = true, sharedRenderer?: WebGLRenderer): TracerParityReport {
+  const renderer = sharedRenderer ?? new WebGLRenderer({ canvas: document.createElement('canvas') });
+  const previousTarget = renderer.getRenderTarget();
   const shared = { uField: new Float32Array(FIELD_VALUES), uWaveA: new Float32Array(MAX_WAVES * 4), uWaveB: new Float32Array(MAX_WAVES * 4), topology: new Float32Array(TOPOLOGY_VALUES) };
   const probe = new TracerProbe(count, 20261008, shared, detail);
   const simulation = new TracerSimulation(renderer, probe.seeds, detail, shared);
@@ -85,5 +86,5 @@ export function runTracerParity(count = 1024, steps = 120, detail = true): Trace
     }
     const report: TracerParityReport = { tracers: n, steps, fullFloat: simulation.fullFloat, rms: Math.sqrt(squares / Math.max(1, valid)), seed: 20261008, tolerance: simulation.fullFloat ? 1e-3 : null, outcome: !simulation.fullFloat ? 'unvalidated-half-float' : invalid || max >= 1e-3 ? 'fail' : 'pass', initial: 'seeded tracers; shared fields; two fronts; variable dt; see tracerParity.ts', mean: valid ? sum / valid : 0, max, invalid, travelled: travelled / n };
     return report;
-  } finally { simulation.dispose(); renderer.dispose(); }
+  } finally { simulation.dispose(); renderer.setRenderTarget(previousTarget); if (!sharedRenderer) renderer.dispose(); }
 }
