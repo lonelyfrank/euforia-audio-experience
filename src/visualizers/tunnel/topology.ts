@@ -42,16 +42,25 @@ export const CONFIGURATIONS: readonly (readonly [sides: number, panels: number, 
 const decay = (age: number, time: number): number => (age >= 0 && Number.isFinite(age) ? Math.exp(-age / time) : 0);
 
 export function tunnelTopology(out: TunnelTopology, view: Readonly<WorldView>): TunnelTopology {
-  const tension = unit(view.tension), disorder = unit(view.disorder), spin = Math.min(1, Math.abs(view.spin));
   const hit = unit(view.impulseStrength) * decay(view.impulseAge, HIT_TIME);
+  return architecture(out, unit(view.tension), unit(view.disorder), Math.min(1, Math.abs(view.spin)), view.spin < 0 ? -1 : 1, hit, view);
+}
+
+/**
+ * The law itself, for whoever reads the world for the wall: what it holds (`tension`), how disturbed it is
+ * (`disorder`), how fast and which way it turns (`spin` 0..1, `sense` −1..1), the impact that holds the rings apart
+ * (`hit` 0..1), the last release (its age and strength, from `view`), and how far the wall may crack at all
+ * (`opening` 0..1). `tunnelTopology` is this law on the world as it is, wide open.
+ */
+export function architecture(out: TunnelTopology, tension: number, disorder: number, spin: number, sense: number, hit: number, view: Readonly<WorldView>, opening = 1): TunnelTopology {
   const release = unit(2 * view.releaseStrength) * decay(view.releaseAge, RELEASE_TIME);
   // A wall cracks under the potential it holds (slowly at first, then quickly) and under disorder; a calm world is whole.
-  const crack = unit(1.2 * tension * tension + 0.9 * disorder - 0.2);
+  const crack = unit(1.2 * tension * tension + 0.9 * disorder - 0.2) * opening;
   // Rings pull apart along the tunnel with tension and with every strong impact; the long cuts need shear: disorder or torsion.
   out.gapAxial = 0.36 * unit(0.8 * crack + 0.35 * hit + 0.5 * release);
   out.gapAngular = 0.28 * unit(crack * (0.3 + 0.7 * Math.max(disorder, spin)) + 0.3 * release);
-  out.lift = 0.2 * unit(0.9 * disorder + 0.5 * crack + 0.6 * release);
-  out.shear = 0.08 * unit(crack + release) * (0.4 + 0.6 * spin) * (view.spin < 0 ? -1 : 1);
+  out.lift = 0.2 * unit(0.9 * disorder * opening + 0.5 * crack + 0.6 * release);
+  out.shear = 0.08 * unit(crack + release) * (0.4 + 0.6 * spin) * sense;
   // Held potential makes the architecture hard-edged and draws the far tunnel in.
   out.facet = unit(1.5 * tension + 0.8 * release);
   out.throat = 0.45 * tension;
@@ -60,6 +69,9 @@ export function tunnelTopology(out: TunnelTopology, view: Readonly<WorldView>): 
   for (const key of KEYS) if (!Number.isFinite(out[key])) out[key] = REST[key];
   return out;
 }
+
+/** How far the wall is cracked by what it holds and by disorder alone: the drive `architecture` opens the wall with. */
+export const crackOf = (tension: number, disorder: number): number => unit(1.2 * tension * tension + 0.9 * disorder - 0.2);
 
 const REST = createTopology();
 const KEYS = Object.keys(REST) as (keyof TunnelTopology)[];

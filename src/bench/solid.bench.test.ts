@@ -7,7 +7,7 @@ import type { PrimitiveContext } from '../visual-engine/Primitive';
 import { SOLID_DRAW_CALLS, SOLID_LAB_BUDGET, SOLID_LAB_ELEMENTS, SolidPrimitive } from '../visual-engine/primitives/SolidPrimitive';
 import { createResonanceFrame } from '../physics/MultiscaleResonance';
 import { ResonanceField } from '../visual-engine/structural/ResonanceField';
-import { INTACT, SOLID_KINDS, type SolidKind } from '../visual-engine/structural/SolidTypes';
+import { INTACT, SOLID_KINDS, solidProfile, type SolidKind, type SolidProfile } from '../visual-engine/structural/SolidTypes';
 import { StructuralSystem } from '../visual-engine/structural/StructuralDynamics';
 import { createStillEnvironment, type StructuralEnvironment } from '../visual-engine/structural/StructuralTypes';
 
@@ -39,6 +39,8 @@ function world() {
     time += dt;
     for (let k = 0; k < frame.meso.length; k++) { frame.mesoLevel[k] = 0.5; frame.meso[k] = 0.5 * Math.sin(2 * Math.PI * (1 + 0.15 * k) * time); }
     for (let k = 0; k < frame.macro.length; k++) frame.macro[k] = 0.5 * Math.sin(2 * Math.PI * (0.3 + 0.1 * k) * time + k);
+    // The lows as the calibration would hand them over: a kick every half second.
+    env.pulse = Math.exp(-(time % 0.5) / 0.11);
     field.update(frame);
   };
   return { env, tick };
@@ -46,8 +48,10 @@ function world() {
 
 it('measures the solid bodies: step, topology, creation and buffers apart (synthetic CPU, not live overhead)', { timeout: 120000 }, async () => {
   const rows: Record<string, unknown>[] = [];
-  const bench = (label: string, bodies: [SolidKind, number][]): void => {
+  const bench = (label: string, bodies: [SolidKind, number][], profile: SolidProfile = 'legacy'): void => {
     const system = new StructuralSystem({ capacity: SOLID_LAB_ELEMENTS, seed: 5, solids: SOLID_LAB_BUDGET }), solids = system.solids!, { env, tick } = world(), h = system.config.step;
+    // The material: the body as it was (links alone, breaking under load), or the rigid one (its shape held, breaking on events).
+    Object.assign(solids.tuning, solidProfile(profile)); solids.gate.tuning.mode = profile === 'legacy' ? 'load' : 'events';
     const seed = (): void => { system.clear(); bodies.forEach(([kind, x]) => system.seedSolid(kind, 0.5, { x })); };
     const create: number[] = [], step: number[] = [], fracture: number[] = [], recompose: number[] = [], book: number[] = [], empty: number[] = [];
     for (let k = 0; k < 60; k++) timed(create, seed);
@@ -63,6 +67,8 @@ it('measures the solid bodies: step, topology, creation and buffers apart (synth
       const c = solids.centroid(b), first = solids.state.bodyFirst[b] * 3, p = system.state.position;
       system.strike(c[0] + (p[first] - c[0]) * 0.5, c[1] + (p[first + 1] - c[1]) * 0.5, c[2] + (p[first + 2] - c[2]) * 0.5, 11, 0.5);
     }
+    // A body that breaks on events only is broken as an event breaks it.
+    if (profile !== 'legacy') solids.gate.force(1);
     for (let k = 0; k < 240; k++) { tick(h); timed(fracture, () => system.step(env)); }
     const broken = solids.stats.fractures - whole;
     for (let k = 0; k < 3600; k++) { tick(h); timed(recompose, () => system.step(env)); }
@@ -76,16 +82,20 @@ it('measures the solid bodies: step, topology, creation and buffers apart (synth
       solids.state.restore(link, solids.state.linkRest0[link], 0); solids.state.book();
     }
     const costs = { create: summary(create), structuralStepAlone: summary(empty), step: summary(step), fractureSteps: summary(fracture), recompositionSteps: summary(recompose), topologyUpdate: summary(book) };
-    rows.push({ label, elements: system.state.count, links: solids.state.links, triangles: solids.state.faces, cells: solids.state.cells, iterations: solids.budget.iterations, broken, reformed: solids.stats.reforms, ...costs });
+    rows.push({ label, profile, elements: system.state.count, links: solids.state.links, triangles: solids.state.faces, cells: solids.state.cells, iterations: solids.budget.iterations, broken, reformed: solids.stats.reforms, ...costs });
     console.log(`solid ${label}: ${system.state.count} el · ${solids.state.links} links · ${solids.state.cells} cells · broke ${broken}, reformed ${solids.stats.reforms}\n`
       + Object.entries(costs).map(([name, cost]) => `  ${name.padEnd(20)} ${show(cost)}`).join('\n'));
     // Bounded whatever happened: no state repaired, no pool grown, and a step far inside a frame even at its worst percentile.
     expect(solids.stats.repairs).toBe(0); expect(system.state.count).toBeLessThanOrEqual(SOLID_LAB_ELEMENTS);
     expect(costs.step.p95).toBeLessThan(2); expect(costs.fractureSteps.p95).toBeLessThan(2); expect(costs.topologyUpdate.p95).toBeLessThan(1);
   };
+  const full: [SolidKind, number][] = [['icosahedron', -1.8], ['icosahedron', -0.6], ['icosahedron', 0.6], ['icosahedron', 1.8]];
   for (const kind of SOLID_KINDS) bench(kind, [[kind, 0]]);
   // The whole budget: four bodies of the largest kind.
-  bench('4 × icosahedron (budget full)', [['icosahedron', -1.8], ['icosahedron', -0.6], ['icosahedron', 0.6], ['icosahedron', 1.8]]);
+  bench('4 × icosahedron (budget full)', full);
+  // The same bodies of the rigid material: the shape fit of every piece is paid in the same step.
+  for (const kind of SOLID_KINDS) bench(`${kind} · rigid`, [[kind, 0]], 'rigid');
+  bench('4 × icosahedron · rigid (budget full)', full, 'rigid');
 
   // The buffers: what a frame writes for the GPU, from the same state.
   const context: PrimitiveContext = {

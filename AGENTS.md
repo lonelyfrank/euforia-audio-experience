@@ -6,7 +6,8 @@
   (thread, clock, stati, eventi, confidence, benchmark), `docs/refactor-report.md`,
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
-  `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md` e `docs/solid-dynamics.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md`, `docs/solid-dynamics.md`,
+  `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md` e `docs/tunnel-motion.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -92,6 +93,22 @@
   (`loadOf`, `tire`, `fade`): una legge per fili e link. Pool a budget esplicito: ciò che non entra è rifiutato e contato; qualità
   grafica e FPS non toccano topologia né iterazioni. `SolidPrimitive` invia posizioni della simulazione: nessuno shader sposta
   un vertice. `solidLab`, il laboratorio (fuori dal registry) e `SolidCockpit` sono solo DEV; nessun solido nelle scene del prodotto.
+- Rigid Resonant Body (`docs/rigid-resonant-body.md`): è un materiale di `SolidSystem` (`SolidTuning`), non un sistema. Il riferimento
+  di forma (`SolidState.rest`, `bodyScale`) si scrive alla semina e mai dopo: un frammento usa la propria parte. La pulsazione è una
+  sola e fisica (scala i target di link, cerniere, celle e fit, mai il disegno), entro `PULSE_LIMIT`. Il fit di forma usa una quota unica
+  per pezzo attorno al suo centro di massa (nessun momento) e non aumenta le iterazioni. `shapeRate` (ritenzione → rigidezza) è tarata
+  sulla prova di deformazione di `SolidRigid.test.ts`: cambiarle insieme. Il materiale di prodotto è `legacy`: ogni novità vi passa per
+  fattori che valgono 1 o 0, e il corpo resta quello di prima bit per bit. In `events` il carico è misurato e non rompe: l'unico percorso
+  è `FractureGate.take` → `shatter` → `sever`, al passo che raggiunge il tempo audio dell'evento; direzione da quel tempo (`seedOf`).
+- Adaptive Music Calibration (`docs/adaptive-calibration.md`): `experience/AdaptiveCalibration.ts`, per hop in `ExperienceEngine`, solo
+  misure già esportate dal DSP (nessuna FFT, nessun PCM). Sta accanto al World Engine e non vi entra (Spectrum legge `WorldView`): con
+  `enabled = false` mondo, stato ed eventi sono identici. Non è la calibrazione di sincronia (`app/calibration`), che non si tocca. La
+  `significance` di un evento è relativa agli accenti recenti del brano, mai un livello. Uscite limitate, gain a passo limitato; reset
+  completo solo a nuova sessione (`reset`), `interrupt` per una perdita di acquisizione. Le scene non ricalibrano: leggono lo snapshot.
+- Tunnel (`docs/tunnel-motion.md`): la scena calcola i target dal mondo come sempre; `TunnelMotionCoordinator` decide quanto se ne vede.
+  Nessun tempo proprio: follower esatti per un ingresso tenuto nel frame, età di eventi datati (`EventCursor`), fermo quando il mondo è
+  fermo. Bassi, alti, luce e avanzamento non cedono mai. `balance: 0` è il Tunnel com'era e non chiama il coordinatore: `architecture`
+  in `topology.ts` è la legge di `tunnelTopology`, cambiarle insieme. `tunnelLab` è solo DEV.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente e quella dell'analisi delle
   scene, non hop/beat. Le soglie (`DspBudget.ts` e `src-tauri/src/audio.rs`) sono le stesse nei due
   host: cambiarle insieme. Il wire e il WASM versionato devono corrispondere al backend:

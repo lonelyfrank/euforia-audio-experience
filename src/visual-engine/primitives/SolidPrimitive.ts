@@ -1,4 +1,5 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DoubleSide, DynamicDrawUsage, Group, LineSegments, Mesh, Points, ShaderMaterial, Vector3, type Object3D } from 'three';
+import type { AudioEvent, EventCursor } from '../../experience/EventStream';
 import type { PaletteColors } from '../../types/visualizer';
 import type { Primitive, PrimitiveContext, WorldFrame } from '../Primitive';
 import { BRACE, BROKEN, DEFAULT_SOLID_BUDGET, INTACT, SOLID_KINDS, solidLab, type SolidBudget, type SolidKind, type SolidView } from '../structural/SolidTypes';
@@ -18,6 +19,10 @@ import { EXPOSURE, flatFragment, nodeFragment, nodeVertex } from './WirePolygonP
  * vertex, so what deforms on screen deformed in the physics, and a face that
  * is not drawn is a face that no longer holds. Buffers are allocated once at
  * the size of the pools; a frame rewrites the part in use.
+ *
+ * It detects nothing: the dated events of the session (SceneClock.events, read
+ * with its own cursor up to the heard time) are handed to the system's
+ * fracture gate, which decides at the fixed step that reaches each of them.
  */
 
 export interface SolidParams {
@@ -29,7 +34,7 @@ export interface SolidParams {
   pointSize: number;
 }
 
-export { resetSolidLab, SOLID_VIEWS, solidLab, type SolidCommand, type SolidView } from '../structural/SolidTypes';
+export { resetSolidLab, setSolidProfile, SOLID_VIEWS, solidLab, type SolidCommand, type SolidView } from '../structural/SolidTypes';
 
 /** Pools of the laboratory's system: the default budget, and elements for as many bodies of the largest kind. */
 export const SOLID_LAB_BUDGET: Readonly<SolidBudget> = DEFAULT_SOLID_BUDGET;
@@ -40,6 +45,8 @@ export const SOLID_DRAW_CALLS = 3;
 const IMPULSE = 5;
 const TWIST = 3;
 const BREAK = 11;
+/** The size of the fracture the laboratory asks of a body that breaks on events only (0..1). */
+const BREAK_EVENT = 0.85;
 /** How a body is first posed (rad), and how far apart its matter is seeded when it is left to form (share of its size). */
 const POSE = { tilt: 0.5, turn: 0.4 };
 const SCATTER = 0.25;
@@ -101,7 +108,7 @@ export class SolidPrimitive implements Primitive {
   readonly system: StructuralSystem;
   readonly elements: number;
   readonly vertices: number;
-  readonly debug: Record<string, number> = { vertices: 0, links: 0, faces: 0, cells: 0, pieces: 0, stress: 0, 'solid ms': 0, 'topology ms': 0, 'buffer ms': 0 };
+  readonly debug: Record<string, number> = { vertices: 0, links: 0, faces: 0, cells: 0, pieces: 0, stress: 0, pulse: 0, events: 0, 'solid ms': 0, 'topology ms': 0, 'buffer ms': 0 };
   /** The environment the bodies sample: the frame's own fields, fronts and resonance. */
   readonly environment: StructuralEnvironment;
   /** Where each element is shown: its position carried to this frame's time by its own velocity. */
@@ -119,6 +126,11 @@ export class SolidPrimitive implements Primitive {
   private readonly lineLook: Float32Array;
   private readonly facePosition: Float32Array;
   private readonly faceLook: Float32Array;
+  private readonly cursor: EventCursor = { time: -Infinity, seq: 0 };
+  /** The event the laboratory's own tool offers to the gate: one that stands out, dated now. */
+  private readonly staged: AudioEvent = { type: 'impact', audioTime: 0, strength: 0.6, confidence: 1, band: 1, structuralWeight: 0.7, duration: 0, significance: 1, seq: 0 };
+  private now = 0;
+  private readonly offer = (event: AudioEvent): void => this.system.solids!.gate.offer(event);
   private kind: SolidKind;
 
   /** `topology`: the packed topology of the world's vector field, shared with whatever else in the world shows that field. */
@@ -169,10 +181,18 @@ export class SolidPrimitive implements Primitive {
   update(frame: Readonly<WorldFrame>, presence: number): void {
     const { geometry: g, look } = frame, env = this.environment, system = this.system, solids = system.solids!;
     readWorld(env, frame, this.topology);
+    this.now = frame.time;
     let view: SolidView = 'wireframe', lamp = 0;
     if (import.meta.env.DEV) {
       system.profile = true;
       if (solidLab.active) { view = this.lab(); lamp = LAMP; }
+    }
+    // The events heard by this frame wait in the gate for the step that reaches their own time: without a clock there are none.
+    const events = frame.timed ? frame.clock?.events : undefined;
+    if (events) {
+      // A body mounted into a session that is already running starts from now: what was heard before it was there did not strike it.
+      if (this.cursor.epoch === undefined) { this.cursor.time = frame.time; this.cursor.seq = events.seq; this.cursor.epoch = events.epoch; }
+      events.forEachHeard(this.cursor, frame.time, this.offer);
     }
     system.advance(frame.time, env);
     const started = import.meta.env.DEV ? performance.now() : 0;
@@ -182,7 +202,7 @@ export class SolidPrimitive implements Primitive {
     if (import.meta.env.DEV) {
       const d = this.debug, stats = solids.stats;
       d.vertices = this.drawn.points; d.links = stats.intact; d.faces = stats.faces; d.cells = stats.cells; d.pieces = solids.state.bodies ? solids.state.bodyPieces[0] : 0;
-      d.stress = stats.stress; d['solid ms'] = stats.solveMs; d['topology ms'] = stats.bookMs;
+      d.stress = stats.stress; d.pulse = solids.pulseOf(0); d.events = stats.events; d['solid ms'] = stats.solveMs; d['topology ms'] = stats.bookMs;
       d['buffer ms'] += (performance.now() - started - d['buffer ms']) * 0.05;
     }
   }
@@ -211,11 +231,14 @@ export class SolidPrimitive implements Primitive {
   /** The laboratory: its overrides, its commands, the view it asks for. */
   private lab(): SolidView {
     const system = this.system, solids = system.solids!, lab = solidLab, command = lab.command;
-    Object.assign(system.tuning, lab.tuning); Object.assign(solids.tuning, lab.material);
+    Object.assign(system.tuning, lab.tuning); Object.assign(solids.tuning, lab.material); Object.assign(solids.gate.tuning, lab.fracture);
     lab.command = null;
     if (command === 'reset' || command === 'seed' || lab.kind !== this.kind) {
       this.kind = lab.kind;
       this.seed(command !== 'seed');
+    } else if (command === 'event') {
+      // The same path as an event of the session: the gate judges it (confidence, threshold, cooldown, budget).
+      this.staged.audioTime = this.now; solids.gate.offer(this.staged);
     } else if (command && solids.state.bodies > 0) {
       // Blows are aimed at the body where it is now: beside its first vertex, from outside or from within.
       const c = solids.centroid(0), p = system.state.position, first = solids.state.bodyFirst[0] * 3, size = this.params.solidRadius;
@@ -224,6 +247,8 @@ export class SolidPrimitive implements Primitive {
       else {
         const at = command === 'impulse' ? 1.4 : 0.5;
         system.strike(c[0] + dx * at, c[1] + dy * at, c[2] + dz * at, command === 'impulse' ? IMPULSE : BREAK, size);
+        // A body that breaks on events only is broken by the tool as an event would break it: through the same gate.
+        if (command === 'fracture' && solids.gate.tuning.mode === 'events') solids.gate.force(BREAK_EVENT);
       }
     }
     return lab.view;

@@ -107,6 +107,9 @@ export class SonicGeometryMapper {
     g.impulse = unit(view.impulseStrength * Math.exp(-Math.max(0, view.impulseAge) / IMPULSE_TAU));
     g.fracture = releaseFracture(view);
     g.energy = unit(0.6 * unit(view.light) + 0.4 * unit(view.excitation));
+    // The lows carry a pulse as far as the track is giving at this moment; an attack that stands out is taken at once.
+    const c = snapshot?.calibration;
+    g.pulse = c ? unit(c.low * (0.5 + 0.5 * c.energy) + 0.3 * c.transient * c.low) : 0;
 
     for (const key of GEOMETRY_KEYS) {
       const value = g[key];

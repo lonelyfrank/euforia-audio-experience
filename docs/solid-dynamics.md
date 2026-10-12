@@ -6,6 +6,12 @@ nessuna scena del prodotto contiene un solido e nessuna è stata modificata.
 
 > Euforia non anima un solido. Simula una struttura fisica che il rendering rende visibile.
 
+> **Aggiornamento, stessa data.** Questo documento descrive il corpo tenuto dai soli link: ora è il
+> materiale **Legacy** del laboratorio, invariato bit per bit. Il laboratorio apre sul materiale
+> **Rigid** (forma conservata, pulsazione entro il 6 %, frattura solo sugli eventi musicali):
+> [rigid-resonant-body](rigid-resonant-body.md). Le sezioni 5 (spinta risonante per link), 6
+> (frattura per carico) e la dimostrazione del §12 valgono per Legacy.
+
 ```text
 audio → DSP Rust ─→ MultiscaleResonance (per hop)        eccitazione: macro / meso / micro
                   └→ World Engine → WorldView → campi     ambiente: flusso, fronti, potenziale
@@ -289,10 +295,12 @@ Un laboratorio alla volta: avviarne uno termina l'altro e ripristina il pin prec
 |---|---|
 | Solid Dynamics | solido (tetraedro, cubo, icosaedro), vista, stato del mondo |
 | Geometry | tipo, vertici, spigoli (intatti / totali), facce (che tengono / totali, triangoli), celle, legami interni |
-| Physics | massa (totale e fattore), rigidezza, smorzamento, compliance volumetrica, solver; cursori: massa ×, rigidezza ×, smorzamento ×, compliance volumetrica ×, accoppiamento ambientale × |
+| Material, Fracture, Adaptive Calibration | materiale, modo di frattura e gate, calibrazione: [rigid-resonant-body](rigid-resonant-body.md) §8 |
+| Physics | massa (totale e fattore), rigidezza, smorzamento, compliance volumetrica, solver; cursori: massa ×, rigidezza ×, compliance volumetrica ×, accoppiamento ambientale × (lo smorzamento è in Material) |
 | Structural Health | integrità, stress medio e di picco, energia cinetica, energia elastica stimata, volume attuale / di riferimento, vincoli rotti (ricordati / persi), frammenti, stato (forma, sigillato o aperto), 10 s di tracce |
-| Resonance | macro (firmato), meso, micro, deformazione dei link (× 10); cursore: accoppiamento alla risonanza × |
-| Experiment | Reset structure, Seed & form, Impulse, Torsion, Fracture test; cursori: coerenza e temperatura dell'ambiente (sostituiscono il valore del mondo solo se spuntate), resistenza alla frattura ×; Restore initial conditions |
+| Resonance | macro (firmato), meso, micro, deformazione dei link (× 10) (l'accoppiamento alla risonanza è in Material) |
+| Debug & Metrics | deviazione dalla forma, deformazione massima di uno spigolo, errore di volume, celle invertite, pulsazione, frammenti, eventi di frattura, solver, budget |
+| Experiment | Reset structure, Seed & form, Impulse, Torsion, Fracture test, Musical event; cursori: coerenza e temperatura dell'ambiente (sostituiscono il valore del mondo solo se spuntate); Restore initial conditions (la resistenza alla frattura è in Fracture) |
 | Budget & Cost | pool usati / capacità, iterazioni, passi del frame, costo del passo solido, della topologia, dei buffer, frame oltre budget, draw call, primitive disegnate |
 
 Ogni numero è una misura dello stato della simulazione (`SolidSystem.read`, su richiesta a 5 Hz);
@@ -322,28 +330,37 @@ tocca topologia, pool o iterazioni, e nulla segue gli FPS.
 
 Benchmark sintetico (`npm run bench`, `src/bench/solid.bench.test.ts`; dati in
 [solid-dynamics-benchmark.json](solid-dynamics-benchmark.json)): passi fissi in un mondo vivo e
-sonoro, i7-10510U a ~3,5 GHz, macchina non isolata (load ≈ 3,8), 11 ottobre 2026, codice finale.
-Microsecondi per chiamata; fra una corsa e l'altra p95 e massimi oscillano del 30–50% con il carico
-della macchina.
+sonoro, i7-10510U a ~4,4 GHz, macchina non isolata (load ≈ 1,1), 11 ottobre 2026, codice finale
+(con il materiale Rigid). Microsecondi per chiamata; fra una corsa e l'altra p50 oscilla del 5–10 %,
+p95 e massimi del 30–50 % con il carico della macchina. La tabella della prima milestone era stata
+presa a ~3,5 GHz e non è confrontabile riga per riga: il confronto prima / dopo, fatto nella stessa
+sessione, è in [resonant-body-report](resonant-body-report.md) §6.
 
-| Scenario | Passo · p50 / p95 / p99 / max | Passi di frattura · p95 / max | Passi di ricomposizione · p95 / max | Topologia · p95 / max | Creazione · p50 |
-|---|---|---|---|---|---:|
-| tetraedro | 28 / 102 / 190 / 964 | 176 / 1570 | 84 / 1334 | 9 / 125 | 105 |
-| cubo | 37 / 93 / 156 / 967 | 71 / 121 | 69 / 526 | 24 / 74 | 250 |
-| icosaedro | 51 / 101 / 168 / 1144 | 80 / 154 | 87 / 451 | 32 / 142 | 196 |
-| 4 icosaedri (budget pieno) | 197 / 338 / 529 / 928 | 225 / 419 | 222 / 670 | 21 / 35 | 561 |
+| Scenario | Passo · p50 / p95 / p99 / max | Passi di frattura · p95 / max | Passi di ricomposizione · p95 / max | Topologia · p95 / max | Creazione · p50 | Rotti / riformati |
+|---|---|---|---|---|---:|---|
+| tetraedro | 15 / 55 / 82 / 473 | 57 / 390 | 37 / 496 | 4 / 101 | 74 | 3 / 3 |
+| cubo | 24 / 48 / 73 / 346 | 23 / 77 | 28 / 324 | 15 / 86 | 184 | 12 / 13 |
+| icosaedro | 35 / 47 / 57 / 389 | 30 / 54 | 38 / 311 | 14 / 54 | 135 | 21 / 24 |
+| 4 icosaedri (budget pieno) | 133 / 154 / 201 / 367 | 108 / 216 | 111 / 357 | 10 / 37 | 395 | 99 / 98 |
+| tetraedro · Rigid | 11 / 38 / 55 / 368 | 68 / 870 | 46 / 439 | 1 / 14 | 14 | 3 / 3 |
+| cubo · Rigid | 24 / 32 / 41 / 399 | 25 / 178 | 34 / 427 | 2 / 6 | 52 | 8 / 8 |
+| icosaedro · Rigid | 36 / 49 / 58 / 422 | 32 / 128 | 43 / 320 | 4 / 9 | 72 | 10 / 10 |
+| 4 icosaedri · Rigid (budget pieno) | 139 / 156 / 198 / 416 | 120 / 461 | 149 / 581 | 14 / 68 | 302 | 44 / 44 |
 
-Buffer GPU (`draw`, vista All): 7–12 µs p50, 13–44 µs p95 per corpo. Il passo strutturale senza
-corpi costa 1–5 µs: tutto il resto è il passo solido. A 60 fps (due passi per frame) un corpo
-costa 0,06–0,1 ms di CPU e il budget pieno ~0,4 ms. I massimi isolati (~1 ms; 1,6 ms il peggiore,
-nel tetraedro, che è il primo scenario a girare) compaiono in ogni colonna, anche nei passi a
-riposo: sono del runtime (JIT, GC), non della frattura o della ricomposizione, i cui passi stanno
-nella stessa banda degli altri. Un massimo di 1 ms supera il budget di 0,5 ms: è contato
-(`stats.over`), non compensato. Nel browser, con GPU reale (Intel UHD, Chromium headless,
-1672 × 941, High): passo solido 0,02–0,08 ms per frame smussato, 3 draw call del corpo su 20 del
-frame; nei primi frame dopo l'apertura 3–4 frame oltre budget (picco 1,2–1,8 ms, una volta 6 ms).
-**Non misurato**: tempo GPU dei tre
-draw call (nessuna timer query in questo percorso).
+Le righe Rigid pagano nello stesso passo il fit di forma di ogni pezzo e, alla frattura, il taglio
+da evento; le colonne «creazione» e «topologia» calano con l'ordine in cui gli scenari girano (JIT
+caldo), non con il materiale.
+
+Buffer GPU (`draw`, vista All): 4–9 µs p50, 6–22 µs p95 per corpo. Il passo strutturale senza
+corpi costa 0,7–1,5 µs: tutto il resto è il passo solido. A 60 fps (due passi per frame) un corpo
+costa 0,03–0,07 ms di CPU e il budget pieno ~0,27 ms. I massimi isolati (0,35–0,9 ms) compaiono in
+ogni colonna, anche nei passi a riposo: sono del runtime (JIT, GC), non della frattura o della
+ricomposizione, i cui passi stanno nella stessa banda degli altri. Un massimo sopra il budget di
+0,5 ms è contato (`stats.over`), non compensato. Nel browser, con GPU reale (Intel UHD, Chromium
+headless, 1672 × 941, High, materiale Rigid): passo solido 0,03–0,04 ms per frame smussato, 3 draw
+call del corpo su 20 del frame; nei primi frame dopo l'apertura 2–3 frame oltre budget (picco
+8,3 ms, una volta). **Non misurato**: tempo GPU dei tre draw call (nessuna timer query in questo
+percorso).
 
 ## 12. Verifica (11 ottobre 2026)
 

@@ -18,12 +18,13 @@ import { hzToPosition, sampleSpectrumRange } from '../../audio/visual-response/s
 import { MODE_SHAPES, MODES } from '../../physics/ResonantPhysics';
 import { Rng, seedOf } from '../../show/rng';
 import type { AudioFrame, VisualResponseFrame } from '../../types/audio';
-import type { PaletteColors, VisualizerContext } from '../../types/visualizer';
+import type { PaletteColors, SceneClock, VisualizerContext } from '../../types/visualizer';
 import { Reorganization } from '../../world/Reorganization';
 import { REST_VIEW } from '../../world/WorldView';
 import { BaseVisualizer } from '../shared/BaseVisualizer';
 import { RollingTraces, traceGlsl, traceValue } from '../shared/RollingTraces';
 import { VoiceTextures, voiceGlsl } from '../shared/VoiceTextures';
+import { createMotion, tunnelLab, TunnelMotionCoordinator } from './motion';
 import { CONFIGURATIONS, createTopology, tunnelTopology } from './topology';
 
 export interface TunnelParams {
@@ -50,6 +51,11 @@ export interface TunnelParams {
   ripple: number;
   /** How far the shared modal field moves the wall (× radius per unit of modal displacement). */
   waveguide: number;
+  /**
+   * How far the motion is coordinated (motion.ts): 1 balanced, 0 the tunnel as it was (every transformation answers
+   * the world by itself). A preset without it is balanced.
+   */
+  balance?: number;
 }
 
 /** Trace rows: what the low, mid and high parts of the spectrum did over the last 8 beats. */
@@ -345,6 +351,12 @@ const sparkFragment = /* glsl */ `
  * the far end in and, with disorder, opens it into rings and floating panels
  * that still line the same path; a release is a pressure front that travels
  * down it and leaves another structure behind. At rest it is the plain corridor.
+ *
+ * What of all that is shown at once is the motion coordinator's (motion.ts):
+ * the scene computes every target from the world as it always did, and the
+ * coordinator keeps the travel continuous, lets the wall open only when the
+ * world really strains or an event stands out, and has torsion and bend give
+ * way while it does.
  */
 export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   private tunnelMaterial!: ShaderMaterial;
@@ -356,6 +368,11 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
   readonly topology = createTopology();
   private readonly structure = new Reorganization(CONFIGURATIONS.length, 0x74756e);
   private readonly modes = new Float32Array(MODES);
+  /** The targets of this frame as the world gives them, and who decides how much of each is shown. */
+  private readonly raw = createMotion();
+  readonly coordinator = new TunnelMotionCoordinator(this.preset.visual.radius);
+  /** Development overlay: how the motion is being coordinated. */
+  readonly debug = { balance: 1, occupancy: 0, aperture: 0, accent: 0, accents: 0, refused: 0, speed: 0, twist: 0 };
   private travel = 0;
   private sparkTravel = 0;
   private roll = 0;
@@ -462,20 +479,57 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     for (let i = 0; i < 3; i++) (u[`uColor${i}`].value as Color).copy(colors[i]);
   }
 
-  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState): void {
+  update(frame: AudioFrame, dt: number, _time: number, response: VisualResponseFrame, modulation?: ModulationState, clock?: SceneClock): void {
     const p = this.preset.visual;
     const { weight, flow, detail, music, trace } = response;
     const vary = music.variation;
     // The tunnel is a view of the shared world: its travel is the world's, the wall is the world's
     // radial body (pressure, hits, stored tension), roll and torsion its angular momentum.
     const world = modulation?.world ?? REST_VIEW;
-    const advance = world.dTravel * (2 / p.ringDensity);
+
+    // Every target, from the world as it is. This is the tunnel as it always was; what is shown of it is decided below.
+    const raw = this.raw;
+    raw.advance = world.dTravel;
+    raw.turn = world.dTurn;
+    raw.radius = p.radius * (modulation ? 0.85 + 0.3 * modulation.scale : 1) * Math.max(0.4, 1 + 0.42 * world.pressure);
+    raw.fov = modulation ? this.preset.camera.fov * (0.85 + 0.3 * modulation.depth) : this.camera.fov;
+    // Bass: the section's depth (weight) and lobes (pitch: higher notes, more lobes; per song a base count).
+    // Each part fades with its band: the section with the bass, the ring lines with the lead, the fine grid with the highs.
+    raw.shape = p.deform * (modulation?.distortion ?? weight) * response.lowAudible;
+    raw.lobes = (3 + 4 * vary[0]) * (1 + 0.5 * Math.max(Math.log2(music.bassPitch / 40), 0));
+    raw.ring = p.ringTrace * (0.5 + 0.4 * trace + 0.6 * world.excitation);
+    // Mids: lead-shaped ring lines, twist and bend.
+    raw.wobble = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice) * response.midAudible;
+    raw.cycles = (2 + 3 * vary[3]) * (1 + 0.3 * Math.max(Math.log2(music.leadPitch / 180), 0));
+    // Torsion: the tunnel winds with the world's angular velocity, every section further than the one before it.
+    raw.twist = (vary[7] - 0.5) * 0.02 * flow + world.spin * 0.03;
+    raw.bend = p.bend * (0.1 + 1.4 * world.disorder);
+    raw.lateral = world.lateral;
+    // Highs: fine grid; brightness from energy, hits and drops.
+    raw.detail = detail * response.highAudible;
+    raw.light = world.light;
+    // Breathing by register: the mids squeeze the section, the highs corrugate the wall (each fades with its band).
+    raw.oval = p.oval * (0.4 + 0.6 * flow) * response.midAudible;
+    raw.ripple = p.ripple * detail * response.highAudible;
+    // Waveguide: the wall carries the modes the audio engine keeps ringing; a coherent world carries them cleanly.
+    raw.waveguide = p.waveguide * (0.4 + 0.6 * world.coherence);
+    raw.sparks = (modulation?.particleEmission ?? (detail * (0.3 + 0.7 * music.highPercussion))) * response.highAudible;
+    // Architecture under force: held potential and disorder open the wall into rings and panels, draw the far tunnel
+    // in and give the section edges. A release is a front that travels down the tunnel and leaves another structure
+    // behind it: the one before the release is still ahead of the front.
+    const architecture = tunnelTopology(this.topology, world), coordinator = this.coordinator;
+    const balance = import.meta.env.DEV && tunnelLab.balance !== null ? tunnelLab.balance : p.balance ?? 1;
+    // Balanced: the same targets, coordinated. Not balanced at all, the scene never asks the coordinator.
+    const m = balance > 0 ? coordinator.step(dt, world, raw, architecture, balance, clock?.events, clock?.time) : raw;
+    const t = balance > 0 ? coordinator.topology : architecture;
+
+    const advance = m.advance * (2 / p.ringDensity);
     this.travel += advance;
-    this.roll += world.dTurn * 0.25;
+    this.roll += m.turn * 0.25;
     this.sparkTravel += advance * 1.6 + dt * world.shimmer * 8;
     // The wall's shape and the ring lines turn and drift with the world, never on their own.
-    this.shapePhase += world.dTurn * 0.5;
-    this.leadPhase -= world.dTravel * 0.08;
+    this.shapePhase += m.turn * 0.5;
+    this.leadPhase -= m.advance * 0.08;
 
     const { spectrum } = frame;
     this.traces.record(LOW, traceValue(frame, response, 1, sampleSpectrumRange(spectrum, 0, LOW_END)));
@@ -486,38 +540,28 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
 
     const u = this.tunnelMaterial.uniforms;
     u.uTravel.value = this.travel;
-    u.uRadius.value = p.radius * (modulation ? 0.85 + 0.3 * modulation.scale : 1) * Math.max(0.4, 1 + 0.42 * world.pressure);
+    u.uRadius.value = m.radius;
     u.uTraceShift.value = this.traces.shift;
     u.uDigital.value = this.voices.digital;
-    // Bass: the section's depth (weight) and lobes (pitch: higher notes, more lobes; per song a base count).
-    // Each part fades with its band: the section with the bass, the ring lines with the lead, the fine grid with the highs.
-    u.uShape.value = p.deform * (modulation?.distortion ?? weight) * response.lowAudible;
-    u.uLobes.value = (3 + 4 * vary[0]) * (1 + 0.5 * Math.max(Math.log2(music.bassPitch / 40), 0));
+    u.uShape.value = m.shape;
+    u.uLobes.value = m.lobes;
     u.uShapePhase.value = this.shapePhase;
-    u.uRing.value = p.ringTrace * (0.5 + 0.4 * trace + 0.6 * world.excitation);
-    // Mids: lead-shaped ring lines, twist and bend.
-    u.uLeadWobble.value = p.leadWobble * flow * (0.4 + 0.6 * music.leadVoice) * response.midAudible;
-    u.uLeadCycles.value = (2 + 3 * vary[3]) * (1 + 0.3 * Math.max(Math.log2(music.leadPitch / 180), 0));
+    u.uRing.value = m.ring;
+    u.uLeadWobble.value = m.wobble;
+    u.uLeadCycles.value = m.cycles;
     u.uLeadPhase.value = this.leadPhase;
-    // Torsion: the tunnel winds with the world's angular velocity, every section further than the one before it.
-    u.uTwist.value = (vary[7] - 0.5) * 0.02 * flow + world.spin * 0.03;
-    u.uBend.value = p.bend * (0.1 + 1.4 * world.disorder);
-    u.uLateral.value = world.lateral;
-    // Highs: fine grid; brightness from energy, hits and drops.
-    u.uDetail.value = detail * response.highAudible;
-    u.uDensity.value = world.light;
-    // Breathing by register: the mids squeeze the section, the highs corrugate the wall (each fades with its band).
+    u.uTwist.value = m.twist;
+    u.uBend.value = m.bend;
+    u.uLateral.value = m.lateral;
+    u.uDetail.value = m.detail;
+    u.uDensity.value = m.light;
     const breath = u.uBreath.value as Vector3;
-    breath.x = p.oval * (0.4 + 0.6 * flow) * response.midAudible;
-    breath.y = p.ripple * detail * response.highAudible;
-    // Waveguide: the wall carries the modes the audio engine keeps ringing; a coherent world carries them cleanly.
+    breath.x = m.oval;
+    breath.y = m.ripple;
     const physics = modulation?.experienceState?.physics;
     if (physics) this.modes.set(physics.modes); else this.modes.fill(0);
-    u.uWaveguide.value = p.waveguide * (0.4 + 0.6 * world.coherence);
-    // Architecture under force: held potential and disorder open the wall into rings and panels, draw the far tunnel
-    // in and give the section edges. A release is a front that travels down the tunnel and leaves another structure
-    // behind it: the one before the release is still ahead of the front.
-    const t = tunnelTopology(this.topology, world), structure = this.structure;
+    u.uWaveguide.value = m.waveguide;
+    const structure = this.structure;
     structure.update(world);
     const after = CONFIGURATIONS[structure.current], before = CONFIGURATIONS[structure.previous];
     (u.uGap.value as Vector2).set(t.gapAngular, t.gapAxial);
@@ -528,14 +572,18 @@ export class TunnelVisualizer extends BaseVisualizer<TunnelParams> {
     u.uRelease.value = t.release;
     const s = this.sparkMaterial.uniforms;
     s.uSparkTravel.value = this.sparkTravel;
-    s.uSparks.value = (modulation?.particleEmission ?? (detail * (0.3 + 0.7 * music.highPercussion))) * response.highAudible;
+    s.uSparks.value = m.sparks;
 
     // A slow roll with the mids; no zoom or shake on beats.
-    if (modulation) {
-      const fov = this.preset.camera.fov * (0.85 + 0.3 * modulation.depth);
-      if (Math.abs(fov - this.camera.fov) > 0.02) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    if (modulation && Math.abs(m.fov - this.camera.fov) > 0.02) { this.camera.fov = m.fov; this.camera.updateProjectionMatrix(); }
+    const roll = Math.sin(this.roll) * 0.25 * this.preset.camera.drift * (modulation ? 2 * modulation.cameraMotion : 1);
+    this.camera.rotation.z = balance > 0 ? roll * coordinator.rollShare : roll;
+
+    if (import.meta.env.DEV) {
+      const d = this.debug;
+      d.balance = balance; d.occupancy = balance > 0 ? coordinator.occupancy : 0; d.aperture = balance > 0 ? coordinator.aperture : 0; d.accent = balance > 0 ? coordinator.accent : 0;
+      d.accents = coordinator.accents; d.refused = coordinator.refused; d.speed = dt > 0 ? advance / dt : 0; d.twist = m.twist;
     }
-    this.camera.rotation.z = Math.sin(this.roll) * 0.25 * this.preset.camera.drift * (modulation ? 2 * modulation.cameraMotion : 1);
   }
 
   override resize(width: number, height: number): void {

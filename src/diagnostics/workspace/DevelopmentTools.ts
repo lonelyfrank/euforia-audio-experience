@@ -6,6 +6,7 @@ import { SolidCockpit } from '../../app/engine/SolidCockpit';
 import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
 import { matterLab, type FormPin } from '../../render-systems/forms/MatterForms';
 import { worldLab } from '../../visual-engine/VisualWorld';
+import { tunnelLab } from '../../visualizers/tunnel/motion';
 import { settingsStore } from '../../stores/settingsStore';
 import { h } from '../../ui/dom';
 import type { DiagnosticsController } from '../core/DiagnosticsController';
@@ -50,6 +51,8 @@ export class DevelopmentTools {
   private readonly stopButton = button('Termina esperimento', () => this.stopExperiment());
   private readonly pin = h('select', { ariaLabel: 'Forma Matter' });
   private readonly signal = h('select', { ariaLabel: 'Segnale live di test' });
+  /** The tunnel as it was or balanced, on the same sound: `tunnelLab`, back to the preset's own on leaving. */
+  private readonly tunnel = h('select', { ariaLabel: 'Coordinamento del Tunnel' });
   constructor(private readonly app: App, private readonly controller: DiagnosticsController, parent: HTMLElement, deck: HTMLElement) {
     this.initialSource = app.audio.state.source ?? settingsStore.get().source;
     this.initialSignal = TEST_SIGNALS.find(s => s.label === app.audio.state.deviceName)?.id;
@@ -62,7 +65,9 @@ export class DevelopmentTools {
     for (const form of ['auto', 'particles', 'wave', 'harmonic'] as const) this.pin.append(new Option(`Matter: ${form}`, form));
     this.pin.value = matterLab.form;
     this.pin.onchange = () => { matterLab.form = this.pin.value as FormPin; };
-    this.controls.append(this.signal, this.pin, ...this.labButtons, this.stopButton, this.status);
+    this.tunnel.append(new Option('Tunnel: preset', ''), new Option('Tunnel: Balanced', '1'), new Option('Tunnel: com\'era (legacy)', '0'));
+    this.tunnel.onchange = () => { tunnelLab.balance = this.tunnel.value === '' ? null : Number(this.tunnel.value); };
+    this.controls.append(this.signal, this.pin, this.tunnel, ...this.labButtons, this.stopButton, this.status);
     this.element.className = 'ws-development';
     this.element.append(this.charts);
     this.audio = new AudioAnalysis(app, this.element, deck);
@@ -88,8 +93,8 @@ export class DevelopmentTools {
   }
   stopExperiment(): void {
     this.lab?.dispose(); this.lab = null; this.running = null;
-    matterLab.form = this.initialForm; worldLab.only = this.initialOnly;
-    this.pin.value = matterLab.form;
+    matterLab.form = this.initialForm; worldLab.only = this.initialOnly; tunnelLab.balance = null;
+    this.pin.value = matterLab.form; this.tunnel.value = '';
     for (const item of this.labButtons) item.hidden = false;
     // The cockpit's source selector also uses the same AudioEngine. Restore only a test source.
     if (this.signalChanged) {

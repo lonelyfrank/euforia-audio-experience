@@ -99,6 +99,8 @@ export interface StructuralEnvironment {
   release: number;
   /** Drag of the medium (1/s): the rate the flows act through. */
   drag: number;
+  /** The low-register drive a body pulses with (GeometryState.pulse): 0 where nothing drives it. */
+  pulse: number;
   /** The multiscale resonance as elements look it up; null when nothing can ring (no synchronized clock). */
   resonance: ResonanceField | null;
   /** Velocity of the medium at a point (units/s): flow, pressure, potential, vortices, turbulence. Writes out[0..2]. */
@@ -114,7 +116,7 @@ export interface StructuralEnvironment {
 
 /** An environment in which nothing happens: silence, a still medium. */
 export const createStillEnvironment = (): StructuralEnvironment => ({
-  coherence: 1, harmony: 0, turbulence: 0, tension: 0, energy: 0, release: 0, drag: 2, resonance: null,
+  coherence: 1, harmony: 0, turbulence: 0, tension: 0, energy: 0, release: 0, drag: 2, pulse: 0, resonance: null,
   flow: (_x, _y, _z, out) => { out[0] = out[1] = out[2] = 0; },
   push: (_x, _y, _z, _affinity, out) => { out[0] = out[1] = out[2] = 0; },
   hold: (_x, _y, _z, _home, out) => { out[0] = out[1] = out[2] = 0; },

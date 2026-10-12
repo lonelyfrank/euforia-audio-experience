@@ -310,7 +310,7 @@ export class StructuralSystem {
       s.energy[i] = 0.5 * s.mass[i] * (vx * vx + vy * vy + vz * vz) + 0.5 * s.excitation[i] * s.excitation[i];
     }
     // What the step predicted, held to the links and cells of the bodies.
-    solids?.solve(env, tuning, h);
+    solids?.solve(env, tuning, h, this.time + h);
     this.stats.fractures = this.events.fractures;
     this.stepIndex++;
     const started = this.profile ? performance.now() : 0;
@@ -336,6 +336,7 @@ export class StructuralSystem {
   /** A new audio session: the matter stays where it is and as it is; only the clock is forgotten. */
   reset(): void {
     this.time = NaN; this.alpha = 0;
+    this.solids?.reset();
   }
 
   /** Removes all matter and all bonds (the pools stay). */

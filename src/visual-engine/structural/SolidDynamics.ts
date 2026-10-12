@@ -1,8 +1,10 @@
+import { Rng, seedOf } from '../../show/rng';
 import { BOND_COST, BREAK_HEAT, fade, loadOf, MEMORY_RANGE, tire } from './BondSystem';
+import { FractureGate } from './FractureGate';
 import { SolidState } from './SolidState';
 import { solidMesh } from './SolidTopology';
 import {
-  BRACE, BROKEN, createSolidTuning, DEFAULT_SOLID_BUDGET, EDGE, FORMS, INTACT, LOST, MAX_CELL_VERTICES, MAX_ITERATIONS, SOLID_LIMITS, within,
+  BRACE, BROKEN, createSolidTuning, DEFAULT_SOLID_BUDGET, EDGE, FORMS, INTACT, LOST, MAX_CELL_VERTICES, MAX_ITERATIONS, PULSE_LIMIT, SOLID_LIMITS, within,
   type SolidBudget, type SolidForm, type SolidKind,
 } from './SolidTypes';
 import type { Population } from './StructuralIdentity';
@@ -36,6 +38,21 @@ import { finite, R_MAX, unit, V_MAX, type StructuralEnvironment, type Structural
  * All of it is internal (pairs and cells), so a body and each of its fragments
  * keep their momentum; without sound none of it is there and what moves only
  * loses energy.
+ *
+ * A material may also hold the shape of a body (`shapeRetention`): the rigid
+ * resonant body. Each piece keeps a reference geometry (SolidState.rest, never
+ * written by the sound) and, after its links and cells are projected, is drawn
+ * towards the rigid placement of that geometry that fits it best: a rotation
+ * about its own centre of mass, found by shape matching, at the scale the
+ * sound asks for.
+ *
+ *   translation, rotation   free: the fit follows the piece, it never holds it in place
+ *   pulse                   one scale for the whole body, 1 + p with |p| ≤ maxPulse ≤ 6%: the lows, as an envelope
+ *   elastic residue         what is left of the per-link drive (1 − retention of it), small and reversible
+ *   fracture                the links' own business, as before: the reference of a piece is its part of the body's
+ *
+ * The pulse is physical and the only one: it scales what links, hinges, cells
+ * and the fit tend to, and the picture shows the positions that follow.
  */
 
 /** Stiffness of an edge and of a brace (force per unit length, for matter of unit mass) and bulk stiffness of a cell (energy per unit volume). */
@@ -82,6 +99,70 @@ const REST = 2.5;
 const SCAR = 0.25;
 /** The matter of a body: low, structural, narrow enough to ring together and wide enough for its vertices to differ. */
 const MATTER = { centre: 0.36, spread: 0.08 };
+/**
+ * Shape retention. The fit is a spring from each element to its place in the fitted shape, of this stiffness per unit
+ * mass (1/s²) for each unit of `1 / (1 − ρ)² − 1`: a blow leaves a body of retention ρ about (1 − ρ) of the
+ * deformation it leaves in the links alone (peak displacement of an oscillator struck with one velocity goes as
+ * 1 / ω). Calibrated on the deformation, recovery and reconstruction tests of Solid.test.ts, not chosen.
+ */
+const K_SHAPE = 150;
+/** Steps of the rotation search per fixed step: it starts from the last one found, so a few are exact. */
+const FIT_STEPS = 3;
+/**
+ * A piece is in its shape while its furthest element is no further from its place than IN_SHAPE of the body's
+ * reference scale: it is then held with the whole stiffness of the material, it has a scale, and that scale is kept
+ * within the pulse. Out of it (pieces that have just joined out of place), the fit moves no element further in one
+ * step than FIT_STEP of that scale: they come into shape at a pace that can be followed (a little over one scale a
+ * second), never in a snap.
+ */
+const IN_SHAPE = 0.03;
+const FIT_STEP = 0.01;
+/**
+ * How far a piece of each form holds a shape (× the retention): free, chain, polygon, surface, shell, volume. A lone
+ * element and a chain have no shape to hold (their links are all they are); a ring of links has little; a piece of
+ * surface is a plate, nearly as much a shape as the volume it came from.
+ */
+const SHAPE_OF_FORM = [0, 0, 0.4, 0.85, 0.95, 1];
+/** The pulse: how hard the drive's swing about its own recent mean (s) presses it, how fast it is taken and let go (s). */
+const PULSE_GAIN = 2.5;
+const PULSE_MEAN = 1.6;
+const PULSE_ATTACK = 0.035;
+const PULSE_RELEASE = 0.22;
+/**
+ * A fracture by an event. The event is a shock that shears a piece along a plane through it: what it adds to the load
+ * of the links crossing that plane (a share of their strength, from the smallest fracture to the largest), over how
+ * long it counts as fatigue for those that hold (s), and the most of a piece's links one event may break.
+ */
+const SHOCK = [0.55, 1.6];
+const SHOCK_TIME = 0.15;
+const SHOCK_SHARE = 0.5;
+/** How far off the centre the plane of the smallest fracture passes (share of the piece's radius): it chips, a large one splits. */
+const SHOCK_OFFSET = 0.55;
+/** What parts the two sides: the speed they are given against each other (units/s, smallest to largest), as a force over this time (s). */
+const PART = [0.5, 1.4];
+const PART_TIME = 0.12;
+/** After a fracture by an event nothing forms again for this long (s), and a link is not broken by one this soon after it formed. */
+const REFORM_HOLD = 1.5;
+const LINK_GRACE = 1.5;
+/**
+ * The budget of fragmentation: a piece smaller than this is not broken further, and a body takes no event while it
+ * is in as many pieces as its elements over PIECE_SHARE, or holds less than this share of its links. A body breaks
+ * again only once it has largely found itself.
+ */
+const PIECE_MIN = 4;
+const PIECE_SHARE = 3;
+const HELD_SHARE = 0.6;
+/** In the `events` mode fatigue stops short of breaking: only an event completes it. */
+const DAMAGE_HELD = 0.95;
+
+/**
+ * The stiffness (per unit mass, 1/s²) with which a body of perceptual rigidity `retention` holds its shape. 0 at 0;
+ * at 0.9 the fit is 99 × K_SHAPE, about a hundred times what its links give a vertex.
+ */
+export const shapeRate = (retention: number): number => {
+  const rho = within(retention, SOLID_LIMITS.shapeRetention, 0), slack = 1 - rho;
+  return K_SHAPE * (1 / (slack * slack) - 1);
+};
 
 export interface SolidOptions {
   x?: number;
@@ -119,6 +200,8 @@ export interface SolidStats {
   reforms: number;
   refused: number;
   repairs: number;
+  /** Fractures made by events (each may break several links), since the last clear. */
+  events: number;
   /** Cells found inside out in the last step. */
   inverted: number;
   iterations: number;
@@ -166,12 +249,24 @@ export interface BodyReadout {
   /** Its answer: how far its links are from the length they were made with (RMS, a share of it), and their elastic strain against what they tend to now (RMS). */
   response: number;
   strain: number;
+  /** The pulse the sound asks of it now (a share of its reference scale, signed), and the scale it has (1: its reference). */
+  pulse: number;
+  scale: number;
+  /**
+   * How far it is from its own shape: RMS distance of its elements from the rigid placement of their reference
+   * geometry that fits each piece best, at the scale the piece has, as a share of the body's reference scale.
+   * 0 for any translation, rotation or uniform pulse.
+   */
+  deviation: number;
+  /** The link furthest from the length it was made with (a share of it), and how far the cells holding are from the volume they tend to (a share of the reference). */
+  edgeStrain: number;
+  volumeError: number;
 }
 
 export const createReadout = (): BodyReadout => ({
   kind: 'tetrahedron', vertices: 0, edges: 0, edgesIntact: 0, braces: 0, bracesIntact: 0, faces: 0, facesHolding: 0, triangles: 0, cells: 0, cellsHolding: 0,
   mass: 0, integrity: 0, stress: 0, peak: 0, kinetic: 0, elastic: 0, volume: 0, volumeRest: 0, volumeReference: 0, broken: 0, lost: 0, pieces: 0,
-  form: 'free', sealed: false, macro: 0, meso: 0, micro: 0, response: 0, strain: 0,
+  form: 'free', sealed: false, macro: 0, meso: 0, micro: 0, response: 0, strain: 0, pulse: 0, scale: 1, deviation: 0, edgeStrain: 0, volumeError: 0,
 });
 
 export class SolidSystem {
@@ -181,8 +276,10 @@ export class SolidSystem {
   readonly tuning = createSolidTuning();
   readonly stats: SolidStats = {
     bodies: 0, intact: 0, broken: 0, lost: 0, faces: 0, cells: 0, fragments: 0, stress: 0, peak: 0, kinetic: 0, elastic: 0,
-    fractures: 0, reforms: 0, refused: 0, repairs: 0, inverted: 0, iterations: 0, solveMs: 0, bookMs: 0, peakMs: 0, over: 0,
+    fractures: 0, reforms: 0, refused: 0, repairs: 0, events: 0, inverted: 0, iterations: 0, solveMs: 0, bookMs: 0, peakMs: 0, over: 0,
   };
+  /** Whether a musical event may break the bodies (its `tuning.mode`; `load` in the product: the gate is then idle). */
+  readonly gate = new FractureGate();
   /** Measure CPU time (development). */
   profile = false;
   /** Working positions of the step, the positions before it, and inverse masses: double precision, the bodies' elements only. */
@@ -201,6 +298,22 @@ export class SolidSystem {
   private readonly held: Int32Array;
   private readonly centre = new Float64Array(3);
   private readonly axis = new Float64Array(3);
+  /** The pulse of each body (a share of its reference scale, signed) and the recent mean of what drives it. */
+  private readonly pulse: Float64Array;
+  private readonly pulseMean: Float64Array;
+  /** What each body measures of itself in the fit: its scale, and how far it is from its shape (see BodyReadout). */
+  private readonly scale: Float64Array;
+  private readonly deviation: Float64Array;
+  /** The load of each link at the last step, as a share of what it bears, before any event. */
+  private readonly ratio: Float32Array;
+  /** What parts the sides of a fracture by an event: an acceleration per element, for the time left of it (s). */
+  private readonly part: Float32Array;
+  private parting = 0;
+  /** Which side of the plane of a fracture each element of the piece being broken is on. */
+  private readonly side: Int8Array;
+  /** Seconds simulated, and until when on that clock nothing forms again. */
+  private clock = 0;
+  private holdUntil = -Infinity;
   private stepIndex = 0;
   private frameTime = 0;
   private bookTime = 0;
@@ -214,6 +327,9 @@ export class SolidSystem {
     this.target = new Float64Array(state.linkCapacity); this.lambda = new Float64Array(state.linkCapacity); this.right = new Float32Array(state.linkCapacity).fill(1); this.hingeLambda = new Float64Array(state.linkCapacity);
     this.cellTarget = new Float64Array(state.cellCapacity); this.cellLambda = new Float64Array(state.cellCapacity);
     this.held = new Int32Array(state.faceCapacity);
+    this.pulse = new Float64Array(state.bodyCapacity); this.pulseMean = new Float64Array(state.bodyCapacity);
+    this.scale = new Float64Array(state.bodyCapacity).fill(1); this.deviation = new Float64Array(state.bodyCapacity);
+    this.ratio = new Float32Array(state.linkCapacity); this.part = new Float32Array(n * 3); this.side = new Int8Array(n);
     this.stats.iterations = b.iterations;
   }
 
@@ -237,6 +353,16 @@ export class SolidSystem {
       matter.add(seed, population, x + (vx * ca - vy * sa) * out, y + (vx * sa + vy * ca) * out, z + vz * out, reach);
     }
     const body = state.addBody(kind, first, vertices, mesh.faces.length / mesh.faceSize);
+    if (scatter > 0) {
+      // Seeded apart, a body still refers to its figure, not to where its matter was dropped.
+      const figure = this.x, shrink = size / out;
+      for (let i = first; i < first + vertices; i++) {
+        figure[i * 3] = x + (matter.position[i * 3] - x) * shrink; figure[i * 3 + 1] = y + (matter.position[i * 3 + 1] - y) * shrink; figure[i * 3 + 2] = z + (matter.position[i * 3 + 2] - z) * shrink;
+      }
+      state.shape(body, figure);
+    }
+    this.pulse[body] = this.pulseMean[body] = this.deviation[body] = 0; this.scale[body] = 1;
+    for (let i = first * 3; i < (first + vertices) * 3; i++) this.part[i] = 0;
     for (let kindOf = EDGE; kindOf <= BRACE; kindOf++) {
       const pairs = kindOf === EDGE ? mesh.edges : mesh.braces;
       for (let k = 0; k < pairs.length; k += 2) {
@@ -287,6 +413,14 @@ export class SolidSystem {
       if (state.linkState[l] !== BROKEN) continue;
       const memory = fade(state.linkMemory[l], 0.5 * (matter.temperature[state.linkA[l]] + matter.temperature[state.linkB[l]]), 0.5 * (matter.persistence[state.linkA[l]] + matter.persistence[state.linkB[l]]), h);
       if (memory < 0.01) state.forget(l); else state.linkMemory[l] = memory;
+    }
+    if (this.parting > 0) {
+      // The shock that broke a piece still parts its two sides: equal and opposite, so the piece as a whole gains nothing.
+      const part = this.part;
+      for (let b = 0; b < state.bodies; b++) {
+        for (let i = state.bodyFirst[b] * 3, end = i + state.bodyCount[b] * 3; i < end; i++) acc[i] += part[i];
+      }
+      this.parting -= h;
     }
     if (alive <= 0) return;
     // Lengths alone do not tell a body from its mirror image: a piece that tumbled can sit at every remembered length
@@ -342,17 +476,22 @@ export class SolidSystem {
 
   /**
    * One fixed step of the bodies, on the motion the structural step has just predicted: project links and cells,
-   * correct the velocities, load and break what can bear no more, let what is remembered form again.
+   * hold the shape of each piece, correct the velocities, load and break what can bear no more, let what is
+   * remembered form again. `now`: the audio time the step ends at (NaN without a clock), for the events waiting.
    */
-  solve(env: Readonly<StructuralEnvironment>, tuning: Readonly<StructuralTuning>, h: number): void {
+  solve(env: Readonly<StructuralEnvironment>, tuning: Readonly<StructuralTuning>, h: number, now = NaN): void {
     const state = this.state;
     if (state.bodies === 0) return;
     const started = this.profile ? performance.now() : 0;
+    this.clock += h;
     // A link broken from outside the step (a tool): what it held must be gone before anything is projected.
     if (state.dirty) this.book();
     const matter = this.matter, p = matter.position, v = matter.velocity, x = this.x, prev = this.prev, w = this.w, stats = this.stats;
     const own = this.tuning, heavy = within(own.mass, SOLID_LIMITS.mass), stiff = within(own.stiffness, SOLID_LIMITS.stiffness);
     const damp = within(own.damping, SOLID_LIMITS.damping), give = within(own.volumeCompliance, SOLID_LIMITS.volumeCompliance);
+    const keep = within(own.shapeRetention, SOLID_LIMITS.shapeRetention, 0), swing = within(own.maxPulse, SOLID_LIMITS.maxPulse, 0), recover = within(own.recovery, SOLID_LIMITS.recovery);
+    // What a body that holds its shape leaves to each link by itself: the rest of the sound's drive is the pulse of the whole.
+    const local = 1 - keep;
     const resonance = env.resonance?.live ? env.resonance : null, hear = Math.max(0, finite(tuning.resonanceCoupling, 1));
     for (let b = 0; b < state.bodies; b++) {
       for (let i = state.bodyFirst[b], end = i + state.bodyCount[b]; i < end; i++) {
@@ -360,7 +499,9 @@ export class SolidSystem {
         x[i * 3] = p[i * 3]; x[i * 3 + 1] = p[i * 3 + 1]; x[i * 3 + 2] = p[i * 3 + 2];
       }
     }
-    const A = state.linkA, B = state.linkB, target = this.target, lambda = this.lambda, settle = 1 - Math.exp(-h / REST), ih2 = 1 / (h * h);
+    this.breathe(env, swing, hear, recover, h);
+    const pulse = this.pulse;
+    const A = state.linkA, B = state.linkB, target = this.target, lambda = this.lambda, settle = 1 - Math.exp(-h * recover / REST), ih2 = 1 / (h * h);
     for (let l = 0; l < state.links; l++) {
       if (state.linkState[l] !== INTACT) continue;
       const a = A[l], b = B[l], rest = state.linkRest[l] += (state.linkRest0[l] - state.linkRest[l]) * settle;
@@ -372,7 +513,7 @@ export class SolidSystem {
           + DRIVE_MESO * 0.5 * (matter.vibration[a] + matter.vibration[b]) + DRIVE_MICRO * 0.5 * (matter.micro[a] + matter.micro[b]));
         drive = drive > DRIVE_MAX ? DRIVE_MAX : drive < -DRIVE_MAX ? -DRIVE_MAX : finite(drive);
       }
-      target[l] = rest * (1 + drive); lambda[l] = this.hingeLambda[l] = 0;
+      target[l] = rest * (1 + drive * local) * (1 + pulse[state.linkBody[l]]); lambda[l] = this.hingeLambda[l] = 0;
     }
     const cellTarget = this.cellTarget, cellLambda = this.cellLambda;
     for (let c = 0; c < state.cells; c++) {
@@ -384,7 +525,9 @@ export class SolidSystem {
         swell = SWELL * hear * matter.coupling[e] * resonance.breath(matter.phase[e]);
         swell = swell > SWELL_MAX ? SWELL_MAX : swell < -SWELL_MAX ? -SWELL_MAX : finite(swell);
       }
-      cellTarget[c] = rest * (1 + swell); cellLambda[c] = 0;
+      // A volume follows the cube of the scale its body pulses to.
+      const size = 1 + pulse[state.cellBody[c]];
+      cellTarget[c] = rest * (1 + swell * local) * (size * size * size); cellLambda[c] = 0;
     }
 
     stats.inverted = 0;
@@ -395,10 +538,20 @@ export class SolidSystem {
         // Both triangles on this link hold: the surface resists being folded along it.
         if (state.linkFaces[l] === 2 && state.hingeA[l] >= 0) {
           const e = state.hingeA[l], f = state.hingeB[l];
-          this.hingeLambda[l] += this.tie(e, f, state.hingeRest[l], stiff * K_HINGE * 2 / (w[e] + w[f]), state.linkDamping[l] * damp, this.hingeLambda[l], SHIFT_MAX * state.hingeRest[l], h, ih2);
+          this.hingeLambda[l] += this.tie(e, f, state.hingeRest[l] * (1 + pulse[state.linkBody[l]]), stiff * K_HINGE * 2 / (w[e] + w[f]), state.linkDamping[l] * damp, this.hingeLambda[l], SHIFT_MAX * state.hingeRest[l], h, ih2);
         }
       }
       for (let c = 0; c < state.cells; c++) if (state.cellHolds[c]) this.hold(c, iteration === 0, h, ih2, give, damp);
+    }
+    // The shape of each piece, on what its links and cells made of the step: a body with no retention is not touched.
+    if (keep > 0) {
+      const integrity = within(own.fragmentIntegrity, SOLID_LIMITS.fragmentIntegrity);
+      for (let b = 0; b < state.bodies; b++) this.fit(b, x, keep, integrity, h);
+    }
+    // A piece that has just joined another is one shape again only after a while (what reads `settled` is the fit alone).
+    const settling = h * recover / REST;
+    for (let b = 0; b < state.bodies; b++) {
+      for (let i = state.bodyFirst[b], end = i + state.bodyCount[b]; i < end; i++) if (state.settled[i] < 1) state.settled[i] = Math.min(1, state.settled[i] + settling);
     }
 
     // The velocity each element is left with is the one that takes it where the constraints put it.
@@ -422,9 +575,248 @@ export class SolidSystem {
     }
 
     this.load(env, tuning, h, hear, stiff);
-    if (++this.stepIndex % REFORM_EVERY === 0) this.reform(env);
+    const amount = this.gate.take(now, this.clock, this.able());
+    if (amount > 0) this.shatter(amount, tuning);
+    if (++this.stepIndex % REFORM_EVERY === 0 && this.clock >= this.holdUntil) this.reform(env);
     if (state.dirty) this.book();
     if (this.profile) this.frameTime += performance.now() - started;
+  }
+
+  /**
+   * The pulse of every body, one step. What drives it is the low register as the calibration hands it over
+   * (`env.pulse`, 0..1); a body answers its swing about its own recent mean, so a kick opens it, the gap after it
+   * draws it in, and a level that only holds moves nothing. Taken at once and let go slowly, never past `swing`
+   * (the material's largest pulse), and only in a living world: in silence it comes back to the reference scale.
+   */
+  private breathe(env: Readonly<StructuralEnvironment>, swing: number, hear: number, recover: number, h: number): void {
+    const pulse = this.pulse, mean = this.pulseMean, bodies = this.state.bodies;
+    if (!(swing > 0)) {
+      // A material that does not pulse: whatever a body was asked before is forgotten at once.
+      for (let b = 0; b < bodies; b++) pulse[b] = mean[b] = 0;
+      return;
+    }
+    const drive = unit(finite(env.pulse) * hear), alive = unit(3 * finite(env.energy)), follow = 1 - Math.exp(-h / PULSE_MEAN);
+    for (let b = 0; b < bodies; b++) {
+      mean[b] += (drive - mean[b]) * follow;
+      if (mean[b] < 1e-9) mean[b] = 0;
+      const target = swing * Math.tanh(PULSE_GAIN * (drive - mean[b])) * alive, held = pulse[b];
+      const taking = target * held >= 0 && Math.abs(target) > Math.abs(held);
+      const next = target + (held - target) * Math.exp(-h / (taking ? PULSE_ATTACK : PULSE_RELEASE / recover));
+      pulse[b] = !Number.isFinite(next) || Math.abs(next) < 1e-9 ? 0 : next > swing ? swing : next < -swing ? -swing : next;
+    }
+  }
+
+  /**
+   * Holds each piece of body `b` to its shape, at `x`: finds the rotation about the piece's centre of mass that
+   * carries its reference geometry onto it best (shape matching, mass-weighted, started from the last one found) and
+   * draws every element towards its place in that placement, at the scale the body pulses to, as far as an implicit
+   * spring of the material's shape stiffness would over this step. One share for the whole piece, towards a goal
+   * about the piece's own centre: its momentum and its angular momentum are what they were, and where the piece is
+   * and how it is turned are never held. A piece far out of its shape is drawn in at a bounded pace (FIT_STEP), and
+   * the scale a piece that is in its shape is left with never passes PULSE_LIMIT.
+   *
+   * Without `apply` nothing moves: the fit is only measured (what the tools read, of a body that holds no shape too).
+   * A body's scale and its deviation from its shape are those of its pieces that have a shape to hold: a chain has none.
+   */
+  private fit(b: number, x: Float64Array | Float32Array, keep: number, integrity: number, h: number, apply = true): void {
+    const state = this.state, matter = this.matter, rest = state.rest, component = state.component, frame = state.frame, settled = state.settled;
+    const first = state.bodyFirst[b], last = first + state.bodyCount[b], goal = 1 + this.pulse[b], whole = state.bodyPieces[b] === 1;
+    let mass = 0, held = 0, scaled = 0, off = 0;
+    for (let r = first; r < last; r++) {
+      if (component[r] !== r) continue;
+      // Centres of mass: of the piece where it is, and of its part of the reference geometry.
+      let m = 0, cx = 0, cy = 0, cz = 0, ox = 0, oy = 0, oz = 0, count = 0, ready = 1;
+      for (let i = r; i < last; i++) {
+        if (component[i] !== r) continue;
+        const mi = matter.mass[i], at = i * 3;
+        m += mi; cx += mi * x[at]; cy += mi * x[at + 1]; cz += mi * x[at + 2]; ox += mi * rest[at]; oy += mi * rest[at + 1]; oz += mi * rest[at + 2];
+        count++;
+        if (settled[i] < ready) ready = settled[i];
+      }
+      // Fewer than three elements have a length, not a shape.
+      if (count < 3 || !(m > 0)) continue;
+      cx /= m; cy /= m; cz /= m; ox /= m; oy /= m; oz /= m;
+      // A = Σ m (x − c)(q − o)ᵀ, and the spread of the reference about its centre.
+      let a00 = 0, a01 = 0, a02 = 0, a10 = 0, a11 = 0, a12 = 0, a20 = 0, a21 = 0, a22 = 0, spread = 0;
+      for (let i = r; i < last; i++) {
+        if (component[i] !== r) continue;
+        const mi = matter.mass[i], at = i * 3, dx = x[at] - cx, dy = x[at + 1] - cy, dz = x[at + 2] - cz, ex = rest[at] - ox, ey = rest[at + 1] - oy, ez = rest[at + 2] - oz;
+        a00 += mi * dx * ex; a01 += mi * dx * ey; a02 += mi * dx * ez; a10 += mi * dy * ex; a11 += mi * dy * ey; a12 += mi * dy * ez; a20 += mi * dz * ex; a21 += mi * dz * ey; a22 += mi * dz * ez;
+        spread += mi * (ex * ex + ey * ey + ez * ez);
+      }
+      if (!(spread > 1e-12) || !Number.isFinite(a00 + a01 + a02 + a10 + a11 + a12 + a20 + a21 + a22)) continue;
+      // The rotation nearest A, from the one this piece had: a few steps of the search are exact when it turns little
+      // in a step, and a piece that has been flattened or turned inside out keeps the proper rotation it had.
+      let qx = frame[r * 4], qy = frame[r * 4 + 1], qz = frame[r * 4 + 2], qw = frame[r * 4 + 3];
+      let r00: number, r01: number, r02: number, r10: number, r11: number, r12: number, r20: number, r21: number, r22: number, along: number;
+      for (let k = 0; ; k++) {
+        r00 = 1 - 2 * (qy * qy + qz * qz); r01 = 2 * (qx * qy - qz * qw); r02 = 2 * (qx * qz + qy * qw);
+        r10 = 2 * (qx * qy + qz * qw); r11 = 1 - 2 * (qx * qx + qz * qz); r12 = 2 * (qy * qz - qx * qw);
+        r20 = 2 * (qx * qz - qy * qw); r21 = 2 * (qy * qz + qx * qw); r22 = 1 - 2 * (qx * qx + qy * qy);
+        along = r00 * a00 + r10 * a10 + r20 * a20 + r01 * a01 + r11 * a11 + r21 * a21 + r02 * a02 + r12 * a12 + r22 * a22;
+        if (k === FIT_STEPS) break;
+        const scale = 1 / (Math.abs(along) + 1e-12);
+        const wx = ((r10 * a20 - r20 * a10) + (r11 * a21 - r21 * a11) + (r12 * a22 - r22 * a12)) * scale;
+        const wy = ((r20 * a00 - r00 * a20) + (r21 * a01 - r01 * a21) + (r22 * a02 - r02 * a22)) * scale;
+        const wz = ((r00 * a10 - r10 * a00) + (r01 * a11 - r11 * a01) + (r02 * a12 - r12 * a02)) * scale;
+        const angle = Math.sqrt(wx * wx + wy * wy + wz * wz);
+        if (!(angle > 1e-12)) { k = FIT_STEPS - 1; continue; }
+        // One step never turns the fit by more than a radian: a degenerate piece does not spin its reference.
+        const half = 0.5 * (angle > 1 ? 1 : angle), sn = Math.sin(half) / angle, cs = Math.cos(half), bx = wx * sn, by = wy * sn, bz = wz * sn;
+        const nx = cs * qx + bx * qw + by * qz - bz * qy, ny = cs * qy - bx * qz + by * qw + bz * qx, nz = cs * qz + bx * qy - by * qx + bz * qw, nw = cs * qw - bx * qx - by * qy - bz * qz;
+        const norm = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz + nw * nw);
+        qx = nx * norm; qy = ny * norm; qz = nz * norm; qw = nw * norm;
+      }
+      if (!Number.isFinite(qx + qy + qz + qw)) continue;
+      // The scale the piece has: how far it reaches along its fitted reference, against how far the reference does.
+      let size = along / spread, share = 0, limit = 1;
+      const shaped = SHAPE_OF_FORM[state.form[r]] > 0, reference = state.bodyScale[b];
+      // How far its furthest element is from its place in the fitted shape, at the scale asked.
+      let far = 0;
+      for (let i = r; i < last; i++) {
+        if (component[i] !== r) continue;
+        const at = i * 3, ex = rest[at] - ox, ey = rest[at + 1] - oy, ez = rest[at + 2] - oz;
+        const dx = goal * (r00 * ex + r01 * ey + r02 * ez) - (x[at] - cx), dy = goal * (r10 * ex + r11 * ey + r12 * ez) - (x[at + 1] - cy), dz = goal * (r20 * ex + r21 * ey + r22 * ez) - (x[at + 2] - cz);
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d > far) far = d;
+      }
+      far = Math.sqrt(far);
+      const inShape = ready >= 1 && (keep === 0 || far <= IN_SHAPE * reference);
+      if (apply && keep > 0) {
+        // A piece of a broken body holds its shape as far as its form can have one, and a piece that has just joined
+        // another takes hold of the shape of the whole over time.
+        const rate = shapeRate(keep * SHAPE_OF_FORM[state.form[r]] * (whole ? 1 : integrity) * ready) * h * h;
+        share = rate / (1 + rate);
+        if (far > IN_SHAPE * reference && share * far > FIT_STEP * reference) share = FIT_STEP * reference / far;
+        if (share > 0) {
+          size += share * (goal - size);
+          // A piece that is one shape is never left larger or smaller than the pulse allows; one still coming together
+          // is drawn in by the fit alone, at the pace of the fit.
+          if (inShape) {
+            if (size > 1 + PULSE_LIMIT) limit = (1 + PULSE_LIMIT) / size; else if (size < 1 - PULSE_LIMIT && size > 1e-6) limit = (1 - PULSE_LIMIT) / size;
+            size *= limit;
+          }
+        }
+      }
+      for (let i = r; i < last; i++) {
+        if (component[i] !== r) continue;
+        const at = i * 3, ex = rest[at] - ox, ey = rest[at + 1] - oy, ez = rest[at + 2] - oz;
+        const gx = r00 * ex + r01 * ey + r02 * ez, gy = r10 * ex + r11 * ey + r12 * ez, gz = r20 * ex + r21 * ey + r22 * ez;
+        let dx = x[at] - cx, dy = x[at + 1] - cy, dz = x[at + 2] - cz;
+        if (share > 0) {
+          dx = (dx + share * (goal * gx - dx)) * limit; dy = (dy + share * (goal * gy - dy)) * limit; dz = (dz + share * (goal * gz - dz)) * limit;
+          x[at] = cx + dx; x[at + 1] = cy + dy; x[at + 2] = cz + dz;
+        }
+        dx -= size * gx; dy -= size * gy; dz -= size * gz;
+        if (shaped) off += matter.mass[i] * (dx * dx + dy * dy + dz * dz);
+        frame[i * 4] = qx; frame[i * 4 + 1] = qy; frame[i * 4 + 2] = qz; frame[i * 4 + 3] = qw;
+      }
+      if (!shaped) continue;
+      mass += m;
+      // The scale of a body is that of its pieces that are one shape: one still coming together has none yet.
+      if (inShape) { held += m; scaled += m * size; }
+    }
+    this.scale[b] = held > 0 ? scaled / held : 1;
+    this.deviation[b] = mass > 0 && state.bodyScale[b] > 0 ? Math.sqrt(off / mass) / state.bodyScale[b] : 0;
+  }
+
+  /** Whether some body could take a fracture by an event: a piece large enough to break, and pieces short of its budget. */
+  private able(): boolean {
+    const state = this.state;
+    for (let b = 0; b < state.bodies; b++) {
+      if (this.breakable(b)) return true;
+    }
+    return false;
+  }
+
+  /** Whether body `b` is within its budget of fragmentation. */
+  private breakable(b: number): boolean {
+    const state = this.state;
+    return state.bodyLargest[b] >= PIECE_MIN && state.bodyPieces[b] < Math.max(2, Math.ceil(state.bodyCount[b] / PIECE_SHARE)) && state.bodyIntact[b] >= HELD_SHARE * state.bodyLinkCount[b];
+  }
+
+  /**
+   * A fracture by an event of size `amount` (0..1), where the load law says. The event is a shock that shears every
+   * piece large enough along one plane: through its centre of mass for a large fracture, off it for a small one (it
+   * chips). The direction is given by the event's own audio time, so it is the same at any frame rate. The links
+   * that cross the plane bear the shock on top of what they already bore: the one that bears most gives way, and
+   * with it those that then bear more than they can, the most loaded first and at most SHOCK_SHARE of the piece's
+   * links; the others tire. The two sides are then parted with equal and opposite momentum, as a force over
+   * PART_TIME. Nothing is created, removed or moved.
+   */
+  private shatter(amount: number, tuning: Readonly<StructuralTuning>): void {
+    const state = this.state, matter = this.matter, p = matter.position, component = state.component, side = this.side, part = this.part, ratio = this.ratio;
+    const bear = Math.max(0.05, tuning.bondStrength * tuning.fractureThreshold), shock = (SHOCK[0] + (SHOCK[1] - SHOCK[0]) * amount) / bear;
+    const tough = within(this.tuning.toughness, SOLID_LIMITS.toughness), apart = (PART[0] + (PART[1] - PART[0]) * amount) / PART_TIME, time = this.gate.time;
+    const grace = this.gate.stats.verdict === 'manual' ? 0 : LINK_GRACE;
+    let broke = 0;
+    for (let b = 0; b < state.bodies; b++) {
+      const first = state.bodyFirst[b], last = first + state.bodyCount[b], links = state.bodyLinkStart[b], linkEnd = links + state.bodyLinkCount[b];
+      for (let i = first * 3; i < last * 3; i++) part[i] = 0;
+      if (!this.breakable(b)) continue;
+      const rng = new Rng(seedOf(Number.isFinite(time) ? Math.floor(time * 1000) : this.stats.events, b, 0x736f6c));
+      const up = 2 * rng.next() - 1, turn = 2 * Math.PI * rng.next(), ring = Math.sqrt(1 - up * up), nx = ring * Math.cos(turn), ny = ring * Math.sin(turn), nz = up;
+      for (let r = first; r < last; r++) {
+        if (component[r] !== r) continue;
+        let m = 0, cx = 0, cy = 0, cz = 0, count = 0;
+        for (let i = r; i < last; i++) {
+          if (component[i] !== r) continue;
+          m += matter.mass[i]; cx += matter.mass[i] * p[i * 3]; cy += matter.mass[i] * p[i * 3 + 1]; cz += matter.mass[i] * p[i * 3 + 2]; count++;
+        }
+        if (count < PIECE_MIN || !(m > 0)) continue;
+        cx /= m; cy /= m; cz /= m;
+        let reach = 0;
+        for (let i = r; i < last; i++) if (component[i] === r) reach = Math.max(reach, Math.abs((p[i * 3] - cx) * nx + (p[i * 3 + 1] - cy) * ny + (p[i * 3 + 2] - cz) * nz));
+        const offset = SHOCK_OFFSET * (1 - amount) * reach;
+        let near = 0, far = 0;
+        for (let i = r; i < last; i++) {
+          if (component[i] !== r) { side[i] = 0; continue; }
+          side[i] = (p[i * 3] - cx) * nx + (p[i * 3 + 1] - cy) * ny + (p[i * 3 + 2] - cz) * nz > offset ? 1 : -1;
+          if (side[i] > 0) far += matter.mass[i]; else near += matter.mass[i];
+        }
+        if (!(far > 0) || !(near > 0)) continue;
+        let held = 0, severed = 0;
+        for (let l = links; l < linkEnd; l++) if (state.linkState[l] === INTACT && component[state.linkA[l]] === r) held++;
+        for (const quota = Math.max(1, Math.ceil(SHOCK_SHARE * held)); severed < quota; severed++) {
+          // An event that passed the gate opens the piece somewhere: the link that bears most gives way whatever it
+          // bears. Every other one only if, with the shock, it bears more than it can.
+          let worst = -1, most = severed === 0 ? -Infinity : 1;
+          for (let l = links; l < linkEnd; l++) {
+            // A link that has only just formed is still settling: the music does not undo it at once (a tool may).
+            if (state.linkState[l] !== INTACT || side[state.linkA[l]] * side[state.linkB[l]] >= 0 || state.linkAge[l] < grace) continue;
+            const load = ratio[l] + shock;
+            if (load >= most && (worst < 0 || load > most)) { worst = l; most = load; }
+          }
+          if (worst < 0) break;
+          this.sever(worst);
+        }
+        // What held across the plane has borne the shock all the same: it tires as under any other load.
+        for (let l = links; l < linkEnd; l++) {
+          const a = state.linkA[l], c = state.linkB[l];
+          if (state.linkState[l] !== INTACT || side[a] * side[c] >= 0) continue;
+          const damage = tire(state.linkDamage[l], ratio[l] + shock, 0.5 * (matter.order[a] + matter.order[c]), 0.5 * (matter.temperature[a] + matter.temperature[c]), SHOCK_TIME);
+          state.linkDamage[l] = Math.min(DAMAGE_HELD, state.linkDamage[l] + Math.max(0, damage - state.linkDamage[l]) / tough);
+        }
+        if (severed === 0) continue;
+        broke += severed;
+        const total = near + far;
+        for (let i = r; i < last; i++) {
+          if (component[i] !== r) continue;
+          const push = side[i] > 0 ? apart * near / total : -apart * far / total;
+          part[i * 3] = nx * push; part[i * 3 + 1] = ny * push; part[i * 3 + 2] = nz * push;
+        }
+      }
+    }
+    if (broke === 0) return;
+    this.stats.events++;
+    this.parting = PART_TIME;
+    // What has just come apart is not put back in the same breath.
+    this.holdUntil = this.clock + REFORM_HOLD;
+  }
+
+  /** A new audio session: the bodies stay as they are; the events that were waiting belong to another clock. */
+  reset(): void {
+    this.gate.reset();
   }
 
   /** The frame's steps are done: what they cost (development), against the budget. */
@@ -457,6 +849,11 @@ export class SolidSystem {
     }
   }
 
+  /** The pulse the sound asks of body `b` now: a share of its reference scale, signed (0: none, or no such body). */
+  pulseOf(b: number): number {
+    return b >= 0 && b < this.state.bodies ? this.pulse[b] : 0;
+  }
+
   /** Centre of mass of a body's elements. Writes and returns a reused array. */
   centroid(body: number): Float64Array {
     const state = this.state, matter = this.matter, p = matter.position, out = this.centre;
@@ -476,8 +873,8 @@ export class SolidSystem {
     const first = state.bodyFirst[body], vertices = state.bodyCount[body], groups = state.bodyGroups[body], held = this.held;
     out.kind = state.bodyKind[body]; out.vertices = vertices; out.faces = groups; out.triangles = state.bodyFaceCount[body]; out.cells = state.bodyCellCount[body];
     out.edges = out.edgesIntact = out.braces = out.bracesIntact = out.broken = out.lost = 0;
-    out.mass = out.kinetic = out.elastic = out.stress = out.peak = out.macro = out.meso = out.micro = out.response = out.strain = 0;
-    let integrity = 0, intact = 0;
+    out.mass = out.kinetic = out.elastic = out.stress = out.peak = out.macro = out.meso = out.micro = out.response = out.strain = out.edgeStrain = 0;
+    let integrity = 0, intact = 0, volumeOff = 0;
     for (let l = state.bodyLinkStart[body], end = l + state.bodyLinkCount[body]; l < end; l++) {
       const edge = state.linkKind[l] === EDGE, holds = state.linkState[l] === INTACT;
       if (edge) out.edges++; else out.braces++;
@@ -489,7 +886,7 @@ export class SolidSystem {
       out.elastic += 0.5 * stiff / state.linkCompliance[l] * stretch * stretch; out.strain += state.linkStrain[l] * state.linkStrain[l];
       if (state.linkFaces[l] === 2 && state.hingeA[l] >= 0) out.elastic += this.folded(l, stiff);
       const deformed = (1 + state.linkStrain[l]) * this.target[l] / state.linkRest0[l] - 1;
-      out.response += deformed * deformed;
+      out.response += deformed * deformed; out.edgeStrain = Math.max(out.edgeStrain, Math.abs(deformed));
       if (resonance) out.macro += resonance.breath(0.5 * (matter.phase[state.linkA[l]] + matter.phase[state.linkB[l]]));
     }
     const links = Math.max(1, state.bodyLinkCount[body]);
@@ -504,9 +901,13 @@ export class SolidSystem {
       out.volumeReference += state.cellRest0[c];
       if (!state.cellHolds[c]) continue;
       const off = state.cellVolume[c] - this.cellTarget[c];
-      out.cellsHolding++; out.volume += state.cellVolume[c]; out.volumeRest += state.cellRest[c];
+      out.cellsHolding++; out.volume += state.cellVolume[c]; out.volumeRest += state.cellRest[c]; volumeOff += Math.abs(off);
       out.elastic += 0.5 * BULK * off * off / (give * state.cellRest0[c]);
     }
+    out.volumeError = out.volumeReference > 0 ? volumeOff / out.volumeReference : 0;
+    // The fit of the body as it is now, measured: nothing moves (a body that holds no shape is read the same way).
+    this.fit(body, matter.position, within(this.tuning.shapeRetention, SOLID_LIMITS.shapeRetention, 0), 1, 0, false);
+    out.pulse = this.pulse[body]; out.scale = this.scale[body]; out.deviation = this.deviation[body];
     for (let i = first; i < first + vertices; i++) {
       out.mass += matter.mass[i]; out.kinetic += 0.5 * matter.mass[i] * (v[i * 3] * v[i * 3] + v[i * 3 + 1] * v[i * 3 + 1] + v[i * 3 + 2] * v[i * 3 + 2]);
       out.meso += matter.excitation[i] / vertices; out.micro += matter.micro[i] / vertices;
@@ -519,8 +920,10 @@ export class SolidSystem {
   clear(): void {
     const stats = this.stats;
     this.state.clear();
-    this.stepIndex = 0;
-    stats.fractures = stats.reforms = stats.refused = stats.repairs = stats.inverted = stats.over = 0; stats.peakMs = 0;
+    this.gate.clear();
+    this.stepIndex = 0; this.clock = 0; this.holdUntil = -Infinity; this.parting = 0;
+    this.pulse.fill(0); this.pulseMean.fill(0); this.scale.fill(1); this.deviation.fill(0);
+    stats.fractures = stats.reforms = stats.refused = stats.repairs = stats.events = stats.inverted = stats.over = 0; stats.peakMs = 0;
     this.count();
   }
 
@@ -610,6 +1013,7 @@ export class SolidSystem {
   private load(env: Readonly<StructuralEnvironment>, tuning: Readonly<StructuralTuning>, h: number, hear: number, stiff: number): void {
     const state = this.state, matter = this.matter, p = matter.position, v = matter.velocity, stats = this.stats, target = this.target;
     const tension = unit(env.tension), release = unit(env.release), bear = Math.max(0.05, tuning.bondStrength * tuning.fractureThreshold), follow = 1 - Math.exp(-h / FOLLOW);
+    const tough = within(this.tuning.toughness, SOLID_LIMITS.toughness), gated = this.gate.tuning.mode === 'events';
     let stress = 0, peak = 0, elastic = 0, intact = 0;
     for (let l = 0; l < state.links; l++) {
       if (state.linkState[l] !== INTACT) continue;
@@ -622,8 +1026,17 @@ export class SolidSystem {
       const strength = state.linkStrength[l] * bear * (0.55 + 0.45 * order) * (1 - 0.5 * state.linkDamage[l]);
       const ratio = Number.isFinite(bears) ? bears / Math.max(strength, 1e-3) : 2;
       state.linkStress[l] += (Math.min(ratio, 2) - state.linkStress[l]) * follow;
-      state.linkDamage[l] = tire(state.linkDamage[l], ratio, order, 0.5 * (matter.temperature[a] + matter.temperature[b]), h);
-      if (ratio >= 1 || state.linkDamage[l] >= 1) { this.sever(l); continue; }
+      this.ratio[l] = Math.min(ratio, 2);
+      let damage = tire(state.linkDamage[l], ratio, order, 0.5 * (matter.temperature[a] + matter.temperature[b]), h);
+      // A tough material tires more slowly; it heals as any other.
+      if (tough !== 1 && damage > state.linkDamage[l]) damage = state.linkDamage[l] + (damage - state.linkDamage[l]) / tough;
+      if (gated) {
+        // Between events the load is measured and tires the link, and breaks nothing: only an event completes a fracture.
+        state.linkDamage[l] = Math.min(damage, Math.max(state.linkDamage[l], DAMAGE_HELD));
+      } else {
+        state.linkDamage[l] = damage;
+        if (ratio >= 1 || damage >= 1) { this.sever(l); continue; }
+      }
       const shown = state.linkStress[l];
       if (shown > matter.stress[a]) matter.stress[a] = shown;
       if (shown > matter.stress[b]) matter.stress[b] = shown;

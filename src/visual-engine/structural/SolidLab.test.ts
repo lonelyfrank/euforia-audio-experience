@@ -16,12 +16,12 @@ import { FIXTURES } from '../../show/fixtures';
 import { DEFAULT_SETTINGS } from '../../stores/settingsStore';
 import type { QualityProfile, SceneClock } from '../../types/visualizer';
 import { findVisualizer, registerLaboratory, visualizers } from '../../visualizers/registry';
-import { resetSolidLab, SOLID_DRAW_CALLS, SOLID_LAB_BUDGET, SOLID_LAB_ELEMENTS, SOLID_VIEWS, solidLab, type SolidPrimitive, type SolidView } from '../primitives/SolidPrimitive';
+import { resetSolidLab, setSolidProfile, SOLID_DRAW_CALLS, SOLID_LAB_BUDGET, SOLID_LAB_ELEMENTS, SOLID_VIEWS, solidLab, type SolidPrimitive, type SolidView } from '../primitives/SolidPrimitive';
 import { structuralLab } from '../primitives/WirePolygonPrimitive';
 import { RecipeVisualizer } from '../RecipeVisualizer';
 import lab, { SOLID_LAB, solidLabPreset, solidLabRecipe } from './lab/solid';
 import { createReadout } from './SolidDynamics';
-import { createSolidTuning, INTACT, SOLID_KINDS } from './SolidTypes';
+import { createFractureTuning, createSolidTuning, INTACT, PULSE_LIMIT, SOLID_KINDS, solidProfile } from './SolidTypes';
 import { createTuning } from './StructuralTypes';
 
 const SR = 48000;
@@ -56,10 +56,11 @@ function alive(): ExperienceSnapshot {
 }
 
 /** A test signal through the real analysis (WASM) and experience, to the laboratory, frame by frame. */
-async function play(signal: TestSignal, seconds: number, each: (t: number, m: Mounted, snapshot: ExperienceSnapshot) => void, before?: (m: Mounted) => void, fps = 60) {
+async function play(signal: TestSignal, seconds: number, each: (t: number, m: Mounted, snapshot: ExperienceSnapshot) => void, before?: (m: Mounted) => void, fps = 60, calibrated = true) {
   const pcm = new Float32Array(seconds * SR * 2);
   new SignalGenerator(signal, SR).fillStereo(pcm, seconds * SR);
   const wasm = await WasmAnalysis.create(SR, 2), engine = new ExperienceEngine(), m = mount(), batch = 480;
+  engine.calibration.enabled = calibrated;
   wasm.decoder.onFrame = (a) => engine.ingest(a); wasm.decoder.onOnset = (o) => engine.onset(o); wasm.decoder.onBeat = (b) => engine.beat(b); wasm.decoder.onSection = (s) => engine.section(s);
   m.clock.events = engine.events;
   before?.(m);
@@ -137,7 +138,8 @@ describe('the Solid Dynamics laboratory', () => {
     const arrays = buffers();
     expect(m.solid.object.children).toHaveLength(SOLID_DRAW_CALLS);
     expect(m.solid.vertices).toBe(SOLID_LAB_ELEMENTS + SOLID_LAB_BUDGET.links * 2 + SOLID_LAB_BUDGET.faces * 3);
-    solidLab.active = true; solidLab.view = 'all';
+    // The body as it always was: what this looks at is the path from the simulation to the buffers, whatever the material.
+    solidLab.active = true; solidLab.view = 'all'; setSolidProfile('legacy');
     let t = 0;
     const run = (seconds: number) => { for (let f = 0; f < seconds * 60; f++) { t += 1 / 60; snapshot.world.time = snapshot.state.time = t; m.frame(t, 1 / 60, snapshot); } };
     for (const kind of SOLID_KINDS) {
@@ -182,8 +184,8 @@ describe('the Solid Dynamics laboratory', () => {
     expect(m.system.tuning.fractureThreshold).toBe(1); expect(m.solids.tuning.mass).toBe(1); expect(solidLab.command).toBe('fracture');
     expect(m.lines.geometry.drawRange.count).toBe(12);
     resetSolidLab();
-    // Open: another solid is seeded into the same pools.
-    solidLab.active = true; solidLab.kind = 'cube';
+    // Open (on the legacy material: these are the tools as they were): another solid is seeded into the same pools.
+    solidLab.active = true; solidLab.kind = 'cube'; setSolidProfile('legacy');
     const position = m.nodes.geometry.attributes.position.array;
     run(0.2);
     expect(m.solids.read(0, null, r)).toMatchObject({ kind: 'cube', vertices: 8, sealed: true }); expect(s.bodies).toBe(1); expect(m.nodes.geometry.attributes.position.array).toBe(position);
@@ -230,7 +232,7 @@ describe('the Solid Dynamics laboratory', () => {
 });
 
 describe('the reference demonstration, on a real signal through the whole path', () => {
-  it('ambient → build → drop: the body rings whole through the opening, gives way with the drop, and its pieces start to find each other', { timeout: 240000 }, async () => {
+  it('legacy material, ambient → build → drop: the body rings whole through the opening, gives way with the drop, and its pieces start to find each other', { timeout: 240000 }, async () => {
     for (const kind of SOLID_KINDS) {
       const r = createReadout(), opening = { deformed: 0, low: 1, high: 1, meso: 0, stress: 0, signs: 0, last: 0, fractures: 0 };
       const life = { brokenAt: -1, least: Infinity, steps: 0, kinetic: 0, excitation: 0 };
@@ -261,7 +263,7 @@ describe('the reference demonstration, on a real signal through the whole path',
           for (const value of [r.kinetic, r.elastic, r.stress, r.volume, r.response, snapshot.resonance.mesoEnergy]) expect(Number.isFinite(value)).toBe(true);
           for (let i = 0; i < matter.count; i++) expect(Math.hypot(matter.position[i * 3], matter.position[i * 3 + 1], matter.position[i * 3 + 2])).toBeLessThan(8.001);
         }
-      }, () => { solidLab.active = true; solidLab.kind = kind; });
+      }, () => { solidLab.active = true; solidLab.kind = kind; setSolidProfile('legacy'); });
       const stats = m.solids.stats, links = m.solids.state.links;
       // Whole through the opening, and observably deformed by it: a few per cent of its links' length, a few of its volume.
       expect(opening.fractures).toBe(0); expect(opening.meso).toBeGreaterThan(0.3);
@@ -280,5 +282,139 @@ describe('the reference demonstration, on a real signal through the whole path',
       m.scene.dispose();
       resetSolidLab();
     }
+  });
+
+  it('rigid material, ambient → build → drop: it keeps its shape and pulses through the opening and the build, breaks once at the drop, and finds itself again', { timeout: 300000 }, async () => {
+    for (const kind of SOLID_KINDS) {
+      const r = createReadout(), whole = { deviation: 0, low: 1, high: 1, fractures: 0 }, life = { brokenAt: -1, least: Infinity, pieces: 0, wholeAt: -1, jump: 0 };
+      const last = new Float64Array(SOLID_LAB_ELEMENTS * 3);
+      let elements = 0, learned = 1;
+      const m = await play('buildDrop', 44, (t, mounted, snapshot) => {
+        const solids = mounted.solids, matter = mounted.system.state;
+        solids.read(0, mounted.solid.environment, r);
+        elements ||= matter.count;
+        expect(matter.count).toBe(elements);
+        // Nothing ever moves further in a frame than the fastest matter can: not at the fracture, not when it comes together.
+        for (let i = 0; i < matter.count * 3; i++) { if (t > 0.2) life.jump = Math.max(life.jump, Math.abs(matter.position[i] - last[i])); last[i] = matter.position[i]; }
+        if (life.brokenAt < 0 && solids.stats.fractures > 0) { life.brokenAt = t; learned = snapshot.calibration.confidence; }
+        if (life.brokenAt < 0) {
+          whole.deviation = Math.max(whole.deviation, r.deviation); whole.low = Math.min(whole.low, r.scale); whole.high = Math.max(whole.high, r.scale);
+        } else {
+          life.least = Math.min(life.least, solids.stats.intact); life.pieces = Math.max(life.pieces, r.pieces);
+          if (life.wholeAt < 0 && r.sealed) life.wholeAt = t;
+        }
+        // The pulse of every piece that is one shape stays within the limit, all the way.
+        expect(r.scale).toBeLessThanOrEqual(1 + PULSE_LIMIT + 1e-9); expect(r.scale).toBeGreaterThanOrEqual(1 - PULSE_LIMIT - 1e-9);
+        expect(Math.abs(r.pulse)).toBeLessThanOrEqual(PULSE_LIMIT);
+        if (Math.round(t * 60) % 30 === 0) for (const value of [r.kinetic, r.deviation, r.scale, r.volume, snapshot.calibration.gain, snapshot.calibration.energy]) expect(Number.isFinite(value)).toBe(true);
+      }, () => { solidLab.active = true; solidLab.kind = kind; });
+      const stats = m.solids.stats, links = m.solids.state.links;
+      // The laboratory opens on the rigid body that breaks on events.
+      expect(m.solids.tuning).toEqual(solidProfile('rigid')); expect(m.solids.gate.tuning.mode).toBe('events');
+      // Whole through the ambient opening and the build, itself to a twentieth of a per cent, and pulsing by several per cent.
+      expect(whole.deviation, kind).toBeLessThan(0.002); expect(whole.high - whole.low, kind).toBeGreaterThan(0.05);
+      // It breaks once the track is known, at the drop: by an event, in part, into a few pieces.
+      expect(life.brokenAt, kind).toBeGreaterThan(18); expect(life.brokenAt, kind).toBeLessThan(23); expect(learned).toBeGreaterThan(0.5);
+      expect(stats.events, kind).toBeGreaterThanOrEqual(1); expect(stats.events, kind).toBeLessThanOrEqual(2);
+      expect(life.least, kind).toBeGreaterThanOrEqual(0.4 * links); expect(life.least, kind).toBeLessThan(links); expect(life.pieces, kind).toBeLessThanOrEqual(4);
+      expect(m.solids.gate.stats.threshold, kind).toBeGreaterThan(50);
+      // In the music after it the pieces come together again by their own memory, with no jump, and the body is whole and itself.
+      expect(stats.reforms, kind).toBeGreaterThan(0); expect(life.wholeAt, kind).toBeGreaterThan(life.brokenAt + 1.5); expect(life.wholeAt, kind).toBeLessThan(44);
+      expect(life.jump, kind).toBeLessThanOrEqual(12 / 60 + 1e-6); expect(life.jump, kind).toBeLessThan(0.1);
+      expect(m.solids.read(0, m.solid.environment, r), kind).toMatchObject({ pieces: 1, sealed: true, form: 'volume' }); expect(r.deviation, kind).toBeLessThan(0.005);
+      expect(stats.intact + stats.broken + stats.lost).toBe(links); expect(stats.repairs).toBe(0);
+      m.scene.dispose();
+      resetSolidLab();
+    }
+  });
+
+  it('the calibration is what makes it answer: switched off, the same sound moves it far less and breaks nothing', { timeout: 300000 }, async () => {
+    const life = async (calibrated: boolean) => {
+      const r = createReadout(), seen = { low: 1, high: 1, drive: 0 };
+      // The same seed, the same signal, the same steps: only the calibration differs.
+      const m = await play('buildDrop', 30, (t, mounted, snapshot) => {
+        expect(snapshot.calibration.phase === 'off').toBe(!calibrated);
+        mounted.solids.read(0, mounted.solid.environment, r);
+        // Once the first seconds have passed: the uncalibrated lows have then risen to their level and stay there.
+        if (t > 16 && mounted.solids.stats.fractures === 0) { seen.low = Math.min(seen.low, r.scale); seen.high = Math.max(seen.high, r.scale); seen.drive = Math.max(seen.drive, mounted.solid.environment.pulse); }
+      }, () => { solidLab.active = true; solidLab.kind = 'cube'; }, 60, calibrated);
+      const out = { ...seen, events: m.solids.stats.events, fired: m.solids.gate.stats.fired, offered: m.solids.gate.stats.offered };
+      m.scene.dispose(); resetSolidLab();
+      return out;
+    };
+    const on = await life(true), off = await life(false);
+    // Uncalibrated, every attack is its own strength: all of them reach the gate, and none of them stands out.
+    expect(off.offered).toBeGreaterThanOrEqual(on.offered); expect(on.fired).toBeGreaterThan(0); expect(off.fired).toBe(0); expect(off.events).toBe(0);
+    expect(on.high - on.low).toBeGreaterThan(2 * (off.high - off.low));
+  });
+});
+
+describe('the laboratory: materials and the ways of breaking', () => {
+  it('opens on the rigid body, changes material in place, and breaks by its tool through the gate', { timeout: 60000 }, () => {
+    const m = mount(), snapshot = alive(), r = createReadout();
+    let t = 0;
+    const run = (seconds: number) => { for (let f = 0; f < seconds * 60; f++) { t += 1 / 60; snapshot.world.time = snapshot.state.time = t; m.frame(t, 1 / 60, snapshot); } };
+    expect(solidLab).toMatchObject({ profile: 'rigid', material: solidProfile('rigid'), fracture: { mode: 'events' } });
+    // Closed, a body of the product is the body it always was.
+    run(0.2);
+    expect(m.solids.tuning).toEqual(createSolidTuning()); expect(m.solids.gate.tuning).toEqual(createFractureTuning());
+    solidLab.active = true; solidLab.kind = 'cube'; run(0.2);
+    expect(m.solids.tuning.shapeRetention).toBe(0.9); expect(m.solids.gate.tuning.mode).toBe('events');
+    // The same blow on the rigid body and on the legacy one, in the same world: a tenth of the deformation.
+    const hit = (): number => { solidLab.command = 'reset'; run(0.3); solidLab.command = 'impulse'; let peak = 0; for (let k = 0; k < 30; k++) { run(1 / 60); peak = Math.max(peak, m.solids.read(0, m.solid.environment, r).deviation); } return peak; };
+    const rigid = hit();
+    setSolidProfile('legacy'); const legacy = hit();
+    setSolidProfile('elastic'); const elastic = hit();
+    expect(rigid).toBeLessThan(0.2 * legacy); expect(elastic).toBeGreaterThan(rigid); expect(elastic).toBeLessThan(legacy);
+    expect(solidLab.fracture.mode).toBe('events'); expect(m.solids.stats.fractures).toBe(0);
+    // The fracture tool on a body that breaks on events only: one fracture, through the gate, at once.
+    setSolidProfile('rigid'); solidLab.command = 'reset'; run(0.2);
+    solidLab.command = 'fracture'; run(0.2);
+    expect(m.solids.gate.stats).toMatchObject({ manual: 1, verdict: 'manual' }); expect(m.solids.stats.events).toBe(1); expect(m.solids.stats.fractures).toBeGreaterThan(0);
+    expect(m.solids.read(0, m.solid.environment, r).sealed).toBe(false); expect(m.system.state.count).toBe(8);
+    // On the legacy material the same tool is the blow it was, and the gate is not asked.
+    setSolidProfile('legacy'); solidLab.command = 'reset'; run(0.2);
+    expect(m.solids.gate.tuning.mode).toBe('load');
+    solidLab.command = 'fracture'; run(1.5);
+    expect(m.solids.gate.stats.manual).toBe(0); expect(m.solids.stats.events).toBe(0); expect(m.solids.stats.fractures).toBeGreaterThan(0);
+    // The sliders of the gate reach it, within their bounds.
+    setSolidProfile('rigid'); solidLab.fracture.threshold = 0.9; solidLab.fracture.cooldown = 8; solidLab.fracture.confidence = 0.7; run(0.1);
+    expect(m.solids.gate.tuning).toMatchObject({ mode: 'events', threshold: 0.9, cooldown: 8, confidence: 0.7 });
+    m.scene.dispose();
+  });
+
+  it('hears the events of the session by their own time, from when it is mounted, and pulses with the calibrated lows', { timeout: 60000 }, () => {
+    const m = mount(), snapshot = alive(), r = createReadout(), events = m.clock.events!;
+    let t = 0;
+    const run = (seconds: number, each?: () => void) => { for (let f = 0; f < Math.round(seconds * 60); f++) { t += 1 / 60; snapshot.world.time = snapshot.state.time = t; each?.(); m.frame(t, 1 / 60, snapshot); } };
+    // What the session held before the body was there does not strike it.
+    events.push('impact', 0.01, 0.9, 1, 1, 0.9, 0, 1);
+    solidLab.active = true; solidLab.kind = 'icosahedron';
+    run(4);
+    expect(m.solids.gate.stats.offered).toBe(0); expect(m.solids.stats.fractures).toBe(0);
+    // Ordinary attacks of the track pass through the gate and are refused; the body is whole.
+    for (let k = 0; k < 6; k++) { events.push('impact', t, 0.3, 0.9, 1, 0.4, 0, 0.4); run(0.5); }
+    expect(m.solids.gate.stats).toMatchObject({ offered: 6, threshold: 6, fired: 0 }); expect(m.solids.stats.fractures).toBe(0);
+    // One that stands out, dated a little ahead of what is heard: it is taken when its time is reached, not when it arrives.
+    events.push('impact', t + 0.3, 0.6, 0.9, 1, 0.8, 0, 0.95);
+    run(0.2);
+    expect(m.solids.stats.events).toBe(0);
+    run(0.3);
+    expect(m.solids.stats.events).toBe(1); expect(m.solids.gate.stats.fired).toBe(1); expect(m.solids.gate.time).toBeCloseTo(t - 0.2, 1);
+    // Without a clock no event is heard at all.
+    events.push('impact', t, 0.6, 0.9, 1, 0.8, 0, 1);
+    const offered = m.solids.gate.stats.offered;
+    for (let f = 0; f < 30; f++) { t += 1 / 60; m.frame(t, 1 / 60); }
+    expect(m.solids.gate.stats.offered).toBe(offered);
+    // The pulse: the lows as the calibration hands them over reach the body through the geometry, and nothing else does.
+    solidLab.command = 'reset'; run(0.5);
+    let high = 0, low = 0;
+    run(6, () => { const beat = t % 0.5; snapshot.calibration.low = beat < 0.12 ? 0.9 : 0.15; snapshot.calibration.energy = 0.6; });
+    run(2, () => { const beat = t % 0.5; snapshot.calibration.low = beat < 0.12 ? 0.9 : 0.15; high = Math.max(high, m.solids.pulseOf(0)); low = Math.min(low, m.solids.pulseOf(0)); });
+    expect(m.solid.environment.pulse).toBeGreaterThan(0); expect(high).toBeGreaterThan(0.015); expect(low).toBeLessThan(-0.005);
+    expect(m.solids.read(0, m.solid.environment, r).deviation).toBeLessThan(0.01);
+    snapshot.calibration.low = 0; snapshot.calibration.energy = 0; run(10);
+    expect(Math.abs(m.solids.pulseOf(0))).toBeLessThan(1e-3);
+    m.scene.dispose();
   });
 });

@@ -88,8 +88,8 @@ describe('scenes interpret the shared world', () => {
     r.dispose();
   });
 
-  it('Tunnel: the wall is the radial body, travel and torsion are the world momentum, stereo bends it', () => {
-    const r = rig(new TunnelVisualizer(tunnel));
+  it.each([['as it was', { ...tunnel, visual: { ...tunnel.visual, balance: 0 } }], ['balanced', tunnel]])('Tunnel, %s: the wall is the radial body, travel and torsion are the world momentum, stereo bends it', (name, preset) => {
+    const r = rig(new TunnelVisualizer(preset));
     const u = r.shaders[0].uniforms;
     r.update();
     const radius = u.uRadius.value;
@@ -105,6 +105,8 @@ describe('scenes interpret the shared world', () => {
     expect(u.uTwist.value).toBeGreaterThan(0.005);
     expect(u.uLateral.value).toBeLessThan(-0.5);
     r.world.speed = r.world.spin = 0;
+    // Coordinated, the travel coasts for an instant as a moving thing does; then, as before, a still world moves nothing.
+    if (name === 'balanced') r.update(3);
     const travel = u.uTravel.value;
     r.update(3);
     expect(u.uTravel.value).toBe(travel);

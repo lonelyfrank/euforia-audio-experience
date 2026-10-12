@@ -4,6 +4,7 @@ import { copyResonance, MultiscaleResonance } from '../physics/MultiscaleResonan
 import { ResonantPhysics } from '../physics/ResonantPhysics';
 import { WorldEngine, WorldIntegrator } from '../world/WorldEngine';
 import { copyWorld } from '../world/WorldState';
+import { AdaptiveMusicCalibration, copyCalibration } from './AdaptiveCalibration';
 import { EventStream } from './EventStream';
 import { TemporalMemory } from './TemporalMemory';
 import { ExperiencePlanner } from './ExperiencePlanner';
@@ -30,6 +31,11 @@ export class ExperienceEngine {
   readonly morphology = new MorphologyEngine();
   /** The persistent world the music acts on (bodies and fields), advanced per hop on the audio clock. */
   readonly world = new WorldEngine();
+  /**
+   * How strongly the audio being captured should move what answers it, learned per hop from what the DSP already
+   * measures. Beside the world, not in it: nothing the existing scenes read is changed by it.
+   */
+  readonly calibration = new AdaptiveMusicCalibration();
   /** Extrapolates the presented world from its snapshot to the heard time (same held forces). */
   private readonly presentation = new WorldIntegrator();
   /** Discrete events (analysis and experience), ordered by capture time. */
@@ -85,7 +91,11 @@ export class ExperienceEngine {
   ingest(a: AnalysisFrame): void {
     if (a.time === this.lastTime) return;
     if (a.time < this.lastTime || (this.lastTime >= 0 && a.time - this.lastTime > 0.5)) {
-      this.reset(); this.gaps++;
+      // A clock that went back is another capture; one that jumped ahead lost frames of the same one, and what the
+      // calibration has learned of the track still holds.
+      const lost = a.time > this.lastTime;
+      this.restart(!lost); this.gaps++;
+      if (lost) this.calibration.interrupt();
     }
     const dt = this.lastTime >= 0 ? a.time - this.lastTime : Math.min(a.time, 256 / 48000);
     if (!(dt > 0) || !Number.isFinite(dt)) return;
@@ -96,6 +106,7 @@ export class ExperienceEngine {
     const quiet = !!a.silent || a.presence < 0.06;
     const presence = quiet ? 0 : a.presence;
     this.presence = presence;
+    this.calibration.update(a, dt);
     const energy = unit((a.loudnessMomentary + 60) / 54) * presence;
     const complexity = unit(0.45 * a.entropy + 0.25 * a.complexity + 0.2 * unit(a.onsetDensity / 8) + 0.1 * a.spatialMovement) * presence;
     const disorder = unit(0.4 * a.flatness + 0.3 * a.inharmonicity + 0.3 * a.phaseDeviation) * presence;
@@ -152,12 +163,14 @@ export class ExperienceEngine {
       s.eventId++; s.eventTime = a.time; s.eventStrength = power;
       s.impact = power; this.lastHit = a.time;
       const band = strongestBand(a);
-      this.events.push('impact', a.time, power, s.confidence, band, structural);
+      // How far this attack stands out of the track's own, for whoever acts only on the ones that do.
+      const significance = this.calibration.rate(power);
+      this.events.push('impact', a.time, power, s.confidence, band, structural, 0, significance);
       // Where the hit sits in the stereo image decides where it pushes the world from (mono: centred).
       this.world.impact(a.time, power, band, (band >= 0 ? a.bandPan[band] : a.balance) * a.stereoConfidence);
       if (release) {
         s.release = unit(s.releasePotential * (0.5 + structural));
-        this.events.push('drop', a.time, s.release, s.anticipationConfidence, -1, unit(s.releasePotential + structural * 0.5));
+        this.events.push('drop', a.time, s.release, s.anticipationConfidence, -1, unit(s.releasePotential + structural * 0.5), 0, significance);
         this.world.release(a.time, s.release);
         // The release resolves what was anticipated.
         s.releasePotential *= 0.2; s.anticipation *= 0.3; this.lastRelease = a.time; this.memory.drops++;
@@ -179,6 +192,7 @@ export class ExperienceEngine {
       for (let i = 0; i < snapshot.intents.length; i++) Object.assign(snapshot.intents[i], this.planner.intents[i]);
       copyPhysics(snapshot.physics, this.physics.frame); copyResonance(snapshot.resonance, this.resonance.frame); copyFrame(snapshot.acoustic, a);
       copyWorld(snapshot.world, this.world.state); copyMorphology(snapshot.morphology, this.morphology.state);
+      copyCalibration(snapshot.calibration, this.calibration.frame);
       this.lastSnapshot = a.time;
     }
   }
@@ -200,7 +214,13 @@ export class ExperienceEngine {
     this.ready = false; return undefined;
   }
 
+  /** A new audio session: nothing of the previous one holds, the calibration of its source included. */
   reset(): void {
+    this.restart(true);
+  }
+
+  private restart(session: boolean): void {
+    if (session) this.calibration.reset();
     this.memory.reset(); this.planner.reset(); this.physics.reset(); this.resonance.reset(); this.world.reset(); this.events.reset(); this.morphology.reset();
     this.dEnergy.reset(); this.dComplexity.reset(); this.dTension.reset(); this.dOpenness.reset();
     this.shares.fill(0); this.scores.fill(0); this.trajectoryScores.fill(0);
@@ -357,5 +377,5 @@ function copySnapshot(to: ExperienceSnapshot, from: ExperienceSnapshot): void {
   Object.assign(to.state, from.state); Object.assign(to.plan, from.plan);
   for (let i = 0; i < to.intents.length; i++) Object.assign(to.intents[i], from.intents[i]);
   copyPhysics(to.physics, from.physics); copyFrame(to.acoustic, from.acoustic); copyWorld(to.world, from.world);
-  copyMorphology(to.morphology, from.morphology); copyResonance(to.resonance, from.resonance);
+  copyMorphology(to.morphology, from.morphology); copyResonance(to.resonance, from.resonance); copyCalibration(to.calibration, from.calibration);
 }

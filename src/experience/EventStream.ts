@@ -25,6 +25,12 @@ export interface AudioEvent {
   structuralWeight: number;
   /** Seconds the event spans (silenceEnd: the silence's length; 0 for instants). */
   duration: number;
+  /**
+   * 0..1: how far the event stands out of the session's recent events of its kind (impacts and drops, rated by the
+   * adaptive calibration: 0 a typical one, 0.5 a usual accent, 1 far beyond those); for the other types, its strength.
+   * Relative, never a level.
+   */
+  significance: number;
   /** Arrival order, for consumers that must not miss late insertions. */
   seq: number;
 }
@@ -40,7 +46,7 @@ const CAPACITY = 256;
 
 export class EventStream {
   private readonly slots: AudioEvent[] = Array.from({ length: CAPACITY }, () => ({
-    type: 'onset', audioTime: 0, strength: 0, confidence: 0, band: -1, structuralWeight: 0, duration: 0, seq: 0,
+    type: 'onset', audioTime: 0, strength: 0, confidence: 0, band: -1, structuralWeight: 0, duration: 0, significance: 0, seq: 0,
   }));
   /** Index of the oldest event, and how many are stored (in audio-time order from `head`). */
   private head = 0;
@@ -52,7 +58,7 @@ export class EventStream {
   /** Increments on reset: cursors from before it start over. */
   epoch = 0;
 
-  push(type: AudioEventType, audioTime: number, strength: number, confidence: number, band = -1, structuralWeight = 0, duration = 0): void {
+  push(type: AudioEventType, audioTime: number, strength: number, confidence: number, band = -1, structuralWeight = 0, duration = 0, significance = strength): void {
     if (this.count === CAPACITY) {
       this.head = (this.head + 1) % CAPACITY;
       this.count--;
@@ -66,7 +72,7 @@ export class EventStream {
     }
     const e = this.at(at);
     e.type = type; e.audioTime = audioTime; e.strength = strength; e.confidence = confidence;
-    e.band = band; e.structuralWeight = structuralWeight; e.duration = duration; e.seq = ++this.seq;
+    e.band = band; e.structuralWeight = structuralWeight; e.duration = duration; e.significance = significance; e.seq = ++this.seq;
     this.count++;
   }
 

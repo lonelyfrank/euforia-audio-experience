@@ -5,6 +5,7 @@ import { newFrame } from '../audio/features/decode';
 import { VisualResponse } from '../audio/visual-response/VisualResponse';
 import { DEFAULT_DIRECTION } from '../director/profiles';
 import { VisualDirector } from '../director/VisualDirector';
+import { EventStream } from '../experience/EventStream';
 import { createSnapshot } from '../experience/types';
 import { WELL_DEPTH } from '../render-systems/fields/wells';
 import { QUALITY_PROFILES } from '../renderer/quality';
@@ -16,10 +17,13 @@ import { ParticleFieldVisualizer } from './particle-field/ParticleFieldVisualize
 import particles from './particle-field/preset.json';
 import { createRegimes, FRONT_SPEED as PARTICLE_FRONT_SPEED, ORDERS, particleRegimes } from './particle-field/regimes';
 import tunnel from './tunnel/preset.json';
+import { createMotion, TunnelMotionCoordinator, tunnelLab } from './tunnel/motion';
 import { CONFIGURATIONS, createTopology, FRONT_SPEED, tunnelTopology } from './tunnel/topology';
 import { TunnelVisualizer } from './tunnel/TunnelVisualizer';
 
 const NEUTRAL = { motion: 1, expansion: 1, turbulence: 1 };
+/** The tunnel as it was before its motion was coordinated: every transformation answers the world by itself. */
+const tunnelAsItWas = { ...tunnel, visual: { ...tunnel.visual, balance: 0 } };
 /** How far two frame rates may differ, relative to the value: what the Director's own eased gains leave on an accumulated travel. */
 const TOLERANCE = 1e-3;
 
@@ -55,7 +59,8 @@ function rig<T extends Visualizer>(scene: T, quality: QualityProfile = QUALITY_P
     const material = (object as unknown as { material?: ShaderMaterial }).material;
     if (material instanceof ShaderMaterial) shaders.push(material);
   });
-  const clock = { time: 0, hits: { times: new Float64Array(8).fill(-Infinity), strengths: new Float64Array(8), count: 0, size: 8 } as never, hitScale: 1, experience };
+  const events = new EventStream();
+  const clock = { time: 0, hits: { times: new Float64Array(8).fill(-Infinity), strengths: new Float64Array(8), count: 0, size: 8 } as never, hitScale: 1, experience, events };
   const update = (seconds = 1, live = true, fps = 60) => {
     for (let i = 0; i < Math.round(seconds * fps); i++) {
       world.time += 1 / fps; world.travel += world.speed / fps; world.angle += world.spin / fps;
@@ -76,7 +81,7 @@ function rig<T extends Visualizer>(scene: T, quality: QualityProfile = QUALITY_P
     }
     return out;
   };
-  return { scene, response, audio, shaders, world, experience, update, numbers, u: shaders[0].uniforms };
+  return { scene, response, audio, shaders, world, experience, events, update, numbers, u: shaders[0].uniforms };
 }
 
 beforeEach(() => vi.stubGlobal('window', { innerWidth: 800, innerHeight: 600 }));
@@ -193,7 +198,7 @@ describe('Tunnel: architecture under the world\'s forces', () => {
   });
 
   it('the scene: torsion, waveguide, fracture and constriction follow the world; without a clock it is the corridor', () => {
-    const r = rig(new TunnelVisualizer(tunnel)), u = r.u;
+    const r = rig(new TunnelVisualizer(tunnelAsItWas)), u = r.u;
     r.update(1);
     expect((u.uGap.value as Vector2).toArray()).toEqual([0, 0]); expect((u.uForm.value as Vector4).toArray()).toEqual([0, 0, 0, 0]);
     expect(u.uFront.value).toBe(1e4); expect(u.uRelease.value).toBe(0); expect(u.uTwist.value).toBe(0);
@@ -250,9 +255,9 @@ describe('Tunnel: architecture under the world\'s forces', () => {
     r.scene.dispose();
   });
 
-  it('the scene: in a world that has come to rest nothing moves, and it is the same at 30 and 144 frames per second', () => {
+  it.each([['as it was', tunnelAsItWas], ['balanced', tunnel]])('the scene, %s: in a world that has come to rest nothing moves, and it is the same at 30 and 144 frames per second', (_name, preset) => {
     const play = (fps: number) => {
-      const r = rig(new TunnelVisualizer(tunnel));
+      const r = rig(new TunnelVisualizer(preset));
       // The frame a scene is mounted on starts its view of the world: let it pass before the world moves.
       r.update(1, true, fps);
       r.experience.physics.modes.set([0.2, 0.1]);
@@ -267,7 +272,9 @@ describe('Tunnel: architecture under the world\'s forces', () => {
     const skip = ['uTraceShift', 'uSparkTravel', 'uPixelRatio'];
     const a = play(30), b = play(144), na = a.numbers(skip), nb = b.numbers(skip);
     expect(Object.keys(na)).toEqual(Object.keys(nb));
-    for (const name of Object.keys(na)) for (let i = 0; i < na[name].length; i++) expect(Math.abs(nb[name][i] - na[name][i]), name).toBeLessThan(TOLERANCE * Math.max(1, Math.abs(na[name][i])));
+    // Coordinated, what gives way to the opening wall follows it at the frame's own pace: the same to three parts in a thousand.
+    const tolerance = preset === tunnel ? 3 * TOLERANCE : TOLERANCE;
+    for (const name of Object.keys(na)) for (let i = 0; i < na[name].length; i++) expect(Math.abs(nb[name][i] - na[name][i]), name).toBeLessThan(tolerance * Math.max(1, Math.abs(na[name][i])));
     // The world comes to rest (its velocities and fields gone, its position kept): the wall is whole again and still.
     Object.assign(a.world, { spin: 0, speed: 0, potential: 0, turbulence: 0 });
     a.experience.physics.modes.fill(0);
@@ -296,6 +303,245 @@ describe('Tunnel: architecture under the world\'s forces', () => {
     expect(geometries).toHaveBeenCalledTimes(2); expect(materials).toHaveBeenCalledTimes(2); expect(textures.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(first.scene.scene.children).toHaveLength(0);
     second.scene.dispose();
+  });
+});
+
+describe('Tunnel: balanced motion', () => {
+  afterEach(() => { tunnelLab.balance = null; });
+  type Rig = ReturnType<typeof rig<TunnelVisualizer>>;
+  const pair = (): [Rig, Rig] => [rig(new TunnelVisualizer(tunnelAsItWas)), rig(new TunnelVisualizer(tunnel))];
+  const gap = (r: Rig): number[] => (r.u.uGap.value as Vector2).toArray();
+  const form = (r: Rig): number[] => (r.u.uForm.value as Vector4).toArray();
+  /** An event of the session at the world's present time. */
+  const strike = (r: Rig, significance: number, type: 'impact' | 'drop' = 'impact'): void => r.events.push(type, r.world.time, 0.5, 0.9, 1, 0.5, 0, significance);
+  /** Both tunnels through the same world, frame by frame. */
+  const both = (rigs: Rig[], seconds: number, each: (k: number, world: WorldState, r: Rig) => void, after?: (k: number) => void, fps = 60): void => {
+    for (let k = 0; k < Math.round(seconds * fps); k++) {
+      for (const r of rigs) { each(k, r.world, r); r.update(1 / fps, true, fps); }
+      after?.(k);
+    }
+  };
+
+  it('the travel stays the world\'s and is continuous: a kick surges the tunnel, it does not jerk it', () => {
+    const [was, now] = pair();
+    for (const r of [was, now]) r.update(1);
+    const speed = [0, 0], last = [was.u.uTravel.value as number, now.u.uTravel.value as number], jerk = [0, 0], start = [...last];
+    // The world's speed as kicks make it: a jump every half second, coasting down between them.
+    both([was, now], 12, (k, world) => { world.speed = 1.2 + 1.6 * Math.exp(-((k / 60) % 0.5) / 0.15); }, () => {
+      [was, now].forEach((r, i) => {
+        const v = ((r.u.uTravel.value as number) - last[i]) * 60;
+        jerk[i] = Math.max(jerk[i], Math.abs(v - speed[i])); speed[i] = v; last[i] = r.u.uTravel.value as number;
+      });
+    });
+    // The same distance travelled (the advance is not what gives way), a third of the frame-to-frame change of speed.
+    const distance = [(was.u.uTravel.value as number) - start[0], (now.u.uTravel.value as number) - start[1]];
+    expect(distance[0]).toBeGreaterThan(50); expect(Math.abs(distance[1] / distance[0] - 1)).toBeLessThan(0.02);
+    expect(jerk[1]).toBeLessThan(0.4 * jerk[0]);
+    // Travel never runs backwards, and it stops when the world does (after the coast a moving thing has).
+    for (const r of [was, now]) { r.world.speed = 0; r.update(3); }
+    const still = now.u.uTravel.value;
+    now.update(3);
+    expect(now.u.uTravel.value).toBeCloseTo(still, 9);
+    was.scene.dispose(); now.scene.dispose();
+  });
+
+  it('the wall opens when the world really strains, once, slowly, and closes later than it opened: it does not flutter', () => {
+    const [was, now] = pair();
+    for (const r of [was, now]) r.update(1);
+    // A world that strains a little, and wavers: the wall as it was cracks open and shut with it; coordinated, it stays one wall.
+    const turns = [0, 0], previous = [0, 0], rising = [true, true], most = [0, 0];
+    const count = (k: number): void => [was, now].forEach((r, i) => {
+      const g = gap(r)[1];
+      if (k > 0 && Math.abs(g - previous[i]) > 1e-4 && (g > previous[i]) !== rising[i]) { turns[i]++; rising[i] = g > previous[i]; }
+      previous[i] = g; most[i] = Math.max(most[i], g);
+    });
+    both([was, now], 10, (k, world) => { world.potential = 0.45 + 0.12 * Math.sin(2 * Math.PI * 1.7 * k / 60); world.turbulence = 0.08; }, count);
+    expect(most[0]).toBeGreaterThan(0.02); expect(turns[0]).toBeGreaterThan(20);
+    expect(most[1]).toBe(0); expect(turns[1]).toBe(0);
+    // It strains for real: the wall opens, over more than half a second, not in a frame.
+    const opening: number[] = [];
+    both([was, now], 2, (_k, world) => { world.potential = 0.9; world.turbulence = 0.5; }, () => opening.push(gap(now)[1]));
+    expect(gap(was)[1]).toBeGreaterThan(0.2);
+    expect(opening[2]).toBeLessThan(0.1 * opening[119]); expect(opening[20]).toBeLessThan(0.75 * opening[119]); expect(opening[119]).toBeGreaterThan(0.8 * gap(was)[1]);
+    for (let k = 1; k < opening.length; k++) expect(opening[k] - opening[k - 1]).toBeLessThan(0.02);
+    // The strain wavers about where it would crack: open, the wall stays open (it closes only well below where it opened).
+    turns[1] = 0; rising[1] = false; previous[1] = gap(now)[1];
+    let least = 1;
+    both([now], 8, (k, world) => { world.potential = 0.62 + 0.1 * Math.sin(2 * Math.PI * 1.3 * k / 60); world.turbulence = 0.1; }, (k) => { if (k > 120) least = Math.min(least, gap(now)[1]); });
+    expect(least).toBeGreaterThan(0.03);
+    // The world comes to rest: the wall closes over many frames, never in one, and is the corridor again.
+    const closing: number[] = [];
+    both([now], 4, (_k, world) => { world.potential = 0; world.turbulence = 0; }, () => closing.push(gap(now)[1]));
+    expect(closing[5]).toBeGreaterThan(0.3 * closing[0]); expect(closing[239]).toBe(0);
+    for (let k = 1; k < closing.length; k++) expect(closing[k]).toBeLessThanOrEqual(closing[k - 1] + 1e-12);
+    expect(form(now).slice(2)).toEqual([0, 0]);
+    was.scene.dispose(); now.scene.dispose();
+  });
+
+  it('an ordinary kick moves the wall as a pulse, not as architecture; an event that stands out opens the rings, one at a time', () => {
+    const [was, now] = pair();
+    for (const r of [was, now]) r.update(1);
+    let wasOpen = 0, nowOpen = 0, pulse = 0;
+    // Kicks of a steady beat: the world's own impulses, each an ordinary event of the session.
+    both([was, now], 6, (k, world, r) => {
+      if (k % 30 === 0) { world.impulseTime = world.time; world.impulseStrength = 0.9; world.excitation = 0.8; strike(r, 0.4); } else world.excitation *= 0.93;
+    }, () => { wasOpen = Math.max(wasOpen, gap(was)[1]); nowOpen = Math.max(nowOpen, gap(now)[1]); pulse = Math.max(pulse, now.u.uRing.value as number); });
+    expect(wasOpen).toBeGreaterThan(0.08); expect(nowOpen).toBe(0);
+    // The lows are still all there: the rings sent down the tunnel are the same in both.
+    expect(now.u.uRing.value).toBe(was.u.uRing.value); expect(pulse).toBeGreaterThan(tunnel.visual.ringTrace * 0.8);
+    expect(now.scene.coordinator.refused).toBe(12); expect(now.scene.coordinator.accents).toBe(0);
+    // One that stands out far beyond the usual accents: the rings part for half a second and close again.
+    strike(now, 0.95); now.update(1 / 60);
+    const struck = gap(now)[1];
+    expect(struck).toBeGreaterThan(0.05); expect(now.scene.coordinator.accents).toBe(1);
+    // A second one right behind it is not another event; two seconds later the next one is.
+    now.update(0.5); strike(now, 1); now.update(1 / 60);
+    expect(now.scene.coordinator.accents).toBe(1); expect(gap(now)[1]).toBeLessThan(struck);
+    now.update(2);
+    expect(gap(now)[1]).toBeLessThan(0.01);
+    strike(now, 1); now.update(1 / 60);
+    expect(now.scene.coordinator.accents).toBe(2);
+    // While a release is passing down the tunnel it is the event: nothing is added beside it.
+    now.update(3);
+    now.world.releaseTime = now.world.time; now.world.releaseStrength = 0.7;
+    strike(now, 1, 'drop'); now.update(1 / 60);
+    expect(now.u.uRelease.value).toBeGreaterThan(0.9); expect(now.scene.coordinator.accent).toBe(0);
+    was.scene.dispose(); now.scene.dispose();
+  });
+
+  it('while the wall is open torsion, bend and the oval give way; the lows, the highs and the light do not', () => {
+    const [was, now] = pair();
+    for (const r of [was, now]) { r.response.midAudible = r.response.highAudible = r.response.lowAudible = 1; r.response.flow = 0.8; r.response.detail = 0.7; r.response.weight = 0.8; r.update(1); }
+    const set = (world: WorldState, open: boolean): void => { Object.assign(world, { spin: 0.8, radius: 0.3, excitation: 0.6, illumination: 0.7, coherence: 0.8, turbulence: open ? 0.7 : 0.1, potential: open ? 0.85 : 0.1 }); };
+    both([was, now], 6, (_k, world) => set(world, false));
+    const closed = { twist: now.u.uTwist.value as number, bend: now.u.uBend.value as number, oval: (now.u.uBreath.value as Vector3).x, waveguide: now.u.uWaveguide.value as number };
+    // With the wall whole the coordinated tunnel shows what the world asks (its torsion bounded), and nothing is spent on events.
+    expect(now.scene.coordinator.occupancy).toBe(0); expect(closed.twist).toBeCloseTo(was.u.uTwist.value as number, 4); expect(closed.waveguide).toBe(was.u.uWaveguide.value);
+    both([was, now], 6, (_k, world) => set(world, true));
+    expect(now.scene.coordinator.occupancy).toBeGreaterThan(0.7);
+    // Twist is the same in the world; less of it is shown. Bend rises with disorder in the tunnel as it was; here it gives half of that up.
+    expect(now.u.uTwist.value).toBeLessThan(0.6 * (was.u.uTwist.value as number)); expect(now.u.uTwist.value).toBeGreaterThan(0.2 * (was.u.uTwist.value as number));
+    expect(now.u.uBend.value).toBeLessThan(0.7 * (was.u.uBend.value as number)); expect((now.u.uBreath.value as Vector3).x).toBeLessThan(0.7 * (was.u.uBreath.value as Vector3).x);
+    expect(now.u.uWaveguide.value).toBeLessThan(0.75 * (was.u.uWaveguide.value as number));
+    // Progressive, never a cut: nothing is removed.
+    for (const value of [now.u.uTwist.value, now.u.uBend.value, (now.u.uBreath.value as Vector3).x, now.u.uWaveguide.value]) expect(value).toBeGreaterThan(0);
+    // The lows (pressure on the radius, the rings), the highs (fine grid, corrugation, sparks) and the light are the world's, whole.
+    expect(now.u.uRadius.value).toBe(was.u.uRadius.value); expect(now.u.uRing.value).toBe(was.u.uRing.value);
+    expect(now.u.uDetail.value).toBe(was.u.uDetail.value); expect((now.u.uBreath.value as Vector3).y).toBe((was.u.uBreath.value as Vector3).y); expect(now.u.uDensity.value).toBe(was.u.uDensity.value);
+    expect(now.shaders[1].uniforms.uSparks.value).toBe(was.shaders[1].uniforms.uSparks.value);
+    // The architecture is the world's own once open: the same sides, the same constriction.
+    expect(form(now)[0]).toBeCloseTo(form(was)[0], 3); expect(form(now)[1]).toBeCloseTo(form(was)[1], 3);
+    was.scene.dispose(); now.scene.dispose();
+  });
+
+  it('torsion is bounded and never flips: rings do not jump when the world turns the other way', () => {
+    const [was, now] = pair();
+    for (const r of [was, now]) { r.response.flow = 1; r.update(1); }
+    let jumpWas = 0, jumpNow = 0, twist = 0;
+    const last = [0, 0];
+    // An open wall in a world whose rotation swings through zero twice a second.
+    both([was, now], 8, (k, world) => { world.potential = 0.9; world.turbulence = 0.6; world.spin = 2.5 * Math.sin(2 * Math.PI * k / 60); }, (k) => {
+      const a = form(was)[3], b = form(now)[3];
+      if (k > 120) { jumpWas = Math.max(jumpWas, Math.abs(a - last[0])); jumpNow = Math.max(jumpNow, Math.abs(b - last[1])); twist = Math.max(twist, Math.abs(now.u.uTwist.value as number)); }
+      last[0] = a; last[1] = b;
+    });
+    // As it was, the rings' shear takes the sign of the spin at once (a jump of both its sides); coordinated it passes through zero.
+    expect(jumpWas).toBeGreaterThan(0.03); expect(jumpNow).toBeLessThan(0.25 * jumpWas);
+    expect(twist).toBeLessThanOrEqual(0.028 + 1e-12);
+    // Any world, any frame: finite, the torsion within its bound, the radius within its range.
+    for (const world of WORLDS) for (const dt of [1 / 60, 0, 1e-9, 5]) {
+      Object.assign(now.world, createWorld(), { time: now.world.time }, world, { time: now.world.time });
+      for (let k = 0; k < 30; k++) { now.world.time += 1 / 60; now.scene.update(now.audio, dt, now.world.time, now.response, undefined, undefined); now.update(1 / 60); }
+      for (const [name, values] of Object.entries(now.numbers())) for (const value of values) expect(Number.isFinite(value), name).toBe(true);
+      expect(Math.abs(now.u.uTwist.value as number)).toBeLessThanOrEqual(0.028 + 1e-12);
+      expect(now.u.uRadius.value).toBeGreaterThanOrEqual(0.7 * tunnel.visual.radius - 1e-9); expect(now.u.uRadius.value).toBeLessThanOrEqual(1.4 * tunnel.visual.radius + 1e-9);
+      expect(Math.abs(now.scene.camera.rotation.z)).toBeLessThanOrEqual(0.5);
+    }
+    was.scene.dispose(); now.scene.dispose();
+  });
+
+  it('the number of lobes and of ring cycles follows the notes without flickering with them', () => {
+    const [was, now] = pair();
+    for (const r of [was, now]) r.update(1);
+    let stepWas = 0, stepNow = 0;
+    const last = [was.u.uLobes.value as number, now.u.uLobes.value as number];
+    // A bass line that jumps an octave and a half every quarter of a second.
+    both([was, now], 6, (k, _world, r) => { r.response.music.bassPitch = Math.floor(k / 15) % 2 ? 110 : 41; r.response.music.leadPitch = Math.floor(k / 15) % 2 ? 660 : 220; }, () => {
+      stepWas = Math.max(stepWas, Math.abs((was.u.uLobes.value as number) - last[0])); stepNow = Math.max(stepNow, Math.abs((now.u.uLobes.value as number) - last[1]));
+      last[0] = was.u.uLobes.value as number; last[1] = now.u.uLobes.value as number;
+    });
+    expect(stepWas).toBeGreaterThan(0.5); expect(stepNow).toBeLessThan(0.05);
+    // It still follows: held on the high note, the section has its lobes.
+    both([was, now], 6, (_k, _world, r) => { r.response.music.bassPitch = 110; });
+    expect(now.u.uLobes.value).toBeCloseTo(was.u.uLobes.value as number, 1);
+    was.scene.dispose(); now.scene.dispose();
+  });
+
+  it('the same at 30, 60, 120 and 144 frames per second; at rest in silence; the corridor at once without a clock; and comparable on one switch', () => {
+    const play = (fps: number) => {
+      const r = rig(new TunnelVisualizer(tunnel));
+      r.update(1, true, fps);
+      Object.assign(r.world, { spin: 1.2, speed: 2, potential: 0.8, turbulence: 0.5, radius: 0.3, bias: 0.4 });
+      r.update(1, true, fps);
+      // Dated on the audio clock: the same instants at every rate.
+      r.events.push('impact', 2, 0.6, 0.9, 1, 0.5, 0, 0.95);
+      r.world.releaseTime = 2.5; r.world.releaseStrength = 0.6; r.world.impulseTime = 2; r.world.impulseStrength = 0.8;
+      r.update(1.5, true, fps);
+      return r;
+    };
+    const skip = ['uTraceShift', 'uSparkTravel', 'uPixelRatio'];
+    const reference = play(30), names = reference.numbers(skip);
+    for (const fps of [60, 120, 144]) {
+      const other = play(fps), values = other.numbers(skip);
+      for (const name of Object.keys(names)) for (let i = 0; i < names[name].length; i++) expect(Math.abs(values[name][i] - names[name][i]), `${name} @ ${fps}`).toBeLessThan(3 * TOLERANCE * Math.max(1, Math.abs(names[name][i])));
+      expect(other.scene.coordinator.accents).toBe(1);
+      other.scene.dispose();
+    }
+    // Silence: the world's velocities and fields gone, everything it excited decays and stays decayed.
+    const a = reference;
+    Object.assign(a.world, { spin: 0, speed: 0, potential: 0, turbulence: 0, radius: 0, bias: 0, excitation: 0, illumination: 0 });
+    a.update(30);
+    const still = a.numbers(skip);
+    for (const value of [...still.uGap, ...still.uForm, ...still.uTwist, ...still.uRelease, ...still.uLateral]) expect(Math.abs(value)).toBeLessThan(1e-6);
+    expect(a.scene.coordinator.occupancy).toBeLessThan(1e-6); expect(a.scene.coordinator.aperture).toBe(0);
+    a.update(5);
+    const later = a.numbers([...skip, 'uFront']);
+    for (const name of Object.keys(later)) for (let i = 0; i < later[name].length; i++) expect(Math.abs(later[name][i] - still[name][i]), name).toBeLessThan(1e-6);
+    // The clock is lost: nothing is known of the world, and what was being followed is dropped at once.
+    Object.assign(a.world, { potential: 0.9, turbulence: 0.8, spin: 1.5 });
+    a.update(3);
+    expect(gap(a)[1]).toBeGreaterThan(0.2);
+    a.update(1 / 60, false);
+    expect(gap(a)).toEqual([0, 0]); expect(form(a)).toEqual([0, 0, 0, 0]); expect(a.u.uTwist.value).toBe(0);
+    // The development switch replaces the preset's balance: the same scene, as it was and balanced, on the same world.
+    a.update(3);
+    const balanced = gap(a)[1];
+    tunnelLab.balance = 0; a.update(1 / 60);
+    const before = gap(a)[1];
+    expect(a.scene.debug.balance).toBe(0); expect(before).toBeCloseTo(tunnelTopology(createTopology(), viewOf({ potential: 0.9, turbulence: 0.8, spin: 1.5 })).gapAxial, 6);
+    tunnelLab.balance = 1; a.update(1 / 60);
+    expect(a.scene.debug.balance).toBe(1); expect(Math.abs(gap(a)[1] - balanced)).toBeLessThan(0.05);
+    a.scene.dispose();
+  });
+
+  it('the coordinator alone: part of the way lies between, and it allocates nothing it does not own', () => {
+    const view = viewOf({ potential: 0.9, turbulence: 0.6, spin: 2 }), raw = createMotion(), topology = tunnelTopology(createTopology(), view);
+    Object.assign(raw, { advance: 0.05, turn: 0.02, radius: 4.4, fov: 75, twist: 0.05, bend: 2.5, oval: 0.1, waveguide: 0.2, shape: 0.2, lobes: 5, cycles: 3 });
+    const full = new TunnelMotionCoordinator(4), half = new TunnelMotionCoordinator(4);
+    const motion = full.motion, wall = full.topology;
+    for (let k = 0; k < 600; k++) { full.step(1 / 60, view, raw, topology, 1); half.step(1 / 60, view, raw, topology, 0.5); }
+    expect(full.motion).toBe(motion); expect(full.topology).toBe(wall);
+    for (const key of ['twist', 'bend', 'oval', 'waveguide'] as const) {
+      expect(full.motion[key]).toBeLessThan(raw[key]);
+      expect(half.motion[key]).toBeCloseTo(0.5 * (raw[key] + full.motion[key]), 6);
+    }
+    expect(full.motion.twist).toBeLessThanOrEqual(0.028); expect(full.motion.advance).toBeCloseTo(raw.advance, 9);
+    // A balance that is not a number is none.
+    const none = new TunnelMotionCoordinator(4);
+    none.step(1 / 60, view, raw, topology, NaN);
+    expect(none.motion.twist).toBe(raw.twist); expect(none.topology.gapAxial).toBe(topology.gapAxial);
+    full.reset();
+    expect(full.motion).toEqual(createMotion()); expect(full.occupancy).toBe(0);
   });
 });
 

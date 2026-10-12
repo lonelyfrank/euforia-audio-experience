@@ -21,7 +21,8 @@ Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-plann
 [Visual Systems e Spectral Matter](visual-systems.md), [Matter Engine](matter-engine.md),
 [Visual Engine](visual-engine.md), [Visual Grammar](visual-grammar.md), [scene fisiche](physical-scenes.md),
 [Spectral Shell](spectral-shell.md), [Structural Dynamics](structural-dynamics.md),
-[Solid Dynamics](solid-dynamics.md).
+[Solid Dynamics](solid-dynamics.md), [Rigid Resonant Body](rigid-resonant-body.md),
+[Adaptive Music Calibration](adaptive-calibration.md), [Tunnel Motion Coordinator](tunnel-motion.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
 indipendentemente dal budget GPU. Il wire non è retrocompatibile: distribuire
@@ -52,6 +53,9 @@ frontend, backend e WASM della stessa revisione.
 | Visual Engine | `visual-engine/` | Mondo visuale persistente: `SonicGeometryMapper` (morfologia, mondo, planner, forma dei cicli delle voci → `GeometryState`, 36 tratti continui), `MaterialSystem` (luce comune), `VisualWorld` (campi e fronti impacchettati una volta, budget strutturale, presenze, memoria, osservatore), cinque primitive con legge GLSL + riferimento CPU, `WorldRecipe` e `RecipeVisualizer` (adattatore verso `Layer`: recipe e scene legacy convivono) |
 | Structural Dynamics | `physics/MultiscaleResonance.ts`, `visual-engine/structural/`, `visual-engine/primitives/WirePolygonPrimitive.ts` | Risonanza multiscala per hop in ExperienceEngine (`snapshot.resonance`; macro / meso / micro a conteggi configurabili; `ResonantPhysics` invariata). Elementi con identità procedurale, pool a capacità fissa, legami (campate, giunti, controventi), carico / danno / frattura, memoria strutturale, ordine / temperatura / ruoli continui, passo fisso sul clock udito, vicinato in griglia limitata. L'ambiente è quello del mondo (`fieldAt`, fronti, molla radiale); la primitiva lo disegna (fili istanziati, punti, facce). Esiste solo nello Structural Lab, fuori dal registry ([structural-dynamics](structural-dynamics.md)) |
 | Solid Dynamics | `visual-engine/structural/Solid*.ts`, `WorldEnvironment.ts`, `visual-engine/primitives/SolidPrimitive.ts`, `app/engine/SolidCockpit.ts` | Corpi volumetrici come componente opzionale di `StructuralSystem` (`config.solids`): gli stessi elementi, tenuti da link (spigoli, controventi), cerniere di flessione, triangoli di superficie e celle (insiemi chiusi e orientati di triangoli con un volume). Solver XPBD nello stesso passo fisso, sul moto predetto; frattura con la legge di carico dei fili; componenti connesse e forma di ogni pezzo lette dai link; memoria di lunghezze e volumi, ricomposizione solo a condizioni fisiche e topologiche valide. Pool a budget esplicito. Esiste solo nel laboratorio Solid Dynamics, fuori dal registry ([solid-dynamics](solid-dynamics.md)) |
+| Rigid Resonant Body | `visual-engine/structural/SolidDynamics.ts` (`fit`, `breathe`, `shatter`), `SolidState.ts` (`rest`, `frame`, `settled`), `FractureGate.ts` | Un materiale di `SolidSystem`, non un sistema: riferimento di forma per pezzo, shape matching dopo le proiezioni XPBD (stesso passo, stesse 4 iterazioni), pulsazione come scala unica di ciò a cui link, cerniere, celle e fit tendono (≤ 6 %), frattura automatica solo quando un evento dell'`EventStream` passa il gate (significance, confidenza, isteresi, cooldown, budget), lungo un piano, per la legge di carico dei link. Il materiale di prodotto è `legacy`: senza ritenzione né pulsazione il passo è quello di prima, bit per bit ([rigid-resonant-body](rigid-resonant-body.md)) |
+| Adaptive Music Calibration | `experience/AdaptiveCalibration.ts`, `ExperienceEngine.calibration`, `ExperienceSnapshot.calibration`, `AudioEvent.significance` | Per hop, sulle misure già esportate dal DSP: riferimenti consolidati che seguono i percentili del loudness, livello nel range del brano (stiramento limitato), attività relativa di bassi/medi/alti, voto degli attacchi contro gli accenti abituali, gain limitato dal noise floor, carattere. Accanto al World Engine, mai dentro. Distinta dalla calibrazione di sincronia ([adaptive-calibration](adaptive-calibration.md)) |
+| Tunnel Motion Coordinator | `visualizers/tunnel/motion.ts`, `topology.ts` (`architecture`) | Decide quanto di ogni target del Tunnel si vede: viaggio continuo (integrale esatto di un follower), forma e torsione seguite e limitate, apertura della parete con isteresi, accenti solo da eventi che spiccano, cessione progressiva di B mentre C occupa il quadro. `balance: 0` non chiama il coordinatore ([tunnel-motion](tunnel-motion.md)) |
 | Workspace tecnico | `diagnostics/workspace/`, `app/engine/EngineCockpit.ts` | Una shell a tre colonne (navigazione · viewport live · inspector contestuale) per Shift+D/E/G, canvas originale e controller condiviso; diagnostica lazy in release, laboratori solo DEV. [Contratti e verifiche](engine-workspace.md). Inspector strutturali (`?engine`, Shift+E): moduli, viewport, ispettore, tracce. Fissa il mondo sul rig (`RigController.pinned`, `App.pinScene`), registra il laboratorio (`registerLaboratory`), scrive solo `structuralLab`; alla chiusura ripristina tutto. Nessuna impostazione utente toccata, UI cinematica invariata |
 | Scene fisiche | `render-systems/fields/vectorField.ts`, `wells.ts`, `particles/tracer*.ts`, `Tracer*.ts`, `visual-engine/primitives/Field*Primitive.ts` | Campo vettoriale F(P) e sua topologia, pozzi di potenziale, legge / passo / simulazione GPU / probe CPU / parità dei traccianti, primitive dei traccianti e delle linee di campo: leggi in GLSL e in TS come la legge dei campi ([scene fisiche](physical-scenes.md)) |
 | Visual Systems | `render-systems/` | Vocabolario condiviso: `VisualMaterial` (mondo + morfologia), campi spaziali, legge dei campi e legge delle forme (GLSL + riferimento CPU), forme della materia (storia della waveform, rete dei parziali), onde datate, materia GPU e probe CPU, disegno a punti / legami / faccette, memoria visiva, osservatore; nessuno stato musicale, solo storia di rendering |
@@ -203,6 +207,22 @@ invia posizioni della simulazione e nessuno shader sposta un vertice. `solidLab`
 `SolidTypes.ts`), il laboratorio e `SolidCockpit` esistono solo in DEV.
 Dettagli, misure e limiti in [solid-dynamics](solid-dynamics.md).
 
+**Rigid Resonant Body, calibrazione, Tunnel.** Invarianti: (1) il riferimento di forma
+(`SolidState.rest`, `bodyScale`) è scritto alla semina e mai dal suono né da una frattura: un
+frammento si riferisce alla propria parte; (2) la pulsazione è una sola, fisica: scala i target di
+link, cerniere, celle e fit, mai il disegno; `|p| ≤ maxPulse ≤ PULSE_LIMIT`; (3) il fit usa una quota
+unica per pezzo attorno al suo centro di massa: non dà quantità di moto né momento angolare;
+(4) la conversione ritenzione → rigidezza è `shapeRate`, tarata sulla prova di deformazione:
+cambiarla insieme a quel test; (5) in `events` il carico è misurato ma non rompe: l'unico percorso
+di rottura è `FractureGate.take` → `shatter` → `sever`, al passo che raggiunge il tempo audio
+dell'evento, con direzione data da quel tempo (`seedOf`); (6) il materiale `legacy` è il corpo di
+prima bit per bit: ogni novità passa per fattori che valgono 1 o 0 lì; (7) la calibrazione legge
+solo misure già esportate dal DSP, sta in `ExperienceEngine` per hop, non entra nel World Engine
+(Spectrum legge `WorldView`) e con `enabled = false` è la lettura non calibrata; (8) la
+`significance` di un evento è relativa agli accenti recenti, mai un livello; (9) il coordinatore
+del Tunnel non ha tempo proprio: follower esatti per un ingresso tenuto nel frame, età di eventi
+datati, e a `balance` 0 non viene chiamato.
+
 **Visual Systems.** `render-systems/` non contiene significato musicale: legge
 `WorldView`, snapshot, intenti e lo stream di eventi, e tiene solo storia di rendering
 (particelle, fronti, buffer di memoria, inerzia dell'osservatore). Le onde nascono
@@ -310,6 +330,12 @@ cinematica, scene esistenti. Aggiunta a `ExperienceSnapshot` (`resonance`). Esit
 (**59 test + 1 doctest**, rieseguiti), shader della struttura compilati e undici scene montate senza errori su Intel UHD,
 cockpit aperto e richiuso a runtime; non provati musica reale, movimento nel tempo a occhio, app
 desktop, tempo GPU.
+
+Rigid Resonant Body, Adaptive Calibration, Tunnel Balanced (11 ottobre 2026): nessuna modifica a
+DSP, wire, WASM, World Engine, ShowDirector, UI cinematica o impostazioni; Experience estesa con la
+calibrazione e con `significance` sugli eventi (mondo, stato ed eventi identici con la calibrazione
+spenta). `npm run check`: esito in [resonant-body-report](resonant-body-report.md) §5, con i
+benchmark prima / dopo (§6), le prove su GPU reale e ciò che non è stato verificato.
 
 Solid Dynamics (11 ottobre 2026): nessuna modifica a DSP, wire, WASM, World Engine, Experience,
 UI cinematica, scene esistenti, `ResonantPhysics`. Toccati del sistema strutturale: due campi per

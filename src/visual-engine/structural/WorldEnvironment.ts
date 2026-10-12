@@ -39,6 +39,6 @@ export function readWorld(env: StructuralEnvironment, frame: Readonly<WorldFrame
   const { geometry: g, fields } = frame;
   deriveTopology(topology, g, fields);
   env.coherence = g.coherence; env.harmony = g.symmetry; env.turbulence = g.disorder; env.tension = g.tension;
-  env.energy = g.energy; env.release = g.fracture; env.drag = fields.drag;
+  env.energy = g.energy; env.release = g.fracture; env.drag = fields.drag; env.pulse = g.pulse;
   env.resonance = frame.resonance ?? null;
 }

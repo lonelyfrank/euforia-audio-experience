@@ -77,6 +77,11 @@ export interface GeometryState extends VisualMaterial {
   fracture: number;
   /** How alive the world is: its light and excitation. What structures cool down with. */
   energy: number;
+  /**
+   * What a body pulses with: the lows against their own recent level, by how much the track gives at this moment, and
+   * the attacks that stand out, as the adaptive calibration hands them over. It holds no shape: it is a drive.
+   */
+  pulse: number;
 }
 
 export const createGeometry = (): GeometryState => ({
@@ -90,7 +95,7 @@ export const createGeometry = (): GeometryState => ({
   connectionRadius: 0, trailPersistence: 0,
   surfaceDisplacement: 0, surfaceRoughness: 0,
   spatialDepth: 0, stereoSpread: 0, lateralBias: 0,
-  impulse: 0, fracture: 0, energy: 0,
+  impulse: 0, fracture: 0, energy: 0, pulse: 0,
 });
 
 export const GEOMETRY_KEYS = Object.keys(createGeometry()) as (keyof GeometryState)[];

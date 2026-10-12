@@ -1,7 +1,7 @@
 {
   "name": "Infinite Tunnel",
   "author": "Euforia-Audio-Experience",
-  "version": 3,
+  "version": 4,
   "audio": {
     "sensitivity": 1,
     "smoothing": 1
@@ -32,6 +32,7 @@
     "digital": 0.5,
     "oval": 0.14,
     "ripple": 0.035,
-    "waveguide": 0.3
+    "waveguide": 0.3,
+    "balance": 1
   }
 }

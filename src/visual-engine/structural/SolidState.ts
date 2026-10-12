@@ -105,8 +105,13 @@ export class SolidState {
   readonly bodyCellCount: Int32Array;
   /** Geometric faces (groups of triangles). */
   readonly bodyGroups: Int32Array;
+  /** Its reference scale: the RMS distance of its matter from its centre of mass in the shape it was made with (units). */
+  readonly bodyScale: Float64Array;
   /** Connected components it is in now (1: whole), the form of the largest, and whether nothing of it is open. */
   readonly bodyPieces: Int32Array;
+  /** Elements of its largest piece, and links of it that hold. */
+  readonly bodyLargest: Int32Array;
+  readonly bodyIntact: Int32Array;
   readonly bodyForm: Uint8Array;
   readonly bodySealed: Uint8Array;
 
@@ -117,6 +122,19 @@ export class SolidState {
   readonly form: Uint8Array;
   /** Its mass as its identity gives it, before any development factor. */
   readonly mass0: Float32Array;
+  /**
+   * Where it is in the shape its body was made with (the reference geometry: world units, the pose of the seed). Written
+   * when the body is made and never by the sound or by a fracture: a piece of a broken body refers to its own part of it.
+   */
+  readonly rest: Float64Array;
+  /**
+   * The rotation that best carries the reference shape of its piece onto where the piece is now (a unit quaternion,
+   * x y z w): the same for every element of a piece, kept per element so that a piece that comes off starts from the
+   * orientation it had as part of the whole.
+   */
+  readonly frame: Float64Array;
+  /** How far its piece has settled into one shape since a link of it last formed again, 0 … 1. */
+  readonly settled: Float32Array;
 
   /** The topology changed since the last `book`. */
   dirty = false;
@@ -148,8 +166,10 @@ export class SolidState {
     this.cellRest = new Float64Array(cells); this.cellRest0 = new Float64Array(cells); this.cellVolume = new Float64Array(cells); this.cellHolds = new Uint8Array(cells);
     this.bodyFirst = new Int32Array(bodies); this.bodyCount = new Int32Array(bodies); this.bodyLinkStart = new Int32Array(bodies); this.bodyLinkCount = new Int32Array(bodies);
     this.bodyFaceStart = new Int32Array(bodies); this.bodyFaceCount = new Int32Array(bodies); this.bodyCellStart = new Int32Array(bodies); this.bodyCellCount = new Int32Array(bodies);
-    this.bodyGroups = new Int32Array(bodies); this.bodyPieces = new Int32Array(bodies); this.bodyForm = new Uint8Array(bodies); this.bodySealed = new Uint8Array(bodies);
+    this.bodyScale = new Float64Array(bodies);
+    this.bodyGroups = new Int32Array(bodies); this.bodyPieces = new Int32Array(bodies); this.bodyLargest = new Int32Array(bodies); this.bodyIntact = new Int32Array(bodies); this.bodyForm = new Uint8Array(bodies); this.bodySealed = new Uint8Array(bodies);
     this.component = new Int32Array(n).fill(-1); this.form = new Uint8Array(n); this.mass0 = new Float32Array(n);
+    this.rest = new Float64Array(n * 3); this.frame = new Float64Array(n * 4); this.settled = new Float32Array(n);
     this.size = new Int32Array(n); this.held = new Int32Array(n); this.surface = new Int32Array(n); this.volumes = new Int32Array(n); this.rim = new Int32Array(n);
   }
 
@@ -168,10 +188,32 @@ export class SolidState {
     this.bodyKind[b] = kind; this.bodyFirst[b] = first; this.bodyCount[b] = count; this.bodyGroups[b] = groups;
     this.bodyLinkStart[b] = this.links; this.bodyFaceStart[b] = this.faces; this.bodyCellStart[b] = this.cells;
     this.bodyLinkCount[b] = this.bodyFaceCount[b] = this.bodyCellCount[b] = 0;
-    this.bodyPieces[b] = count; this.bodyForm[b] = FORM.free; this.bodySealed[b] = 0;
-    for (let i = first; i < first + count; i++) { matter.body[i] = b; matter.links[i] = 0; this.component[i] = i; this.form[i] = FORM.free; this.mass0[i] = matter.mass[i]; }
+    this.bodyPieces[b] = count; this.bodyLargest[b] = 1; this.bodyIntact[b] = 0; this.bodyForm[b] = FORM.free; this.bodySealed[b] = 0;
+    for (let i = first; i < first + count; i++) {
+      matter.body[i] = b; matter.links[i] = 0; this.component[i] = i; this.form[i] = FORM.free; this.mass0[i] = matter.mass[i];
+      this.frame[i * 4] = this.frame[i * 4 + 1] = this.frame[i * 4 + 2] = 0; this.frame[i * 4 + 3] = 1; this.settled[i] = 1;
+    }
+    this.shape(b, matter.position);
     this.dirty = true;
     return b;
+  }
+
+  /**
+   * The reference geometry of body `b`: where each of its elements is in `positions` (stride 3, by element), and the
+   * scale that follows. A body made where its elements are refers to that; one seeded apart refers to its figure.
+   */
+  shape(b: number, positions: ArrayLike<number>): void {
+    const first = this.bodyFirst[b], last = first + this.bodyCount[b], rest = this.rest;
+    let mass = 0, cx = 0, cy = 0, cz = 0;
+    for (let i = first; i < last; i++) {
+      const x = rest[i * 3] = positions[i * 3], y = rest[i * 3 + 1] = positions[i * 3 + 1], z = rest[i * 3 + 2] = positions[i * 3 + 2], m = this.mass0[i];
+      mass += m; cx += m * x; cy += m * y; cz += m * z;
+    }
+    if (!(mass > 0)) { this.bodyScale[b] = 0; return; }
+    cx /= mass; cy /= mass; cz /= mass;
+    let spread = 0;
+    for (let i = first; i < last; i++) spread += this.mass0[i] * ((rest[i * 3] - cx) ** 2 + (rest[i * 3 + 1] - cy) ** 2 + (rest[i * 3 + 2] - cz) ** 2);
+    this.bodyScale[b] = Math.sqrt(spread / mass);
   }
 
   /** The link of body `b` between two elements, or −1. */
@@ -328,6 +370,9 @@ export class SolidState {
     if (this.linkState[l] !== BROKEN || !(length > 1e-6)) return false;
     this.linkState[l] = INTACT; this.linkMemory[l] = 0; this.linkRest[l] = length; this.linkAge[l] = 0; this.linkStress[l] = 0; this.linkDamage[l] = damage;
     this.matter.links[this.linkA[l]]++; this.matter.links[this.linkB[l]]++;
+    // Two pieces are one again, not yet one shape: what holds the shape of the piece takes hold of it over time.
+    // A link that closes within one piece changes nothing of that: the piece was one shape already.
+    if (this.component[this.linkA[l]] !== this.component[this.linkB[l]]) this.settled[this.linkA[l]] = this.settled[this.linkB[l]] = 0;
     this.dirty = true;
     return true;
   }
@@ -365,12 +410,12 @@ export class SolidState {
         const ra = this.root(this.linkA[l]), rb = this.root(this.linkB[l]);
         if (ra < rb) component[rb] = ra; else if (rb < ra) component[ra] = rb;
       }
-      let pieces = 0, sealed = 1, largest = first;
+      let pieces = 0, sealed = 1, largest = first, intact = 0;
       for (let i = first; i < last; i++) { const r = component[i] = this.root(i); this.size[r]++; if (r === i) pieces++; }
       for (let l = links; l < linkEnd; l++) {
         if (this.linkState[l] !== INTACT) { sealed = 0; continue; }
         const r = component[this.linkA[l]];
-        this.held[r]++;
+        this.held[r]++; intact++;
         if (this.linkFaces[l] === 1) this.rim[r]++;
       }
       for (let f = this.bodyFaceStart[b], end = f + this.bodyFaceCount[b]; f < end; f++) if (this.faceHolds[f]) this.surface[component[this.faceCorners[f * 3]]]++;
@@ -384,7 +429,7 @@ export class SolidState {
           : this.held[r] >= this.size[r] ? FORM.polygon : this.size[r] > 1 ? FORM.chain : FORM.free;
         if (this.size[r] > this.size[component[largest]]) largest = i;
       }
-      this.bodyPieces[b] = pieces; this.bodyForm[b] = this.form[largest]; this.bodySealed[b] = sealed;
+      this.bodyPieces[b] = pieces; this.bodyIntact[b] = intact; this.bodyLargest[b] = this.size[component[largest]]; this.bodyForm[b] = this.form[largest]; this.bodySealed[b] = sealed;
       if (pieces > 1) this.fragments += pieces;
     }
   }
