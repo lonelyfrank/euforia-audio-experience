@@ -50,6 +50,22 @@ export interface ReportMetadata {
   configuration?: string;
 }
 export interface DiagnosticSample { timestamp: number; metrics: DiagnosticMetric[] }
+/**
+ * A stretch of a report measured under one configuration (settings and DEV overrides). A change of configuration
+ * does not clear what was measured: it starts a segment. Every sample says which one it belongs to in its
+ * `diagnostics.segment` metric.
+ */
+export interface ConfigurationSegment {
+  index: number;
+  /** Host seconds, the samples' clock: the first sampling tick under this configuration. */
+  from: number;
+  audioTime: number | null;
+  /** What differs from the segment before, one `name: before → after` per setting; empty for the first one. */
+  changed: string[];
+  /** Who asked for the change, when it is known (a control, a start parameter); else the group of what changed. */
+  origin: string | null;
+  configuration: string;
+}
 export interface DiagnosticReport {
   schema: 1;
   metadata: ReportMetadata;
@@ -58,4 +74,6 @@ export interface DiagnosticReport {
   events: DiagnosticEvent[];
   labels: Record<string, string>;
   limitations: string[];
+  /** The configurations the retained samples were measured under, oldest first; absent in older and in replay reports. */
+  segments?: ConfigurationSegment[];
 }

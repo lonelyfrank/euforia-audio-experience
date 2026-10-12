@@ -5,6 +5,10 @@ export function validateReport(value: unknown): DiagnosticReport {
   if (!r || r.schema !== 1 || !r.metadata || !Array.isArray(r.samples) || r.samples.length > 12000 || !Array.isArray(r.events) || r.events.length > 256 || !Array.isArray(r.limitations) || !Number.isFinite(r.duration)) throw new Error('Invalid diagnostic report');
   for (const k of ['engineVersion', 'startedAt', 'os', 'backend', 'quality', 'resolution', 'source']) if (typeof (r.metadata as unknown as Record<string, unknown>)[k] !== 'string') throw new Error('Invalid metadata');
   if (!Array.isArray(r.metadata.experimental) || !Array.isArray(r.metadata.capabilities)) throw new Error('Invalid capabilities');
+  if (r.segments !== undefined) {
+    if (!Array.isArray(r.segments) || r.segments.length > 256) throw new Error('Invalid segments');
+    for (const s of r.segments) if (!s || !Number.isInteger(s.index) || !Number.isFinite(s.from) || typeof s.configuration !== 'string' || !Array.isArray(s.changed) || s.changed.some(x => typeof x !== 'string')) throw new Error('Invalid segment');
+  }
   let cells = 0;
   for (const s of r.samples) {
     if (!Number.isFinite(s.timestamp) || !Array.isArray(s.metrics) || s.metrics.length > 2048 || (cells += s.metrics.length) > 300000) throw new Error('Invalid sample');

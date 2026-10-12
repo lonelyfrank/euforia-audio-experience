@@ -241,7 +241,21 @@ try {
     const isolate = id => page.getByLabel('Isolamento sperimentale primitive').evaluate((el, id) => { if (![...el.options].some(o => o.value === id)) el.append(new Option(id, id)); el.value = id; el.dispatchEvent(new Event('change')); }, id);
     const switches = () => page.evaluate(async dashboard => { const { matterLab } = await import('/src/render-systems/forms/MatterForms.ts'); const { worldLab } = await import('/src/visual-engine/VisualWorld.ts');
       return [matterLab.form, worldLab.only && [...worldLab.only].join(','), document.querySelector(dashboard).shadowRoot.querySelector('[aria-label="Isolamento sperimentale primitive"]').value, document.querySelector('[aria-label="Forma Matter"]').value]; }, DASHBOARD);
-    await navigate('diagnostics'); await isolate('test'); await settle();
+    await navigate('diagnostics');
+    // Isolating is a change of configuration, not a reset: the recording goes on and the report says where it changed.
+    const segmentOf = sample => sample.metrics.find(m => m.id === 'diagnostics.segment')?.value;
+    const recorded = await report();
+    await isolate('test'); await page.waitForTimeout(900);
+    const isolated = await report();
+    assert.ok(isolated.samples.length >= recorded.samples.length && isolated.samples[0].timestamp <= recorded.samples.at(-1).timestamp, 'isolating keeps the samples recorded before it');
+    assert.ok(isolated.events.length >= recorded.events.length, 'and the timeline');
+    const boundary = isolated.segments.at(-1), change = isolated.events.findLast(e => e.type === 'configuration-change');
+    assert.ok(boundary.changed.includes('isolate: all → test') && boundary.origin === 'diagnostics', `the segment names what changed and who asked: ${JSON.stringify(boundary)}`);
+    assert.ok(change.context.includes('isolate: all → test') && change.observedAt === boundary.from, 'the change is on the timeline at the boundary');
+    assert.deepEqual([...new Set(isolated.samples.filter(s => s.timestamp >= boundary.from).map(segmentOf))], [boundary.index], 'samples after the boundary carry its segment');
+    assert.ok(isolated.samples.filter(s => s.timestamp < boundary.from).every(s => segmentOf(s) < boundary.index), 'samples before it carry the earlier ones');
+    assert.ok(isolated.metadata.experimental.includes('mixed-configuration'), 'a report over two configurations says it is not one measure');
+    assert.deepEqual(isolated.events.map(e => e.observedAt), isolated.events.map(e => e.observedAt).sort((a, b) => a - b), 'the timeline stays in time order');
     assert.deepEqual(await switches(), ['wave', 'test', 'test', 'wave']);
     await click('Termina Structural Lab'); await settle();
     assert.deepEqual(await switches(), ['auto', null, '', 'auto'], 'ending the experiment gives every override back, and the selectors follow');

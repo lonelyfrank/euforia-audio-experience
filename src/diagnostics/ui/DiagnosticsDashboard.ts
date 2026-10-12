@@ -128,6 +128,7 @@ export class DiagnosticsDashboard {
     this.plotSection = h('section', {}, this.plot, this.caption);
     const isolation = tools ? h('section', { class: 'experimental' }, 'Experiment · isolamento temporaneo', this.primitives,
       button('Reset isolamento', () => controller.isolate(null, 'diagnostics')),
+      h('small', { class: 'hint' }, 'Isolare non azzera le misure: apre un segmento, segnato nella timeline e nel report.'),
       button('Parità Matter', () => { void this.parity(false); }), button('Parità Tracer', () => { void this.parity(true); })) : null;
     const replays = h('section', {}, h('strong', {}, 'Replay locale · worker separato · 20 s · seed 1'), replaySignal, replayFps, replayBatch,
       button('Avvia replay', () => this.replay(replaySignal.value, +replayFps.value, +replayBatch.value)), replayPause,
@@ -210,7 +211,7 @@ export class DiagnosticsDashboard {
     if (this.frozen || this.closed || this.host.hidden) return;
     const start = performance.now(), c = this.controller, store = c.store, registry = store?.registry ?? null;
     if (this.session !== c.app.audio.session) { this.session = c.app.audio.session; this.lastEvent = null; this.timeline.replaceChildren(); }
-    setText(this.status, `${c.recording ? `REC ● ${store?.count ?? 0}/${store?.capacity ?? 0} campioni` : 'LIVE'} · ${c.paused ? 'acquisizione in pausa' : `${c.detailed ? 10 : 5} Hz`} · sessione ${c.app.audio.session} · ${c.app.audio.state.status} · report ${this.report ? 'REPLAY' : 'LIVE'}`);
+    setText(this.status, `${c.recording ? `REC ● ${store?.count ?? 0}/${store?.capacity ?? 0} campioni${c.segmentCount > 1 ? ` · ${c.segmentCount} segmenti` : ''}` : 'LIVE'} · ${c.paused ? 'acquisizione in pausa' : `${c.detailed ? 10 : 5} Hz`} · sessione ${c.app.audio.session} · ${c.app.audio.state.status} · report ${this.report ? 'REPLAY' : 'LIVE'}`);
     if (registry !== this.registry) { this.registry = registry; this.clearRows(); }
     if (!this.values.hidden) {
       if (registry) for (; this.placed < registry.metrics.length; this.placed++) {
