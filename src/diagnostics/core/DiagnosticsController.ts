@@ -10,12 +10,16 @@ import { worldLab } from '../../visual-engine/VisualWorld';
 import { MatterPrimitive } from '../../visual-engine/primitives/MatterPrimitive';
 import { FieldTracerPrimitive } from '../../visual-engine/primitives/FieldTracerPrimitive';
 import { DiagnosticsStore } from './DiagnosticsStore';
+import { OverrideLedger } from './Overrides';
 import { DiagnosticsCollector } from './DiagnosticsCollector';
 import type { DiagnosticMetric, DiagnosticReport, ReportMetadata } from './DiagnosticsTypes';
 import { RendererProbe } from '../probes/RendererProbe';
 import { PresentationProbe } from '../probes/PresentationProbe';
 import { collectEngine, metric, visualWorld } from '../probes/EngineProbes';
 import { summarizeMatter } from '../probes/MatterSample';
+
+/** The ledger's key for primitive isolation. */
+export const ISOLATION = 'world.only';
 
 export class DiagnosticsController {
   store: DiagnosticsStore | null = null;
@@ -42,8 +46,11 @@ export class DiagnosticsController {
   private lastResyncs = 0;
   private readonly position = new Float32Array(256 * 4);
   private readonly velocity = new Float32Array(256 * 4);
-  private readonly initialOnly = worldLab.only;
-  private oldOnly = worldLab.only;
+  /**
+   * The one owner of the temporary development overrides (isolation, Matter form, tunnel, test signal). They are given
+   * back when the experiment stops and, at the latest, when the last user of the diagnostics leaves.
+   */
+  readonly overrides = new OverrideLedger();
   private matterMetrics: DiagnosticMetric[] = [];
   constructor(readonly app: App) {}
 
@@ -54,7 +61,6 @@ export class DiagnosticsController {
     return () => { if (released || this.disposed) return; released = true; if (--this.users === 0) this.disable(); };
   }
   private enable(): void {
-    this.oldOnly = worldLab.only;
     this.store = new DiagnosticsStore(120);
     this.renderer = new RendererProbe(this.app.directionDebug.renderer);
     this.presentation = new PresentationProbe();
@@ -80,7 +86,8 @@ export class DiagnosticsController {
     this.collector?.dispose(); this.renderer?.dispose();
     this.collector = null; this.renderer = null; this.presentation = null; this.store = null; this.trace = null; this.matterMetrics = [];
     this.recording = this.paused = this.readback = false;
-    worldLab.only = this.oldOnly;
+    // Whatever is still held (nothing, after a workspace that stopped its experiment) goes back now, and only once.
+    this.overrides.releaseAll('diagnostics closed');
   }
   reset(): void {
     this.collector?.reset(); this.renderer?.frames.reset(); this.renderer?.timer.clear(); this.presentation?.reset();
@@ -101,7 +108,12 @@ export class DiagnosticsController {
     this.reset();
   }
   setReadback(on: boolean): void { this.readback = on; this.reset(); }
-  isolate(id: string | null): void { worldLab.only = id ? new Set([id]) : null; this.reset(); }
+  /** Shows only the named primitives of the visual world, or all of them with `null`: the one way `worldLab.only` is written. */
+  isolate(ids: string | readonly string[] | null, origin = 'diagnostics'): void {
+    const list = typeof ids === 'string' ? [ids] : ids ?? [];
+    this.overrides.set(ISOLATION, worldLab, 'only', list.length ? new Set(list) : null, origin);
+    this.reset();
+  }
   private readonly frame = (now: number): void => {
     if (!this.store || !this.collector) return;
     // Even paused diagnostics must not export values of the previous source.
@@ -203,5 +215,5 @@ export class DiagnosticsController {
       profiling: this.renderer?.timer.enabled ?? false, readback: this.readback, scene: this.app.directionDebug.current?.source.preset.name ?? null,
       seed: world?.recipe.seed ?? null, configuration: this.configuration(), experimental: worldLab.only ? [`isolate:${[...worldLab.only].join(',')}`] : [] };
   }
-  dispose(): void { if (this.disposed) return; this.disposed = true; this.users = 0; this.disable(); worldLab.only = this.initialOnly; }
+  dispose(): void { if (this.disposed) return; this.disposed = true; this.users = 0; this.disable(); }
 }

@@ -236,8 +236,20 @@ try {
     await navigate('laboratories'); await page.locator('.ws-lab-grid').waitFor();
     assert.deepEqual((await labState()).slice(0, 2), [true, null], 'the sidebar opens the laboratory, with no override left from the last one');
     await page.getByLabel('Forma Matter').selectOption('wave');
-    await navigate('diagnostics'); await page.getByLabel('Isolamento sperimentale primitive').evaluate(el => { el.append(new Option('test', 'test')); el.value = 'test'; el.dispatchEvent(new Event('change')); });
-    await click('Reset isolamento');
+    // One owner for the temporary overrides: isolation set in Diagnostics and the Matter form set in Laboratories are given back
+    // together by the one control that ends the experiment, and every selector then shows what is in force.
+    const isolate = id => page.getByLabel('Isolamento sperimentale primitive').evaluate((el, id) => { if (![...el.options].some(o => o.value === id)) el.append(new Option(id, id)); el.value = id; el.dispatchEvent(new Event('change')); }, id);
+    const switches = () => page.evaluate(async dashboard => { const { matterLab } = await import('/src/render-systems/forms/MatterForms.ts'); const { worldLab } = await import('/src/visual-engine/VisualWorld.ts');
+      return [matterLab.form, worldLab.only && [...worldLab.only].join(','), document.querySelector(dashboard).shadowRoot.querySelector('[aria-label="Isolamento sperimentale primitive"]').value, document.querySelector('[aria-label="Forma Matter"]').value]; }, DASHBOARD);
+    await navigate('diagnostics'); await isolate('test'); await settle();
+    assert.deepEqual(await switches(), ['wave', 'test', 'test', 'wave']);
+    await click('Termina Structural Lab'); await settle();
+    assert.deepEqual(await switches(), ['auto', null, '', 'auto'], 'ending the experiment gives every override back, and the selectors follow');
+    assert.equal(await page.locator('.ws-lab-stop').isHidden(), true, 'nothing left to end');
+    await isolate('test'); await settle();
+    assert.equal(await page.locator('.ws-top').getByRole('button', { name: 'Ripristina override', exact: true }).count(), 1, 'an override without a laboratory still has its way back in the toolbar');
+    await click('Reset isolamento'); await settle();
+    assert.deepEqual([...await switches(), await page.locator('.ws-lab-stop').isHidden()], ['auto', null, '', 'auto', true]);
     await page.getByLabel('Scenario replay').selectOption('silence'); await click('Avvia replay');
     await navigate('audio'); await page.waitForTimeout(500); await navigate('diagnostics');
     await page.getByText('Replay completato:', { exact: false }).waitFor({ timeout: 120000 });
@@ -291,6 +303,19 @@ try {
     assert.equal(gpu.lost, false);
     assert.deepEqual(await page.evaluate(() => [window.app.audio.session === window.__session, window.app.audio.experience.presented.world.time > window.__worldTime, window.app.directionDebug.current === window.__cycleScene,
       window.__originalCanvas.clientWidth === innerWidth && window.__originalCanvas.clientHeight === innerHeight]), [true, true, true, true], 'audio session, world, scene and full-window stage survive the workspace');
+    // The test signal is an override like the others: closing gives back what played before, and restarts the shared
+    // capture (a new audio session) only if something else is playing by then.
+    const playing = signal => page.waitForFunction(label => window.app.audio.state.deviceName === label && window.app.audio.state.status === 'running', signal);
+    const source = () => page.evaluate(() => [window.app.audio.state.deviceName, window.app.audio.session]);
+    await page.keyboard.press('Shift+E'); await page.locator('.ws-lab-grid').waitFor();
+    await page.getByLabel('Segnale live di test').selectOption('tone400'); await playing('Tone 400 Hz');
+    await page.getByLabel('Segnale live di test').selectOption('beat124'); await playing('Beat 124 BPM');
+    const settled = await source();
+    await page.getByLabel('Segnale live di test').evaluate(el => el.blur()); await page.keyboard.press('Shift+E'); await settle();
+    assert.deepEqual(await source(), settled, 'already on what played before: the capture is not restarted');
+    await page.keyboard.press('Shift+E'); await page.locator('.ws-lab-grid').waitFor();
+    await page.getByLabel('Segnale live di test').selectOption('tone400'); await playing('Tone 400 Hz');
+    await page.getByLabel('Segnale live di test').evaluate(el => el.blur()); await page.keyboard.press('Shift+E'); await playing('Beat 124 BPM');
     assert.equal(await page.locator('.euforia-workspace').count(), 0);
     assert.equal(await page.locator('.app-canvas canvas').count(), 1);
     assert.equal(await page.evaluate(() => window.__webglCreations), 1);

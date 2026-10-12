@@ -1,3 +1,5 @@
+import type { OverrideLedger } from '../core/Overrides';
+
 /** The laboratories: each a development world with its own inspector. One runs at a time (each pins the viewport's world). */
 export type Laboratory = 'structural' | 'solid';
 export const LABS: Record<Laboratory, string> = { structural: 'Structural Lab', solid: 'Solid Dynamics' };
@@ -21,13 +23,13 @@ export class Experiment {
   private disposed = false;
   /**
    * @param requested The laboratory an entry opens when none is running: the one a start parameter named, then the last one opened.
-   * @param restore Gives back the overrides that are not a laboratory's own.
+   * @param ledger Holds the overrides that are not a laboratory's own (isolation, Matter form, tunnel, test signal).
    */
-  constructor(private readonly create: (lab: Laboratory) => RunningLab, private requested: Laboratory, private readonly restore: () => void) {}
+  constructor(private readonly create: (lab: Laboratory) => RunningLab, private requested: Laboratory, private readonly ledger: OverrideLedger) {}
 
   get running(): Laboratory | null { return this.name; }
-  /** The running laboratory's own overrides. */
-  get overrides(): number { return this.lab?.overrides ?? 0; }
+  /** Overrides in force: the running laboratory's own and those in the ledger. What stopping gives back. */
+  get overrides(): number { return (this.lab?.overrides ?? 0) + this.ledger.size; }
 
   /** Enters a laboratory; without a name, the one running or the one last asked for. True when a laboratory was started. */
   open(lab: Laboratory = this.name ?? this.requested): boolean {
@@ -42,7 +44,7 @@ export class Experiment {
 
   stop(): void {
     this.end();
-    this.restore();
+    this.ledger.releaseAll('stop experiment');
   }
 
   dispose(): void {

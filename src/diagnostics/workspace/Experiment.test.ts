@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { OverrideLedger } from '../core/Overrides';
 import { escapeStep } from './components';
 import { Experiment, type Laboratory } from './Experiment';
 
-/** Laboratories that only say when they are built and ended. */
+/** Laboratories that only say when they are built and ended, and two development switches as the ledger overrides them. */
 function setup(requested: Laboratory = 'structural') {
-  const log: string[] = [];
-  const experiment = new Experiment((lab) => { log.push(`+${lab}`); return { overrides: lab === 'solid' ? 2 : 0, dispose: () => { log.push(`-${lab}`); } }; }, requested, () => { log.push('restore'); });
-  return { experiment, log };
+  const log: string[] = [], ledger = new OverrideLedger(), switches = { form: 'auto', balance: null as number | null };
+  ledger.onChange = (key, origin) => { log.push(`${key}@${origin}`); };
+  const experiment = new Experiment((lab) => { log.push(`+${lab}`); return { overrides: lab === 'solid' ? 2 : 0, dispose: () => { log.push(`-${lab}`); } }; }, requested, ledger);
+  return { experiment, log, ledger, switches };
 }
 
 describe('experiment lifecycle', () => {
@@ -24,13 +26,24 @@ describe('experiment lifecycle', () => {
     expect(log).toEqual(['+structural', '-structural', '+solid', '-solid', '+structural']);
     expect(experiment.running).toBe('structural'); expect(experiment.overrides).toBe(0);
   });
+  it('keeps the overrides through a change of laboratory: only stopping gives them back', () => {
+    const { experiment, ledger, switches } = setup();
+    experiment.open();
+    ledger.set('matter.form', switches, 'form', 'wave'); ledger.set('tunnel.balance', switches, 'balance', 0);
+    experiment.open('solid');
+    expect(switches).toEqual({ form: 'wave', balance: 0 }); expect(experiment.overrides).toBe(2 + 2);
+  });
   it('stops by ending the laboratory and giving the overrides back, as many times as it is asked', () => {
-    const { experiment, log } = setup();
-    experiment.open('solid'); experiment.stop();
-    expect(log).toEqual(['+solid', '-solid', 'restore']); expect(experiment.running).toBeNull(); expect(experiment.overrides).toBe(0);
+    const { experiment, log, ledger, switches } = setup();
+    experiment.open('solid'); ledger.set('matter.form', switches, 'form', 'wave'); ledger.set('tunnel.balance', switches, 'balance', 0);
+    log.length = 0;
     experiment.stop();
-    // A second stop has no laboratory to end: it only asks for the overrides again, which is a no-op for whoever holds none.
-    expect(log).toEqual(['+solid', '-solid', 'restore', 'restore']);
+    expect(log).toEqual(['-solid', 'matter.form@stop experiment', 'tunnel.balance@stop experiment']);
+    expect(switches).toEqual({ form: 'auto', balance: null }); expect(experiment.running).toBeNull(); expect(experiment.overrides).toBe(0);
+    // A second stop has no laboratory to end and no override to give back: what was set since is not touched.
+    switches.form = 'harmonic'; log.length = 0;
+    experiment.stop();
+    expect(log).toEqual([]); expect(switches.form).toBe('harmonic');
     // The next entry opens the laboratory last asked for, not the one the session started with.
     expect(experiment.open()).toBe(true); expect(experiment.running).toBe('solid');
   });
@@ -41,7 +54,7 @@ describe('experiment lifecycle', () => {
     expect(experiment.open('solid')).toBe(false); expect(experiment.running).toBeNull(); expect(log).not.toContain('+solid');
   });
   it('leaves no laboratory behind when one fails to start', () => {
-    const experiment = new Experiment((lab) => { if (lab === 'solid') throw new Error('no world'); return { overrides: 1, dispose: () => {} }; }, 'structural', () => {});
+    const experiment = new Experiment((lab) => { if (lab === 'solid') throw new Error('no world'); return { overrides: 1, dispose: () => {} }; }, 'structural', new OverrideLedger());
     experiment.open();
     expect(() => experiment.open('solid')).toThrow('no world');
     expect(experiment.running).toBeNull(); expect(experiment.overrides).toBe(0);

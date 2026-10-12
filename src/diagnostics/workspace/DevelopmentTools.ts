@@ -18,6 +18,8 @@ const CHARTS: Record<DebugView, string> = {
   experience: 'Regia, analisi, previsione ed eventi', world: 'Mondo, energia e forze', matter: 'Morfologia, materiale e primitive',
 };
 const charted = (view: WorkspaceView): view is DebugView => view in CHARTS;
+/** The ledger's keys for the overrides set from here (primitive isolation is the controller's: `isolate`). */
+const MATTER_FORM = 'matter.form', TUNNEL_BALANCE = 'tunnel.balance', AUDIO_SOURCE = 'audio.source';
 
 /**
  * Loaded only by the DEV branch of installDiagnostics; all experiments are owned by this workspace. It builds the DEV
@@ -39,11 +41,6 @@ export class DevelopmentTools {
   /** Which laboratory runs, and when it starts and ends: the view shown has no part in it. */
   private readonly experiment: Experiment;
   private disposed = false;
-  private readonly initialForm = matterLab.form;
-  private readonly initialOnly = worldLab.only;
-  private readonly initialSource;
-  private readonly initialSignal;
-  private signalChanged = false;
   private readonly status = h('span', { class: 'ws-lab-status' });
   private readonly labButtons = (Object.keys(LABS) as Laboratory[]).map((lab) => {
     const item = button(`Avvia ${LABS[lab]}`, () => this.openLab(lab));
@@ -55,19 +52,19 @@ export class DevelopmentTools {
   /** The tunnel as it was or balanced, on the same sound: `tunnelLab`, back to the preset's own on leaving. */
   private readonly tunnel = h('select', { ariaLabel: 'Coordinamento del Tunnel' });
   constructor(private readonly app: App, private readonly controller: DiagnosticsController, parent: HTMLElement, deck: HTMLElement) {
-    this.initialSource = app.audio.state.source ?? settingsStore.get().source;
-    this.initialSignal = TEST_SIGNALS.find(s => s.label === app.audio.state.deviceName)?.id;
+    // Every override below goes through the controller's ledger: it remembers what was there, and gives it back once.
+    const overrides = controller.overrides;
     this.signal.append(new Option('Sorgente live', ''), ...TEST_SIGNALS.map(s => new Option(s.label, s.id)));
     this.signal.onchange = () => {
-      this.signalChanged = true;
+      this.holdSource();
       if (this.signal.value) void app.playTestSignal(this.signal.value as TestSignal);
       else void app.audio.setSource(settingsStore.get().source);
     };
     for (const form of ['auto', 'particles', 'wave', 'harmonic'] as const) this.pin.append(new Option(`Matter: ${form}`, form));
     this.pin.value = matterLab.form;
-    this.pin.onchange = () => { matterLab.form = this.pin.value as FormPin; };
+    this.pin.onchange = () => overrides.set(MATTER_FORM, matterLab, 'form', this.pin.value as FormPin, 'experiment controls');
     this.tunnel.append(new Option('Tunnel: preset', ''), new Option('Tunnel: Balanced', '1'), new Option('Tunnel: com\'era (legacy)', '0'));
-    this.tunnel.onchange = () => { tunnelLab.balance = this.tunnel.value === '' ? null : Number(this.tunnel.value); };
+    this.tunnel.onchange = () => overrides.set(TUNNEL_BALANCE, tunnelLab, 'balance', this.tunnel.value === '' ? null : Number(this.tunnel.value), 'experiment controls');
     // Ending the experiment has one control, in the workspace's toolbar.
     this.controls.append(this.signal, this.pin, this.tunnel, ...this.labButtons, this.status);
     this.element.className = 'ws-development';
@@ -78,23 +75,21 @@ export class DevelopmentTools {
     this.blocks = [block(this.charts, 'charts'), block(this.audio.element, 'audio'), block(this.controlsPanel, 'experiment'), block(this.labHost, 'laboratory')];
     parent.append(this.element);
     const query = new URLSearchParams(location.search), form = query.get('matter');
-    if (form && ['auto', 'particles', 'wave', 'harmonic'].includes(form)) { matterLab.form = form as FormPin; this.pin.value = form; }
+    if (form && ['auto', 'particles', 'wave', 'harmonic'].includes(form)) { overrides.set(MATTER_FORM, matterLab, 'form', form as FormPin, '?matter'); this.pin.value = form; }
     const only = query.get('primitives');
-    if (only) worldLab.only = new Set(only.split(',').filter(Boolean));
+    if (only) controller.isolate(only.split(',').filter(Boolean), '?primitives');
     // The laboratory a shortcut, the sidebar or `?engine` opens first: Structural Lab, or the one named by `?engine=solid`.
     this.experiment = new Experiment((lab) => {
       this.lab = lab === 'solid' ? new SolidCockpit(this.app, this.controller, this.labHost) : new EngineCockpit(this.app, this.controller, this.labHost);
       const cockpit = this.lab;
       return { get overrides() { return cockpit.overrides; }, dispose: () => { cockpit.dispose(); if (this.lab === cockpit) this.lab = null; } };
-    }, query.get('engine') === 'solid' ? 'solid' : 'structural', () => this.restore());
+    }, query.get('engine') === 'solid' ? 'solid' : 'structural', overrides);
   }
   get active(): boolean { return this.experiment.running !== null; }
   /** The laboratory in the viewport, by its name. */
   get labName(): string | null { const lab = this.experiment.running; return lab && LABS[lab]; }
   /** Temporary overrides in force: what ending the experiment gives back. */
-  get overrides(): number {
-    return this.experiment.overrides + Number(matterLab.form !== this.initialForm) + Number(worldLab.only !== this.initialOnly) + Number(tunnelLab.balance !== null) + Number(this.signalChanged);
-  }
+  get overrides(): number { return this.experiment.overrides; }
   /**
    * Open Laboratory: the one named, or without a name the one already running, or else the one last asked for. A
    * laboratory already running is left as it is (its body, its overrides, its measures); another one is ended first.
@@ -111,22 +106,26 @@ export class DevelopmentTools {
     this.mark();
     this.status.textContent = 'Override ripristinate';
   }
-  /** The overrides that are not a laboratory's own, back to what they were when the tools were built. */
-  private restore(): void {
-    matterLab.form = this.initialForm; worldLab.only = this.initialOnly; tunnelLab.balance = null;
-    // The cockpit's source selector also uses the same AudioEngine. Restore only a test source.
-    if (this.signalChanged) {
-      if (this.initialSource === 'fake' && this.initialSignal) void this.app.playTestSignal(this.initialSignal);
-      else void this.app.audio.setSource(this.initialSource);
-    }
-    this.signalChanged = false;
+  /**
+   * Before the first test signal: what was being captured is remembered once, to be given back when the experiment
+   * stops. The capture is shared and restarting it starts a new audio session, so it is restarted only if what plays
+   * then is not what played before.
+   */
+  private holdSource(): void {
+    const audio = this.app.audio;
+    if (this.controller.overrides.has(AUDIO_SOURCE)) return;
+    const source = audio.state.source ?? settingsStore.get().source, signal = TEST_SIGNALS.find(s => s.label === audio.state.deviceName);
+    this.controller.overrides.hold(AUDIO_SOURCE, () => {
+      if (source === 'fake' && signal) { if (audio.state.deviceName !== signal.label) void this.app.playTestSignal(signal.id); }
+      else if (audio.state.source !== source) void audio.setSource(source);
+    }, 'experiment controls');
   }
   /** The controls show what is in force. */
   private mark(): void {
     const running = this.experiment.running;
     for (const item of this.labButtons) item.hidden = item.dataset.lab === running;
     this.pin.value = matterLab.form; this.tunnel.value = tunnelLab.balance === null ? '' : String(tunnelLab.balance);
-    if (!this.signalChanged) this.signal.value = '';
+    if (!this.controller.overrides.has(AUDIO_SOURCE)) this.signal.value = '';
   }
   /**
    * Switch View: the view's sections have just been applied, and what came into the inspector is made ready to show

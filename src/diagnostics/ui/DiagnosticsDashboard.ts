@@ -1,6 +1,7 @@
 import { h } from '../../ui/dom';
 import { flowAt } from '../../render-systems/fields/flowLaw';
 import { visualWorld } from '../probes/EngineProbes';
+import { worldLab } from '../../visual-engine/VisualWorld';
 import type { DiagnosticsController } from '../core/DiagnosticsController';
 import type { DiagnosticEvent, DiagnosticMetric, DiagnosticReport, Domain, MetricStatus } from '../core/DiagnosticsTypes';
 import type { MetricRegistry } from '../metrics/MetricRegistry';
@@ -105,7 +106,7 @@ export class DiagnosticsDashboard {
     };
     const select = this.domainSelect = h('select', { ariaLabel: 'Dominio diagnostico', onchange: () => { this.picked = select.value as Domain; this.setDomains(null); } },
       ...DOMAINS.map(x => new Option(x, x)));
-    this.primitives.onchange = () => controller.isolate(this.primitives.value || null);
+    this.primitives.onchange = () => controller.isolate(this.primitives.value ? this.primitives.value.split(',') : null, 'diagnostics');
     const gpu = toggle('Profiling GPU', on => controller.setProfiling(on), controller.renderer?.timer.enabled);
     const gpuInput = gpu.querySelector('input')!;
     gpuInput.disabled = !controller.renderer?.timer.supported;
@@ -126,7 +127,7 @@ export class DiagnosticsDashboard {
       h('small', { class: 'hint' }, 'Il freeze ferma solo questa vista. La pausa acquisizione non ferma audio, rendering o replay. REC (barra in alto) conserva gli ultimi 120 campioni.'));
     this.plotSection = h('section', {}, this.plot, this.caption);
     const isolation = tools ? h('section', { class: 'experimental' }, 'Experiment · isolamento temporaneo', this.primitives,
-      button('Reset isolamento', () => { controller.isolate(null); this.primitives.value = ''; }),
+      button('Reset isolamento', () => controller.isolate(null, 'diagnostics')),
       button('Parità Matter', () => { void this.parity(false); }), button('Parità Tracer', () => { void this.parity(true); })) : null;
     const replays = h('section', {}, h('strong', {}, 'Replay locale · worker separato · 20 s · seed 1'), replaySignal, replayFps, replayBatch,
       button('Avvia replay', () => this.replay(replaySignal.value, +replayFps.value, +replayBatch.value)), replayPause,
@@ -224,8 +225,15 @@ export class DiagnosticsDashboard {
     }
     if (!this.footer.hidden) this.showEvents(store?.events ?? null);
     if (this.primitives.isConnected && !this.primitives.parentElement!.hidden) {
-      const world = visualWorld(c.app), ids = world?.mounted.map(m => m.slot.id) ?? [], recipe = `${world?.recipe.id}:${ids.join(',')}`;
-      if (recipe !== this.recipe) { this.recipe = recipe; this.primitives.replaceChildren(new Option('Tutte le primitive', ''), ...ids.map(id => new Option(id, id))); }
+      // The selector shows the isolation in force, whoever set it (here, a start parameter) or gave it back (Stop Experiment).
+      const world = visualWorld(c.app), ids = world?.mounted.map(m => m.slot.id) ?? [], isolated = worldLab.only ? [...worldLab.only].join(',') : '';
+      const recipe = `${world?.recipe.id}:${ids.join(',')}|${isolated}`;
+      if (recipe !== this.recipe) {
+        this.recipe = recipe;
+        this.primitives.replaceChildren(new Option('Tutte le primitive', ''), ...ids.map(id => new Option(id, id)));
+        if (isolated && !ids.includes(isolated)) this.primitives.append(new Option(isolated.replaceAll(',', ' + '), isolated));
+        this.primitives.value = isolated;
+      }
     }
     if (!this.plotSection.hidden) this.draw();
     c.uiMs += performance.now() - start;
