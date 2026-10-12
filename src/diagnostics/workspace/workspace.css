@@ -47,6 +47,11 @@
 .euforia-workspace .ws-rec[aria-pressed=true] { border-color:rgba(240,80,110,.6); background:rgba(240,80,110,.14); box-shadow:none; }
 .ws-rec[aria-pressed=true] .ws-dot { box-shadow:0 0 8px var(--ws-red); }
 .euforia-workspace .ws-lab-stop { border-color:rgba(245,183,59,.6); color:var(--ws-warning); }
+/* Asked by Escape over an experiment with overrides in force: under the bar, over nothing that has to be read. */
+.ws-confirm { position:absolute; top:58px; left:50%; transform:translateX(-50%); z-index:5; display:flex; align-items:center; gap:10px; max-width:calc(100% - 24px); padding:10px 12px 10px 16px;
+  background:var(--ws-raised); border:1px solid rgba(245,183,59,.6); border-radius:var(--ws-radius-card); box-shadow:0 12px 32px #000a; }
+.euforia-workspace .ws-confirm p { margin:0; color:var(--ws-text); }
+.ws-confirm button { flex:none; height:30px; }
 
 /* ---- navigation ---- */
 .ws-sidebar { grid-area:2 / 1; padding:10px; display:flex; flex-direction:column; gap:6px; overflow:hidden auto; scrollbar-width:none; }

@@ -120,6 +120,12 @@ export class EngineCockpit {
     this.releaseDiagnostics = diagnostics.acquire();
   }
 
+  /** Overrides set now: what the status line counts. */
+  get overrides(): number {
+    const tuning = createTuning();
+    return (Object.keys(tuning) as (keyof StructuralTuning)[]).filter((key) => structuralLab.tuning[key] !== tuning[key]).length;
+  }
+
   dispose(): void {
     this.releaseDiagnostics();
     this.left.remove(); this.right.remove(); this.bottom.remove(); this.style.remove();
@@ -162,7 +168,7 @@ export class EngineCockpit {
     this.mark(sides, 'sides', String(structuralLab.sides));
 
     this.left.append(
-      h('h1', {}, 'Structural Dynamics'), h('small', {}, 'Experiment · temporaneo, non salvato'),
+      h('h1', {}, 'Structural Lab'), h('small', {}, 'laboratorio · temporaneo, non salvato'),
       h('h2', {}, 'Modules'), nav,
       h('h2', {}, 'Viewport'), world,
       h('h2', {}, 'Geometry'), views,

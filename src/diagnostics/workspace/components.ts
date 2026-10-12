@@ -76,6 +76,13 @@ export function shortcutView(event: KeyboardEvent, tools: boolean): WorkspaceVie
   return null;
 }
 
+/**
+ * What Escape does, in this order: a dialog of the workspace closes first; an experiment with overrides in force asks
+ * once before the workspace closes (closing gives them back); otherwise the workspace closes.
+ */
+export type EscapeStep = 'dismiss' | 'confirm' | 'close';
+export const escapeStep = (dialog: boolean, overrides: number): EscapeStep => dialog ? 'dismiss' : overrides > 0 ? 'confirm' : 'close';
+
 /** The three columns: navigation folded to its icons, the inspector there or not and how wide, the viewport alone. */
 export interface WorkspaceLayout { collapsed: boolean; inspector: boolean; wide: boolean; expanded: boolean }
 export type LayoutAction = 'sidebar' | 'inspector' | 'wide' | 'viewport' | 'reveal';

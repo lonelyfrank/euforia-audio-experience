@@ -7,7 +7,7 @@ import { DiagnosticsDashboard, download } from '../ui/DiagnosticsDashboard';
 import type { DevelopmentTools } from './DevelopmentTools';
 import type { MetricRegistry } from '../metrics/MetricRegistry';
 import { sparkline, Trace } from './charts';
-import { button, INITIAL_LAYOUT, inspectorShown, isEditing, liveBadge, nextLayout, panel, shortcutView, tile, TONE, writeText, writeTile, type LayoutAction, type Tile, type WorkspaceView } from './components';
+import { button, escapeStep, INITIAL_LAYOUT, inspectorShown, isEditing, liveBadge, nextLayout, panel, shortcutView, tile, TONE, writeText, writeTile, type LayoutAction, type Tile, type WorkspaceView } from './components';
 import { icon, logo, type IconName } from './icons';
 import './workspace.css';
 import { Overview } from './Overview';
@@ -65,7 +65,7 @@ export class EngineWorkspace {
   private scene = h('strong');
   private buffer = h('small');
   /** The one control that ends an experiment: there while a laboratory runs or a temporary override is in force. */
-  private labStatus = button('', () => this.development?.stopExperiment());
+  private labStatus = button('', () => { this.development?.stopExperiment(); this.refresh(); });
   private record = button('', () => this.controller.setRecording(!this.controller.recording), 'Registra · REC');
   private collapse = button('', () => this.arrange('sidebar'), 'Espandi / comprimi navigazione');
   private expandLabel = h('span');
@@ -81,6 +81,9 @@ export class EngineWorkspace {
   private health: HTMLDetailsElement | null = null;
   /** Every block of the inspector with its section: what `applySections` shows or hides for the view. */
   private blocks: Block[] = [];
+  /** The question Escape asks before closing over an experiment with overrides in force, and what had the focus before it. */
+  private question: HTMLElement | null = null;
+  private asked: HTMLElement | null = null;
   private readonly onKey = (event: KeyboardEvent): void => {
     const requested = shortcutView(event, !!this.createDevelopment);
     if (requested) {
@@ -91,7 +94,7 @@ export class EngineWorkspace {
     if (this.shell) {
       // Preserve native editing while preventing the cinematic handler from seeing a shadow host.
       if (isEditing(event)) { event.stopPropagation(); return; }
-      if (event.code === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); this.close(); }
+      if (event.code === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); this.escape(); }
       else if (event.shiftKey && event.code === 'KeyT' && this.createDevelopment) {
         event.preventDefault(); download('euforia-world-trace.csv', this.controller.trace?.toCsv() ?? 'time\n');
       }
@@ -111,8 +114,18 @@ export class EngineWorkspace {
     if (this.disposed || view === 'laboratories' && !this.createDevelopment) return;
     this.layout = nextLayout(this.layout, 'reveal');
     if (!this.shell) this.mount(); else this.arrange();
+    this.navigate(view);
+  }
+  /**
+   * The one way into a view, whoever asks: a shortcut, the sidebar, a link of the workspace, a start parameter.
+   * Entering Laboratories opens the laboratory (the one running as it is, else the one asked for); no view ends an
+   * experiment, changes its overrides or touches the audio source.
+   */
+  private navigate(view: WorkspaceView): void {
+    if (view === 'laboratories' && !this.createDevelopment) return;
+    this.dismiss();
     this.select(view);
-    if (view === 'laboratories') this.development?.startLab();
+    if (view === 'laboratories' && this.development?.openLab()) this.refresh();
   }
   private mount(): void {
     this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -123,12 +136,12 @@ export class EngineWorkspace {
     this.release = this.controller.acquire();
     const shell = this.shell = h('div', { class: 'euforia-workspace', role: 'region', ariaLabel: 'Euforia Engine Workspace' });
     const close = button('Chiudi', () => this.close(), 'Chiudi workspace · Esc');
-    const reports = labelled(button('', () => this.select('diagnostics'), 'Diagnostics & Reports'), 'pulse', 'Diagnostics');
+    const reports = labelled(button('', () => this.navigate('diagnostics'), 'Diagnostics & Reports'), 'pulse', 'Diagnostics');
     reports.className = 'ws-top-view';
     const sidebar = h('nav', { class: 'ws-sidebar', ariaLabel: 'Moduli del motore' });
     for (const [id, label, name] of VIEWS) {
       if (id === 'laboratories' && !this.createDevelopment) continue;
-      const item = button('', () => this.select(id), label);
+      const item = button('', () => this.navigate(id), label);
       item.setAttribute('aria-label', label); item.dataset.view = id;
       item.append(icon(name, 17), h('span', { class: 'ws-nav-label' }, label));
       this.nav.set(id, item); sidebar.append(item);
@@ -170,8 +183,8 @@ export class EngineWorkspace {
     // What has just come back into view shows the present, not what it showed when it was hidden.
     if (action) this.refresh();
   }
+  /** Shows a view. Presentation only: called by `navigate`, never by a control. */
   private select(view: WorkspaceView): void {
-    if (view === 'laboratories' && !this.createDevelopment) return;
     this.view = view;
     for (const [id, item] of this.nav) { if (id === view) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current'); }
     const entry = VIEWS.find(([id]) => id === view)!;
@@ -213,6 +226,8 @@ export class EngineWorkspace {
     this.record.setAttribute('aria-pressed', String(c.recording));
     const lab = this.development?.labName ?? null, overrides = this.development?.overrides ?? 0;
     this.labStatus.hidden = !lab && overrides === 0;
+    // The question is about overrides: once they are gone it has nothing to ask.
+    if (this.question && overrides === 0) this.dismiss();
     if (!this.labStatus.hidden) {
       writeText(this.labStatus, lab ? `Termina ${lab}` : 'Ripristina override');
       this.labStatus.title = `${lab ? 'Termina l\'esperimento' : 'Nessun laboratorio attivo'} · ripristina ${overrides} override temporanee · il workspace resta aperto`;
@@ -252,9 +267,37 @@ export class EngineWorkspace {
       this.state.replaceChildren(h('i', { class: 'ws-dot' }), label);
     }
   }
+  /** Escape: the question first if it is open, then a question if closing would undo overrides, else the workspace closes. */
+  private escape(): void {
+    const step = escapeStep(this.question !== null, this.development?.overrides ?? 0);
+    if (step === 'dismiss') this.dismiss(); else if (step === 'confirm') this.ask(); else this.close();
+  }
+  /** Asked once, never modal: the engine, the viewport and the workspace go on; Enter confirms, Escape or the other button stays. */
+  private ask(): void {
+    if (!this.shell || !this.development) return;
+    const lab = this.development.labName, overrides = this.development.overrides;
+    const leave = button('Chiudi e ripristina', () => this.close()), stay = button('Resta nel workspace', () => this.dismiss());
+    this.asked = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.question = h('div', { class: 'ws-confirm', role: 'alertdialog', ariaLabel: 'Chiudere il workspace?' },
+      h('p', {}, `${lab ? `${lab} attivo` : 'Esperimento in corso'}: chiudendo il workspace ${overrides === 1 ? 'viene ripristinata 1 override temporanea' : `vengono ripristinate ${overrides} override temporanee`}.`), leave, stay);
+    this.shell.append(this.question);
+    leave.focus();
+  }
+  private dismiss(): void {
+    if (!this.question) return;
+    this.question.remove(); this.question = null;
+    if (this.asked?.isConnected) this.asked.focus();
+    this.asked = null;
+  }
+  /**
+   * Close Workspace: the experiment is stopped (laboratory ended, overrides given back), then every tool is disposed
+   * of and the application's own stage goes back where it was.
+   */
   close(): void {
     if (!this.shell) return;
     clearInterval(this.timer); this.timer = 0;
+    this.question?.remove(); this.question = null; this.asked = null;
+    this.development?.stopExperiment();
     this.development?.dispose(); this.development = null;
     this.overview = null; this.health = null; this.blocks = [];
     this.dashboard?.dispose(); this.dashboard = null;

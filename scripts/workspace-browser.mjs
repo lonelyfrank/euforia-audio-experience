@@ -209,12 +209,33 @@ try {
     const lab = await station();
     assert.deepEqual(lab.overflow, [0, 0, 0], 'the laboratory fits the inspector');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.ws-inspector-body .engine')].length), 3, 'cockpit blocks live in the inspector');
+    assert.deepEqual(await sections(), await expected('laboratories', true), 'Laboratories holds the experiment, the laboratory and isolation');
+    // Switch View is not Stop Experiment: the laboratory, its override and its pinned world stay while another section is read...
+    const labState = () => page.evaluate(async () => { const { structuralLab } = await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts'); return [structuralLab.active, structuralLab.tuning.coherence, window.app.pinnedScene, window.app.audio.session === window.__session]; });
+    await page.evaluate(() => { window.__lab = document.querySelector('.ws-lab-grid'); window.__labScene = window.app.directionDebug.current; });
+    const running = await labState();
+    assert.deepEqual([running[0], running[1], running[3]], [true, 0.8, true]); assert.ok(running[2], 'the laboratory pins its world');
+    for (const view of ['world', 'audio', 'diagnostics']) { await navigate(view); assert.deepEqual(await labState(), running, `the laboratory survives ${view}`); }
+    assert.deepEqual(await sections(), await expected('diagnostics'), 'a running laboratory adds nothing to the other views');
+    // ...and the sidebar enters the laboratory already running, as Shift+E would: the same inspector, nothing built again.
+    await navigate('laboratories');
+    assert.deepEqual(await labState(), running);
+    assert.equal(await page.evaluate(() => document.querySelector('.ws-lab-grid') === window.__lab && document.querySelectorAll('.ws-lab-grid').length === 1 && window.app.directionDebug.current === window.__labScene), true, 'the running laboratory is reused, not started again');
+    // Escape over overrides in force asks once, without stopping anything; Escape again (or the other button) stays.
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.ws-confirm').count(), 1); assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Chiudi e ripristina');
+    await page.keyboard.press('Escape');
+    assert.deepEqual([await page.locator('.ws-confirm').count(), await page.locator('.euforia-workspace').count()], [0, 1], 'Escape closes the question first');
+    await page.keyboard.press('Escape'); await click('Resta nel workspace');
+    assert.deepEqual([await page.locator('.ws-confirm').count(), ...await labState()], [0, ...running], 'staying keeps the experiment as it was');
     await navigate('world');
-    assert.equal(await page.evaluate(async () => (await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts')).structuralLab.active), true);
     assert.equal(await page.getByRole('button', { name: 'Termina esperimento', exact: true }).count(), 0, 'one control ends the experiment');
     await click('Termina Structural Lab');
     assert.deepEqual(await page.evaluate(async () => { const { structuralLab } = await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts'); return [structuralLab.active, structuralLab.tuning.coherence, window.app.pinnedScene]; }), [false, null, null]);
-    await navigate('laboratories'); await page.getByLabel('Forma Matter').selectOption('wave');
+    // The sidebar and Shift+E are one path: entering Laboratories with none running opens the laboratory asked for.
+    await navigate('laboratories'); await page.locator('.ws-lab-grid').waitFor();
+    assert.deepEqual((await labState()).slice(0, 2), [true, null], 'the sidebar opens the laboratory, with no override left from the last one');
+    await page.getByLabel('Forma Matter').selectOption('wave');
     await navigate('diagnostics'); await page.getByLabel('Isolamento sperimentale primitive').evaluate(el => { el.append(new Option('test', 'test')); el.value = 'test'; el.dispatchEvent(new Event('change')); });
     await click('Reset isolamento');
     await page.getByLabel('Scenario replay').selectOption('silence'); await click('Avvia replay');
@@ -246,6 +267,19 @@ try {
     await page.keyboard.press('Shift+G');
     assert.equal(await page.locator('.euforia-workspace').count(), 0);
     assert.deepEqual(await page.evaluate(async () => { const { matterLab } = await import('/src/render-systems/forms/MatterForms.ts'); const { worldLab } = await import('/src/visual-engine/VisualWorld.ts'); return [matterLab.form, worldLab.only, window.app.directionDebug.diagnostics, window.__originalCanvas.closest('.app-stage').parentElement.id]; }), ['auto', null, null, 'app']);
+    assert.deepEqual((await labState()).slice(0, 3), [false, null, null], 'closing the workspace ends the laboratory and gives the pin back');
+    // Structural → Solid → close: each laboratory gives back what it took, and Escape + Enter is the confirmed way out.
+    await page.keyboard.press('Shift+E'); await page.locator('.ws-lab-grid').waitFor();
+    await click('Avvia Solid Dynamics'); await page.locator('.ws-solid').waitFor();
+    const solidState = () => page.evaluate(async () => { const { solidLab } = await import('/src/visual-engine/structural/SolidTypes.ts'); const { structuralLab } = await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts');
+      return [structuralLab.active, solidLab.active, solidLab.tuning.coherence, window.app.audio.experience.calibration.enabled, document.querySelectorAll('.ws-lab-grid').length]; });
+    assert.deepEqual(await solidState(), [false, true, null, true, 1], 'one laboratory at a time, the first one left clean');
+    await page.getByLabel('Override Environment coherence').check();
+    assert.equal(await page.locator('.ws-top').getByRole('button', { name: 'Termina Solid Dynamics', exact: true }).count(), 1, 'the toolbar names the laboratory it ends');
+    await page.getByLabel('Override Environment coherence').evaluate(el => el.blur());
+    await page.keyboard.press('Escape'); await page.locator('.ws-confirm').waitFor(); await page.keyboard.press('Enter');
+    assert.equal(await page.locator('.euforia-workspace').count(), 0, 'Escape, then Enter, closes over an experiment');
+    assert.deepEqual([...(await solidState()).slice(0, 4), await page.evaluate(() => window.app.pinnedScene)], [false, false, null, true, null], 'no laboratory state left after closing');
     await page.waitForTimeout(1500);
     const memory = () => page.evaluate(() => { const r = window.app.directionDebug.renderer; return { ...r.info.memory, programs: r.info.programs.length, lost: r.getContext().isContextLost() }; });
     const gpu = await memory();
