@@ -72,7 +72,8 @@ interrompe gli altri probe.
 
 ## Controlli
 
-- **REC** inizia una nuova traccia; premuto di nuovo conserva la registrazione.
+- **REC** (barra del workspace: è il solo controllo) inizia una nuova traccia; premuto di
+  nuovo conserva la registrazione. Il pannello ne mostra stato, campioni e segmenti.
 - **Pausa acquisizione** ferma il campionamento nello store; il motore continua.
   I contatori del renderer condivisi con gli altri strumenti restano disponibili.
 - **Freeze vista** ferma esclusivamente l'aggiornamento del pannello.
@@ -85,14 +86,21 @@ interrompe gli altri probe.
   texture posizione/velocità, al massimo una volta al secondo per simulazione.
   È sincrono e può rallentare il frame; è separato dal profiling. Il prefisso non è
   un campione statistico della popolazione. Half-float: fallback indisponibile.
-- **Isolamento** deriva la lista da `VisualWorld.mounted` e usa `worldLab.only`;
-  è un intervento sperimentale di visibilità, ripristinato all'ultima chiusura.
+- **Isolamento** deriva la lista da `VisualWorld.mounted` e scrive `worldLab.only` solo
+  tramite `controller.isolate` (registro delle override: un proprietario, un ripristino,
+  quando l'esperimento termina o al più tardi all'ultima chiusura). È un intervento
+  sperimentale di visibilità e **non azzera le misure**: apre un segmento.
 - **Parità** invoca gli harness originali in un contesto WebGL separato, con report
   scaricato su richiesta. Blocca temporaneamente il main thread: non è un benchmark live.
 
-Cambiare dettaglio, profiling, readback o isolamento resetta la traccia: non si
-mescolano silenziosamente modalità differenti. Cambi scena/risoluzione/qualità
-all'interno di REC marcano `mixed-configuration`: il confronto rifiuta i delta.
+Cambiare dettaglio, profiling o readback resetta la traccia: cambia lo strumento di
+misura. Un cambio di **configurazione** (isolamento, forma Matter, tunnel, override di un
+laboratorio, impostazioni) non resetta nulla: scrive `configuration-change` in timeline
+(cosa era, cosa è, chi l'ha chiesto) e apre un segmento; i campioni portano il proprio in
+`diagnostics.segment`, il report elenca i segmenti in `segments`. Cambi di
+scena/risoluzione/qualità/configurazione all'interno di REC marcano
+`mixed-configuration`: il confronto rifiuta i delta. Regole complete:
+[engine-workspace](engine-workspace.md#isolamento-segmenti-e-reset).
 Il frontend non mette in pausa la sorgente live o il rendering tramite questi controlli.
 
 ## Timeline e ispettori
@@ -120,8 +128,9 @@ Pausa replay agisce solo su questo worker alle sue finestre di avanzamento; Stop
 termina il worker. La sorgente live continua. Nessuna nuova sorgente file di prodotto.
 
 Dopo il replay, gli export usano il report replay; **Usa dati live** ripristina quello
-live. JSON contiene metadati, campioni, eventi e limiti; CSV usa righe tipizzate
-metadata/metric/event/limitation; Markdown mostra metadati, ultimo campione e timeline.
+live. JSON contiene metadati, campioni, eventi, limiti e segmenti di configurazione; CSV usa
+righe tipizzate metadata/metric/event/limitation/segment; Markdown mostra metadati, ultimo
+campione, segmenti (quando più di uno) e timeline.
 Nessun nome dispositivo o PCM viene esportato. `VITE_GIT_SHA` consente di fornire lo
 SHA in sviluppo; senza valore è `null`. Il renderer GPU è quello esposto normalmente
 da WebGL, senza richiedere estensioni di fingerprinting.

@@ -78,6 +78,8 @@ Le metriche non presenti nella scena corrente restano indisponibili.
 | `render.gpuMemoryTotal/renderTargetsTotal/actuallyVisibleParticles` | non esposti in modo completo | unavailable | null |
 | `diagnostics.collection/ui/readback` | durata CPU dell'operazione | ms render | collection/UI: operazione precedente; readback: attuale |
 | `diagnostics.bufferBytes` | byteLength dei buffer numerici | bytes render | esclude DOM, oggetti, WorldTrace e runtime |
+| `diagnostics.segment` | indice del segmento di configurazione del campione | index render | riparte da 0 a ogni reset; i segmenti sono in `report.segments` |
+| `diagnostics.segmentAge` | tempo trascorso sotto la configurazione corrente | s render | una statistica a finestra è di una sola configurazione quando supera la sua finestra |
 
 ## Unità esplicite per campo
 

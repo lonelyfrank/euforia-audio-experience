@@ -104,7 +104,7 @@ export class DiagnosticsDashboard {
       const input = h('input', { type: 'checkbox', checked, onchange: () => action(input.checked) });
       return h('label', {}, input, label);
     };
-    const select = this.domainSelect = h('select', { ariaLabel: 'Dominio diagnostico', onchange: () => { this.picked = select.value as Domain; this.setDomains(null); } },
+    const select = this.domainSelect = h('select', { ariaLabel: 'Dominio diagnostico', onchange: () => { this.picked = select.value as Domain; this.setDomains(null); this.refresh(); } },
       ...DOMAINS.map(x => new Option(x, x)));
     this.primitives.onchange = () => controller.isolate(this.primitives.value ? this.primitives.value.split(',') : null, 'diagnostics');
     const gpu = toggle('Profiling GPU', on => controller.setProfiling(on), controller.renderer?.timer.enabled);
@@ -172,7 +172,10 @@ export class DiagnosticsDashboard {
     if (m.value === row.value && m.status === row.status) return;
     row.value = m.value; row.status = m.status; row.cell.data = format(m);
   }
-  /** The domains whose rows are shown; `null` where the domain is chosen (Diagnostics & Reports): the one last picked. */
+  /**
+   * The domains whose rows are shown; `null` where the domain is chosen (Diagnostics & Reports): the one last picked.
+   * The rows themselves are placed by the next refresh, once, when somebody can see them.
+   */
   setDomains(domains: readonly Domain[] | null): void {
     const scope = domains ?? [this.picked], key = scope.join('+'), current = this.scope.join('+');
     this.domainSelect.value = this.picked;
@@ -190,7 +193,6 @@ export class DiagnosticsDashboard {
         this.seen.observe(row.cell.parentElement!.parentElement!);
       }
     }
-    this.refresh();
   }
   /** Advances the plots' histories. Called at the workspace's cadence whether or not anything of this is shown. */
   sample(): void {

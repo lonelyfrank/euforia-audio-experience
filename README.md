@@ -542,7 +542,10 @@ materia, geometria e renderer; **REC**, pausa della raccolta e freeze della vist
 sono distinti. Export JSON/CSV/Markdown e confronto di acquisizioni; replay
 sintetici a 30/60/144 FPS nel worker, parità GPU e readback materia su richiesta.
 Audio (Shift+D), Laboratories (Shift+E) e Diagnostics (Shift+G) sono viste dello stesso
-[workspace](docs/engine-workspace.md), con un unico controller e il canvas originale;
+[workspace](docs/engine-workspace.md), con un unico controller e il canvas originale: ogni
+vista mostra solo i propri blocchi, entrare in Laboratories apre il laboratorio e cambiare
+vista non lo termina, e un cambio di configurazione (isolare una primitiva, un'override)
+non azzera le misure ma apre un segmento nel report;
 **Shift+T esporta WorldTrace solo dopo aver avviato REC**. A diagnostica chiusa
 non rimangono tracce o query GPU, e nessun codice diagnostico gira nel frame. Dettagli e limiti: [guida](docs/engine-diagnostics.md),
 [metriche](docs/diagnostics-metrics.md), [audit](docs/diagnostics-audit.md),

@@ -7,7 +7,19 @@ const browser = await chromium.launch({ executablePath: process.argv[4] || proce
   args: ['--use-angle=gl-egl', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 await page.addInitScript(() => {
-  window.__resources = { intervals: 0, observers: 0 };
+  window.__resources = { intervals: 0, observers: 0, listeners: 0 };
+  // Listeners on the window and the document that outlive their call (not `once`, not tied to a signal), each counted once.
+  const ids = new WeakMap(), held = new Set(); let nextId = 0;
+  const listenerKey = (target, type, listener, options) => { if (!ids.has(listener)) ids.set(listener, ++nextId); return `${target === window ? 'window' : 'document'}|${type}|${ids.get(listener)}|${typeof options === 'boolean' ? options : !!options?.capture}`; };
+  for (const target of [window, document]) {
+    const add = target.addEventListener.bind(target), remove = target.removeEventListener.bind(target);
+    target.addEventListener = (type, listener, options) => { if (listener && !(typeof options === 'object' && (options?.once || options?.signal))) { held.add(listenerKey(target, type, listener, options)); window.__resources.listeners = held.size; } return add(type, listener, options); };
+    target.removeEventListener = (type, listener, options) => { if (listener) { held.delete(listenerKey(target, type, listener, options)); window.__resources.listeners = held.size; } return remove(type, listener, options); };
+  }
+  // Animation frames asked for: a panel with a loop of its own would ask for more than the engine's one per frame.
+  window.__raf = 0;
+  const frame = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = callback => { window.__raf++; return frame(callback); };
   const intervals = new Set(), startInterval = window.setInterval.bind(window), stopInterval = window.clearInterval.bind(window);
   window.setInterval = (...args) => { const id = startInterval(...args); intervals.add(id); window.__resources.intervals = intervals.size; return id; };
   window.clearInterval = id => { intervals.delete(id); window.__resources.intervals = intervals.size; stopInterval(id); };
@@ -56,6 +68,8 @@ const station = () => page.evaluate(() => {
     canvas: [window.__originalCanvas.clientWidth, window.__originalCanvas.clientHeight], inner: [innerWidth, innerHeight], dpr: Math.min(devicePixelRatio, 2), resizes: window.__resizes };
 });
 const settle = () => page.waitForTimeout(350);
+/** Animation frames asked for in one second, and the timers, observers and listeners alive now. */
+const load = async () => { const before = await page.evaluate(() => window.__raf); await page.waitForTimeout(1000); return { raf: await page.evaluate(() => window.__raf) - before, ...await page.evaluate(() => ({ ...window.__resources })) }; };
 /** Which sections of the inspector are on screen, by one witness node each; a section this build does not have is absent. */
 const WITNESS = { health: '.ws-metrics .ws-spark', overview: ':scope > .ws-section > .ws-section-body > .ws-metrics-text', audio: '.ws-audio .ws-bars', charts: '.ws-debug canvas', experiment: '[aria-label="Forma Matter"]', laboratory: '.ws-lab-grid',
   acquisition: '>nav', plot: '>canvas', registry: '>.labels', isolation: '>.experimental', replay: '>[aria-label="Scenario replay"]', reports: '>[aria-label="Carica report baseline JSON"]', timeline: '>footer' };
@@ -71,8 +85,10 @@ const report = async () => {
 };
 try {
   await page.goto(url);
-  await page.waitForFunction(() => window.app);
-  await page.evaluate(async () => {
+  // A production build exposes nothing of the application: only what is on screen can be driven.
+  if (mode === 'release') await page.locator('.app-canvas canvas').waitFor();
+  else await page.waitForFunction(() => window.app);
+  if (mode !== 'release') await page.evaluate(async () => {
     const { settingsStore } = await import('/src/stores/settingsStore.ts');
     settingsStore.set({ quality: 'low', scene: 'spectrum', direction: 'manual', rigMode: 'preset' });
     await window.app.playTestSignal('beat124');
@@ -91,9 +107,100 @@ try {
     assert.equal(await page.evaluate(() => window.__webglCreations), 1);
     assert.deepEqual(errors, []);
     await writeFile(output, JSON.stringify({ reports, webglContexts: 1, errors }, null, 2));
+  } else if (mode === 'release') {
+    // A production build (vite build + vite preview): nothing of the workspace until asked, and no development control ever.
+    assert.equal(await page.locator('.euforia-workspace').count(), 0);
+    await page.keyboard.press('Shift+G'); await page.keyboard.press('Shift+D'); await page.keyboard.press('Shift+E'); await settle();
+    assert.equal(await page.locator('.euforia-workspace').count(), 0, 'the shortcuts do nothing before the diagnostics are asked for');
+    await page.keyboard.press('Control+Alt+Shift+D'); await page.locator('.euforia-workspace').waitFor();
+    assert.equal(await page.locator('h1').first().textContent(), 'Diagnostics & Reports');
+    const held = { diagnostics: ['acquisition', 'plot', 'registry', 'replay', 'reports', 'timeline'], audio: ['registry'], experience: ['registry', 'timeline'], world: ['plot', 'registry'], matter: ['registry'], render: ['health', 'plot', 'registry'], overview: ['health', 'overview'] };
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.ws-sidebar [data-view]')].map(el => el.dataset.view).sort()), Object.keys(held).sort(), 'no Laboratories in a release build');
+    for (const [view, expected] of Object.entries(held)) { await navigate(view); await settle(); assert.deepEqual(await sections(), expected, `${view} in a release build`); }
+    assert.deepEqual(await page.evaluate(dashboard => [document.querySelector('.ws-deck')?.childElementCount ?? 0, document.querySelectorAll('.ws-development, .ws-audio, .ws-lab-grid, .ws-lab-stop:not([hidden]), [aria-label="Forma Matter"], [aria-label="Segnale live di test"]').length,
+      document.querySelector(dashboard).shadowRoot.querySelectorAll('.experimental, [aria-label="Isolamento sperimentale primitive"]').length], DASHBOARD), [0, 0, 0], 'no development block, deck, experiment or isolation control');
+    await page.keyboard.press('Shift+D'); await page.keyboard.press('Shift+E'); await settle();
+    assert.equal(await page.locator('h1').first().textContent(), 'Overview', 'Shift+D and Shift+E stay inert');
+    await page.keyboard.press('Escape'); assert.equal(await page.locator('.euforia-workspace').count(), 0, 'Escape closes without a question');
+    await page.keyboard.press('Shift+G'); assert.equal(await page.locator('.euforia-workspace').count(), 1, 'Shift+G reopens once loaded');
+    await page.keyboard.press('Shift+G');
+    assert.deepEqual([await page.locator('.euforia-workspace').count(), await page.locator('.app-canvas canvas').count(), await page.evaluate(() => window.__webglCreations)], [0, 1, 1]);
+    assert.deepEqual(errors, []);
+    await writeFile(output, JSON.stringify({ result: 'pass', checks: ['lazy load', 'seven views', 'sections per view', 'no development control', 'Shift+D/E inert', 'Escape and Shift+G', 'one canvas and context'], errors }, null, 2));
+  } else if (mode === 'profile') {
+    // What the tools cost by their own measures (diagnostics.collection, diagnostics.ui), per situation: REC on, five seconds each, read from the exported samples.
+    await page.evaluate(() => { const host = window.__originalCanvas.parentElement; host.style.width = '960px'; host.style.height = '540px'; });
+    await page.keyboard.press('Shift+G'); await page.locator('.euforia-workspace').waitFor();
+    await page.locator('.ws-top').getByRole('button', { name: 'REC', exact: true }).click();
+    const result = [], fold = () => page.locator('.ws-top').getByRole('button', { name: 'Inspector', exact: true }).click();
+    const cases = [['diagnostics', () => navigate('diagnostics')], ['overview', () => navigate('overview')], ['audio', () => navigate('audio')], ['experience · charts', () => navigate('experience')], ['render', () => navigate('render')],
+      ['audio · inspector closed', async () => { await navigate('audio'); await fold(); }, fold],
+      ['laboratories · lab active', () => page.keyboard.press('Shift+E')], ['audio · lab active', () => navigate('audio')],
+      ['30 view changes · lab active', () => {}, null, async () => { for (let i = 0; i < 10; i++) { await navigate('audio'); await navigate('world'); await navigate('diagnostics'); } }]];
+    for (const [name, enter, leave, during] of cases) {
+      await enter(); await page.waitForTimeout(1500);
+      const from = await page.evaluate(() => performance.now() / 1000);
+      await Promise.all([page.waitForTimeout(5000), during?.()]);
+      const to = await page.evaluate(() => performance.now() / 1000);
+      await leave?.(); await navigate('diagnostics');
+      const samples = (await report()).samples.filter(sample => sample.timestamp >= from && sample.timestamp <= to);
+      const stat = id => { const values = samples.map(sample => sample.metrics.find(m => m.id === id)?.value).filter(Number.isFinite); return values.length ? { mean: values.reduce((a, b) => a + b, 0) / values.length, max: Math.max(...values) } : null; };
+      result.push({ name, samples: samples.length, collectionMs: stat('diagnostics.collection'), uiMs: stat('diagnostics.ui'), frameP95: stat('frame.p95'), frameOver33: stat('frame.over33') });
+    }
+    await writeFile(output, JSON.stringify({ mode, url, renderHost: '960x540 CSS px', quality: 'low', signal: 'beat124', method: '1.5 s settling + 5 s per case with REC on; means of the samples exported for that window; machine not isolated', result, errors }, null, 2));
+  } else if (mode === 'soak') {
+    // A long session of ordinary use on the test signal (WORKSPACE_MINUTES, default 6): navigation, a recording with an isolation,
+    // a laboratory with an override, closing. After every round, with the workspace closed and the heap collected: what grew, what was left.
+    // WORKSPACE_IDLE=1 is the control: the same engine for the same time, the workspace never opened.
+    const minutes = Number(process.env.WORKSPACE_MINUTES || 6), idle = !!process.env.WORKSPACE_IDLE;
+    await page.evaluate(async () => { (await import('/src/stores/settingsStore.ts')).settingsStore.set({ scene: 'matter-field' }); });
+    // The scene that left is released when its crossfade ends: the first snapshot is of the scene alone.
+    await page.waitForTimeout(12000);
+    const started = Date.now();
+    const cdp = await page.context().newCDPSession(page); await cdp.send('Performance.enable');
+    const snapshot = async () => {
+      await cdp.send('HeapProfiler.collectGarbage');
+      const m = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(x => [x.name, x.value]));
+      return { heapMB: m.JSHeapUsedSize / 1048576, nodes: m.Nodes, domListeners: m.JSEventListeners, ...await page.evaluate(async () => { const r = window.app.directionDebug.renderer; const { matterLab } = await import('/src/render-systems/forms/MatterForms.ts'); const { worldLab } = await import('/src/visual-engine/VisualWorld.ts');
+        return { ...window.__resources, geometries: r.info.memory.geometries, textures: r.info.memory.textures, programs: r.info.programs.length, session: window.app.audio.session, pinned: window.app.pinnedScene, form: matterLab.form, only: worldLab.only && [...worldLab.only].join(','), scene: window.app.directionDebug.current?.source.preset.name }; }) };
+    };
+    await page.evaluate(() => { window.__frames = []; let last = performance.now(); const frame = now => { window.__frames.push(now - last); last = now; requestAnimationFrame(frame); }; requestAnimationFrame(frame); });
+    const pacing = () => page.evaluate(() => { const f = window.__frames.splice(0).sort((a, b) => a - b); return { frames: f.length, p50: f[Math.ceil(f.length * 0.5) - 1], p95: f[Math.ceil(f.length * 0.95) - 1], p99: f[Math.ceil(f.length * 0.99) - 1], over25: f.filter(x => x > 25).length / f.length }; });
+    const first = await snapshot(), rounds = []; await pacing();
+    for (let round = 1; Date.now() - started < minutes * 60000; round++) {
+      if (idle) { await page.waitForTimeout(9000); rounds.push({ round, minute: (Date.now() - started) / 60000, segments: 3, pacing: await pacing(), closed: await snapshot() }); continue; }
+      // A · continuous navigation
+      await page.keyboard.press('Shift+D'); await page.locator('.euforia-workspace').waitFor();
+      for (const view of ['render', 'world', 'audio']) { await navigate(view); await page.waitForTimeout(700); }
+      await page.keyboard.press('Shift+G'); await page.waitForTimeout(700);
+      // C · record, isolate a primitive, give it back
+      await page.locator('.ws-top').getByRole('button', { name: 'REC', exact: true }).click(); await page.waitForTimeout(1000);
+      await page.getByLabel('Isolamento sperimentale primitive').selectOption({ index: 1 }); await page.waitForTimeout(1000);
+      await click('Reset isolamento'); await page.waitForTimeout(600);
+      const segments = (await report()).segments.length;
+      await page.locator('.ws-top').getByRole('button', { name: 'REC', exact: true }).click();
+      // B · a laboratory, an override, other views, back, stop
+      await page.keyboard.press('Shift+E'); await page.locator('.ws-lab-grid').waitFor();
+      if (round % 2) { await page.getByLabel('Override coherence').check(); await page.getByLabel('Forma Matter').selectOption('wave'); }
+      else { await click('Avvia Solid Dynamics'); await page.locator('.ws-solid').waitFor(); await click('Impulse'); }
+      await navigate('world'); await page.waitForTimeout(700); await navigate('laboratories'); await page.waitForTimeout(700);
+      await page.locator('.ws-lab-stop').click(); await page.waitForTimeout(400);
+      await page.locator('.ws-top').getByRole('button', { name: 'Chiudi', exact: true }).click();
+      await page.waitForFunction(programs => window.app.directionDebug.renderer.info.programs.length <= programs, first.programs, { timeout: 20000 }).catch(() => {});
+      rounds.push({ round, minute: (Date.now() - started) / 60000, segments, pacing: await pacing(), closed: await snapshot() });
+    }
+    const last = rounds.at(-1).closed, held = ({ intervals, observers, listeners, session, pinned, form, only, scene }) => ({ intervals, observers, listeners, session, pinned, form, only, scene });
+    const gpu = ({ geometries, textures, programs }) => ({ geometries, textures, programs });
+    await writeFile(output, JSON.stringify({ mode, url, minutes, idle, first, rounds, errors }, null, 2));
+    assert.deepEqual(held(last), held(first), 'timers, observers, listeners, audio session, pin, overrides and scene are as before the session');
+    // A laboratory gives the product's scene back as a new instance, which need not hold what the first one had gathered:
+    // the GPU resources are compared from the first return on.
+    assert.deepEqual(gpu(last), gpu(rounds[0].closed), 'GPU resources do not grow from one round to the next');
+    assert.ok(rounds.every(r => r.segments === 3), 'every recording was segmented by its isolation and restore');
+    assert.deepEqual(errors, []);
   } else if (mode === 'acceptance') {
     assert.equal(await page.locator('.euforia-workspace').count(), 0);
-    const resources = await page.evaluate(() => ({ ...window.__resources }));
+    const resources = await page.evaluate(() => ({ ...window.__resources })), idle = await load();
     await page.evaluate(() => {
       window.__initialScene = window.app.directionDebug.current;
       // Test-only counter on the one renderer: how many times the workspace made it size its targets.
@@ -210,6 +317,10 @@ try {
     assert.deepEqual(lab.overflow, [0, 0, 0], 'the laboratory fits the inspector');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.ws-inspector-body .engine')].length), 3, 'cockpit blocks live in the inspector');
     assert.deepEqual(await sections(), await expected('laboratories', true), 'Laboratories holds the experiment, the laboratory and isolation');
+    // The whole workspace, a laboratory included, runs on one timer and on the engine's own frame loop; its key routing is one listener, there since start.
+    const working = await load();
+    assert.deepEqual([working.intervals, working.listeners], [idle.intervals + 1, idle.listeners], 'one shared timer, no listener of its own while open');
+    assert.ok(working.raf <= idle.raf * 1.15 + 2, `no animation loop besides the engine's (${working.raf} frames asked in a second, ${idle.raf} with the workspace closed)`);
     // Switch View is not Stop Experiment: the laboratory, its override and its pinned world stay while another section is read...
     const labState = () => page.evaluate(async () => { const { structuralLab } = await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts'); return [structuralLab.active, structuralLab.tuning.coherence, window.app.pinnedScene, window.app.audio.session === window.__session]; });
     await page.evaluate(() => { window.__lab = document.querySelector('.ws-lab-grid'); window.__labScene = window.app.directionDebug.current; });
@@ -312,11 +423,15 @@ try {
     // The laboratory above pinned another world and gave the scene back: from here on the layer must stay the same object.
     await page.evaluate(() => { window.__cycleScene = window.app.directionDebug.current; });
     for (let i = 0; i < 6; i++) { await page.keyboard.press('Shift+D'); await page.keyboard.press('Shift+G'); await page.keyboard.press('Shift+G'); }
-    await page.waitForTimeout(500);
-    assert.deepEqual(await memory(), gpu, 'no GPU resource left behind by opening and closing');
+    // The same with a laboratory each time, alternating the two: nothing of one may be left for the next.
+    for (let i = 0; i < 4; i++) { await page.keyboard.press('Shift+E'); await page.locator('.ws-lab-grid').waitFor(); if (i % 2) { await click('Avvia Solid Dynamics'); await page.locator('.ws-solid').waitFor(); } await page.keyboard.press('Shift+E'); }
+    // A laboratory's layer is released when its crossfade ends, a few seconds after it left: waited for, then compared.
+    await page.waitForFunction(programs => window.app.directionDebug.renderer.info.programs.length <= programs, gpu.programs, { timeout: 15000 }).catch(() => {});
+    assert.deepEqual(await memory(), gpu, 'no GPU resource left behind by opening and closing, laboratories included');
     assert.equal(gpu.lost, false);
-    assert.deepEqual(await page.evaluate(() => [window.app.audio.session === window.__session, window.app.audio.experience.presented.world.time > window.__worldTime, window.app.directionDebug.current === window.__cycleScene,
-      window.__originalCanvas.clientWidth === innerWidth && window.__originalCanvas.clientHeight === innerHeight]), [true, true, true, true], 'audio session, world, scene and full-window stage survive the workspace');
+    assert.deepEqual(await page.evaluate(() => [window.app.audio.session === window.__session, window.app.audio.experience.presented.world.time > window.__worldTime, window.app.pinnedScene,
+      window.app.directionDebug.current.source.preset.name, window.__originalCanvas.clientWidth === innerWidth && window.__originalCanvas.clientHeight === innerHeight]),
+    [true, true, null, 'Spectrum', true], 'audio session, world, the product\'s scene and the full-window stage survive the workspace');
     // The test signal is an override like the others: closing gives back what played before, and restarts the shared
     // capture (a new audio session) only if something else is playing by then.
     const playing = signal => page.waitForFunction(label => window.app.audio.state.deviceName === label && window.app.audio.state.status === 'running', signal);
@@ -333,11 +448,12 @@ try {
     assert.equal(await page.locator('.euforia-workspace').count(), 0);
     assert.equal(await page.locator('.app-canvas canvas').count(), 1);
     assert.equal(await page.evaluate(() => window.__webglCreations), 1);
-    assert.deepEqual(await page.evaluate(() => ({ ...window.__resources })), resources, 'observers and intervals restored after close');
+    assert.deepEqual(await page.evaluate(() => ({ ...window.__resources })), resources, 'observers, intervals and listeners restored after close');
     assert.deepEqual(errors, []);
     await writeFile(output, JSON.stringify({ result: 'pass', checks: ['shortcuts', 'single canvas and renderer', 'REC continuity', 'freeze', 'pause', 'baseline import', 'compare', 'JSON CSV MD export', 'shadow input guard', 'lab lifecycle', 'override reset', 'pin restore', 'replay continuity', 'resize', 'collapse', 'repeated close/reopen',
       'three-column station on Shift+D', 'viewport over the capture deck', 'inspector holds tiles/audio panels/registry', 'cockpit tokens and Geist', 'audio panels live and reused', 'inspector fold/wide/viewport-alone keep state', 'one renderer resize per layout step',
-      'narrow overlay', 'GPU resources and session unchanged after close'], errors }, null, 2));
+      'narrow overlay', 'GPU resources and session unchanged after close', 'sections per view', 'one REC and one end-experiment control', 'sidebar opens the laboratory like Shift+E', 'laboratory and overrides survive navigation',
+      'Escape asks over overrides', 'Structural ↔ Solid leave no state', 'one owner for isolation, Matter form and test signal', 'isolation keeps the measures and opens a segment', 'timeline in time order', 'one timer, no extra listener or animation loop'], errors }, null, 2));
   } else {
     await page.evaluate(() => { const host = window.__originalCanvas.parentElement; host.style.width = '960px'; host.style.height = '540px'; });
     const cdp = await page.context().newCDPSession(page); await cdp.send('Performance.enable');
@@ -370,7 +486,10 @@ try {
       await measure('laboratories', async()=>page.keyboard.press('Shift+E'));
       await measure('lab-override', async()=>{ await page.getByLabel('Override coherence').check(); await page.getByLabel('coherence',{exact:true}).fill('0.8'); });
       await measure('rapid-navigation', async()=>{}, async()=>{ for(let i=0;i<10;i++){await navigate('audio');await navigate('world');await navigate('diagnostics')} });
+      await measure('inspector-closed', async()=>{ await navigate('audio'); await page.locator('.ws-top').getByRole('button',{name:'Inspector',exact:true}).click(); });
       await measure('closed-again', async()=>click('Chiudi'));
+      // The renderer while the workspace is opened and closed over and over: its stage is moved and sized each time.
+      await measure('open-close', async()=>{}, async()=>{ for(let i=0;i<8;i++){ await page.keyboard.press('Shift+G'); await page.waitForTimeout(350); await page.keyboard.press('Shift+G'); await page.waitForTimeout(350); } });
       await cdp.send('HeapProfiler.collectGarbage');
       const afterGC = await metrics();
       result.push({ name: 'closed-after-GC', heapMB: afterGC.JSHeapUsedSize/1048576, nodes: afterGC.Nodes, resources: await page.evaluate(() => window.__resources) });

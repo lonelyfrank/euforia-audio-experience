@@ -283,7 +283,9 @@ poterlo provare in silenzio.
 
 **Laboratories → Avvia Solid Dynamics** (oppure `?engine=solid`). Solo DEV, fuori dal registry
 delle scene: non compare nell'anello Scene, lo show non lo sceglie, nessuna impostazione lo salva.
-Un laboratorio alla volta: avviarne uno termina l'altro e ripristina il pin precedente.
+Un laboratorio alla volta: avviarne uno termina l'altro e ripristina il pin precedente. Entrare
+in Laboratories (Shift+E o sidebar) apre il laboratorio in corso o l'ultimo richiesto; cambiare
+vista non lo termina ([ciclo di vita](engine-workspace.md#ciclo-di-vita-dei-laboratori)).
 
 | Colonna | Contenuto |
 |---|---|

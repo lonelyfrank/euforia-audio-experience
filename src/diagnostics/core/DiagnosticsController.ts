@@ -243,7 +243,8 @@ export class DiagnosticsController {
   }
   report(): DiagnosticReport {
     const samples = this.store?.exportSamples() ?? [];
-    if (!samples.length && this.store?.registry.metrics.length) samples.push({ timestamp: performance.now() / 1000, metrics: this.store.registry.metrics.map(m => ({ ...m })) });
+    // Nothing retained: the present alone, dated like everything else on the clock of the frame it was observed in.
+    if (!samples.length && this.store?.registry.metrics.length) samples.push({ timestamp: this.now, metrics: this.store.registry.metrics.map(m => ({ ...m })) });
     // Only the configurations the retained samples were measured under: from the one in force at the oldest sample.
     let first = this.segments.length - 1;
     while (first > 0 && this.segments[first].from > samples[0]?.timestamp) first--;

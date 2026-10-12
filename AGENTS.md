@@ -109,6 +109,15 @@
   Nessun tempo proprio: follower esatti per un ingresso tenuto nel frame, età di eventi datati (`EventCursor`), fermo quando il mondo è
   fermo. Bassi, alti, luce e avanzamento non cedono mai. `balance: 0` è il Tunnel com'era e non chiama il coordinatore: `architecture`
   in `topology.ts` è la legge di `tunnelTopology`, cambiarle insieme. `tunnelLab` è solo DEV.
+- Engine Workspace (`docs/engine-workspace.md`): la vista decide cosa mostra l'inspector (`VIEW_SECTIONS` + `applySections` in
+  `diagnostics/workspace/sections.ts`); un componente costruisce i blocchi e ne dichiara la sezione, non si mostra né si nasconde da sé, e
+  nascondere non ferma campionamento né storici. Un solo ingresso alle viste (`EngineWorkspace.navigate`): entrare in Laboratories apre
+  il laboratorio, nessuna vista lo termina o ne cambia le override. Il ciclo di vita è `Experiment` (open / stop / dispose). Le override
+  temporanee che non sono di un laboratorio passano solo da `controller.overrides` (`OverrideLedger`) e `controller.isolate`: mai scrivere
+  `worldLab.only`, `matterLab.form` o `tunnelLab.balance` altrove. Un cambio di configurazione apre un segmento (`ConfigurationSegment`,
+  `diagnostics.segment`) e non azzera: reset solo per nuova sessione audio, avvio REC, cambio dello strumento (Detailed, profiling,
+  readback) e `reset()` esplicito. Un solo timer a 5 Hz, nessun RAF o listener dei pannelli; REC e fine esperimento hanno un solo
+  controllo, nella toolbar. Ripetere `scripts/workspace-browser.mjs acceptance` (e `release`) dopo ogni modifica.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente e quella dell'analisi delle
   scene, non hop/beat. Le soglie (`DspBudget.ts` e `src-tauri/src/audio.rs`) sono le stesse nei due
   host: cambiarle insieme. Il wire e il WASM versionato devono corrispondere al backend:

@@ -483,4 +483,12 @@ Geist, `panel`/`tile`/`meter` in `components.ts`, grafici SVG in `charts.ts`, ic
 `AudioFrame`, `MusicState` e il frame Rust già pubblicati) e `DebugOverlay` disegna solo
 Experience, World e Matter. Sotto il viewport, in DEV, un deck di altezza fissa (`Audio Input`,
 `Live Input`) uguale in ogni vista: cambiare sezione non ridimensiona il renderer.
+Dal 12 ottobre la vista decide cosa mostra l'inspector (`workspace/sections.ts`:
+`VIEW_SECTIONS` + `applySections`; i componenti dichiarano la sezione dei propri blocchi),
+ogni ingresso a una vista passa da `EngineWorkspace.navigate` (entrare in Laboratories apre
+il laboratorio, nessuna vista lo termina), il ciclo di vita dell'esperimento è
+`workspace/Experiment.ts` (open / stop / dispose), le override temporanee che non sono di un
+laboratorio hanno un solo proprietario (`core/Overrides.ts`, `controller.overrides`,
+`controller.isolate`) e un cambio di configurazione apre un segmento nelle misure invece di
+azzerarle (`ConfigurationSegment`, `diagnostics.segment`).
 Mapping completo, istruzioni e limiti delle misure: [engine-workspace](engine-workspace.md).

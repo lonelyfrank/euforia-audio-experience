@@ -1,0 +1,1825 @@
+{
+ "date": "2026-10-12",
+ "base": "181870c",
+ "work": "workspace-lab-reliability",
+ "host": "Fedora 44, i7-10510U, PL1 17 W, load average 1.8–2.6 (machine not isolated, the user's own applications running)",
+ "browser": "Chromium headless, ANGLE GL/EGL, real WebGL2",
+ "order": "base, work, base, work; each: after then profile",
+ "state": [
+  "18:03:17 PL1=17000000 freq=2610968 bat=100Full load=2.09 2.66 2.53",
+  "18:05:08 PL1=17000000 freq=3954677 bat=100Full load=1.81 2.40 2.44",
+  "18:06:19 PL1=17000000 freq=2697232 bat=100Full load=2.23 2.41 2.45",
+  "18:08:09 PL1=17000000 freq=3508644 bat=100Full load=2.29 2.41 2.44",
+  "18:09:20 PL1=17000000 freq=2728946 bat=100Full load=1.89 2.25 2.38",
+  "18:11:10 PL1=17000000 freq=3687167 bat=100Full load=2.27 2.28 2.38",
+  "18:12:21 PL1=17000000 freq=2845317 bat=100Full load=2.57 2.31 2.37",
+  "18:14:11 PL1=17000000 freq=2822411 bat=100Full load=2.35 2.32 2.37",
+  "18:15:22 PL1=17000000 freq=3036060 bat=100Full load=2.14 2.28 2.35"
+ ],
+ "runs": {
+  "after-base-1": {
+   "mode": "after",
+   "url": "181870c",
+   "viewport": {
+    "width": 1400,
+    "height": 900
+   },
+   "quality": "low",
+   "renderHost": "960x540 CSS px fixed across all cases",
+   "signal": "beat124",
+   "scene": "spectrum (Structural Lab in lab cases)",
+   "method": "2 s settling + 6 s per case; CDP CPU and heap, external RAF intervals; machine not isolated",
+   "result": [
+    {
+     "name": "closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66600278551532,
+     "p50": 16.665000000000873,
+     "p95": 16.670000000000073,
+     "p99": 16.670000000000073,
+     "jank": 0,
+     "taskMsPerSecond": 110.33885460982883,
+     "scriptMsPerSecond": 73.56762124416738,
+     "heapMB": 21.804798126220703,
+     "nodes": 243,
+     "layoutCount": 0
+    },
+    {
+     "name": "overview",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 140.30329634446895,
+     "scriptMsPerSecond": 79.08877823515506,
+     "heapMB": 25.158321380615234,
+     "nodes": 3155,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666016713091917,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 163.40664088526663,
+     "scriptMsPerSecond": 76.7585667700693,
+     "heapMB": 27.697128295898438,
+     "nodes": 4952,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio-charts-visible",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 155.8210953470832,
+     "scriptMsPerSecond": 72.92077795099253,
+     "heapMB": 21.896007537841797,
+     "nodes": 3429,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999986,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 116.7358668423419,
+     "scriptMsPerSecond": 69.29410155218201,
+     "heapMB": 23.381458282470703,
+     "nodes": 3381,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics-collapsed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.665988857938707,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 113.51255655631556,
+     "scriptMsPerSecond": 67.75322667908493,
+     "heapMB": 23.123783111572266,
+     "nodes": 3377,
+     "layoutCount": 30
+    },
+    {
+     "name": "REC",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666000000000004,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 113.40353720492823,
+     "scriptMsPerSecond": 67.19436467575322,
+     "heapMB": 24.356060028076172,
+     "nodes": 3394,
+     "layoutCount": 30
+    },
+    {
+     "name": "laboratories",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66598885793873,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 160.86453069677404,
+     "scriptMsPerSecond": 103.74205123952126,
+     "heapMB": 32.87181854248047,
+     "nodes": 4464,
+     "layoutCount": 30
+    },
+    {
+     "name": "lab-override",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 150.35730618083778,
+     "scriptMsPerSecond": 96.21886013563972,
+     "heapMB": 20.76250457763672,
+     "nodes": 3909,
+     "layoutCount": 30
+    },
+    {
+     "name": "rapid-navigation",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 358,
+     "mean": 16.759106145251423,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0.00558659217877095,
+     "taskMsPerSecond": 285.78025545614844,
+     "scriptMsPerSecond": 112.02478463210923,
+     "heapMB": 32.8228645324707,
+     "nodes": 4281,
+     "layoutCount": 99
+    },
+    {
+     "name": "inspector-closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666000000000025,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 128.73292221789782,
+     "scriptMsPerSecond": 92.76795674339213,
+     "heapMB": 22.534534454345703,
+     "nodes": 4469,
+     "layoutCount": 30
+    },
+    {
+     "name": "closed-again",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.665988857938707,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 104.63097693875795,
+     "scriptMsPerSecond": 64.62072764022695,
+     "heapMB": 20.555988311767578,
+     "nodes": 303,
+     "layoutCount": 0
+    },
+    {
+     "name": "open-close",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.75884401114207,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0.005571030640668524,
+     "taskMsPerSecond": 202.33420636818101,
+     "scriptMsPerSecond": 87.376425149377,
+     "heapMB": 20.632156372070312,
+     "nodes": 2158,
+     "layoutCount": 56
+    },
+    {
+     "name": "closed-after-GC",
+     "heapMB": 19.08441162109375,
+     "nodes": 301,
+     "resources": {
+      "intervals": 2,
+      "observers": 2,
+      "listeners": 18
+     }
+    }
+   ],
+   "errors": []
+  },
+  "after-base-2": {
+   "mode": "after",
+   "url": "181870c",
+   "viewport": {
+    "width": 1400,
+    "height": 900
+   },
+   "quality": "low",
+   "renderHost": "960x540 CSS px fixed across all cases",
+   "signal": "beat124",
+   "scene": "spectrum (Structural Lab in lab cases)",
+   "method": "2 s settling + 6 s per case; CDP CPU and heap, external RAF intervals; machine not isolated",
+   "result": [
+    {
+     "name": "closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.665988857938718,
+     "p50": 16.664999999999964,
+     "p95": 16.670000000000073,
+     "p99": 16.670000000000073,
+     "jank": 0,
+     "taskMsPerSecond": 108.10785596226127,
+     "scriptMsPerSecond": 73.89491487270658,
+     "heapMB": 22.262466430664062,
+     "nodes": 243,
+     "layoutCount": 0
+    },
+    {
+     "name": "overview",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666000000000004,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 123.56761312462484,
+     "scriptMsPerSecond": 73.50023901583621,
+     "heapMB": 21.922134399414062,
+     "nodes": 2800,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.665988857938718,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 154.63443599479095,
+     "scriptMsPerSecond": 77.85396094624075,
+     "heapMB": 24.174232482910156,
+     "nodes": 3521,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio-charts-visible",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666016713091928,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 148.04552801978107,
+     "scriptMsPerSecond": 74.18335784725207,
+     "heapMB": 29.278411865234375,
+     "nodes": 3706,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666000000000004,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 116.46884112333537,
+     "scriptMsPerSecond": 71.69344273071349,
+     "heapMB": 30.366043090820312,
+     "nodes": 3477,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics-collapsed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665986111111124,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 125.61352445026003,
+     "scriptMsPerSecond": 76.31683591219947,
+     "heapMB": 19.639007568359375,
+     "nodes": 3495,
+     "layoutCount": 30
+    },
+    {
+     "name": "REC",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999986,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 121.57448156859685,
+     "scriptMsPerSecond": 74.9801676349917,
+     "heapMB": 21.101036071777344,
+     "nodes": 3354,
+     "layoutCount": 30
+    },
+    {
+     "name": "laboratories",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666000000000004,
+     "p50": 16.665000000000873,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 168.57093217557568,
+     "scriptMsPerSecond": 114.19812878845617,
+     "heapMB": 23.474624633789062,
+     "nodes": 4374,
+     "layoutCount": 30
+    },
+    {
+     "name": "lab-override",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 159.02385841020927,
+     "scriptMsPerSecond": 106.6242891824596,
+     "heapMB": 24.310726165771484,
+     "nodes": 4483,
+     "layoutCount": 30
+    },
+    {
+     "name": "rapid-navigation",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 355,
+     "mean": 16.85378873239437,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 33.32499999999709,
+     "jank": 0.011267605633802818,
+     "taskMsPerSecond": 308.57703172580716,
+     "scriptMsPerSecond": 127.39030386276966,
+     "heapMB": 26.350223541259766,
+     "nodes": 4298,
+     "layoutCount": 97
+    },
+    {
+     "name": "inspector-closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999986,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 150.24094369040589,
+     "scriptMsPerSecond": 109.62234252097534,
+     "heapMB": 21.855667114257812,
+     "nodes": 4478,
+     "layoutCount": 30
+    },
+    {
+     "name": "closed-again",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.6660167130919,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 126.30211803628434,
+     "scriptMsPerSecond": 82.99840620871932,
+     "heapMB": 25.949806213378906,
+     "nodes": 303,
+     "layoutCount": 0
+    },
+    {
+     "name": "open-close",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 357,
+     "mean": 16.852731092436983,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 33.330000000001746,
+     "jank": 0.011204481792717087,
+     "taskMsPerSecond": 248.99590793569203,
+     "scriptMsPerSecond": 119.78554801303198,
+     "heapMB": 25.362659454345703,
+     "nodes": 6708,
+     "layoutCount": 56
+    },
+    {
+     "name": "closed-after-GC",
+     "heapMB": 18.969581604003906,
+     "nodes": 301,
+     "resources": {
+      "intervals": 2,
+      "observers": 2,
+      "listeners": 18
+     }
+    }
+   ],
+   "errors": []
+  },
+  "after-work-1": {
+   "mode": "after",
+   "url": "work",
+   "viewport": {
+    "width": 1400,
+    "height": 900
+   },
+   "quality": "low",
+   "renderHost": "960x540 CSS px fixed across all cases",
+   "signal": "beat124",
+   "scene": "spectrum (Structural Lab in lab cases)",
+   "method": "2 s settling + 6 s per case; CDP CPU and heap, external RAF intervals; machine not isolated",
+   "result": [
+    {
+     "name": "closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66600278551532,
+     "p50": 16.664999999999964,
+     "p95": 16.670000000000073,
+     "p99": 16.670000000000073,
+     "jank": 0,
+     "taskMsPerSecond": 167.82010176722548,
+     "scriptMsPerSecond": 119.92665808364038,
+     "heapMB": 22.737979888916016,
+     "nodes": 242,
+     "layoutCount": 0
+    },
+    {
+     "name": "overview",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.665988857938718,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 180.94116674916592,
+     "scriptMsPerSecond": 122.68999792080886,
+     "heapMB": 26.092453002929688,
+     "nodes": 2591,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999997,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 194.05650725593617,
+     "scriptMsPerSecond": 107.99386215085687,
+     "heapMB": 28.182388305664062,
+     "nodes": 4230,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio-charts-visible",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666013888888877,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 171.31965932078023,
+     "scriptMsPerSecond": 87.2061069414003,
+     "heapMB": 31.134498596191406,
+     "nodes": 3319,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665986111111124,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 118.93393451427578,
+     "scriptMsPerSecond": 72.4784119973149,
+     "heapMB": 25.65932846069336,
+     "nodes": 3224,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics-collapsed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66598885793873,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 115.2664978851193,
+     "scriptMsPerSecond": 72.39848096233757,
+     "heapMB": 21.60671615600586,
+     "nodes": 3180,
+     "layoutCount": 30
+    },
+    {
+     "name": "REC",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999986,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 124.22511935961076,
+     "scriptMsPerSecond": 76.83687442309198,
+     "heapMB": 19.181537628173828,
+     "nodes": 3180,
+     "layoutCount": 30
+    },
+    {
+     "name": "laboratories",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666016713091917,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 166.7665135898533,
+     "scriptMsPerSecond": 117.78789182394208,
+     "heapMB": 20.25185775756836,
+     "nodes": 3353,
+     "layoutCount": 30
+    },
+    {
+     "name": "lab-override",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 164.3145649870678,
+     "scriptMsPerSecond": 111.09060647764106,
+     "heapMB": 22.61233139038086,
+     "nodes": 3388,
+     "layoutCount": 30
+    },
+    {
+     "name": "rapid-navigation",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 356,
+     "mean": 16.806432584269654,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0.008426966292134831,
+     "taskMsPerSecond": 333.6096586175597,
+     "scriptMsPerSecond": 125.12805994994466,
+     "heapMB": 31.641361236572266,
+     "nodes": 3943,
+     "layoutCount": 108
+    },
+    {
+     "name": "inspector-closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 149.5181638244962,
+     "scriptMsPerSecond": 100.61395792110541,
+     "heapMB": 21.389503479003906,
+     "nodes": 4127,
+     "layoutCount": 30
+    },
+    {
+     "name": "closed-again",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999986,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 103.26165913598163,
+     "scriptMsPerSecond": 61.015367800888114,
+     "heapMB": 20.17890167236328,
+     "nodes": 303,
+     "layoutCount": 0
+    },
+    {
+     "name": "open-close",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.804875000000013,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0.008333333333333333,
+     "taskMsPerSecond": 206.69009997184503,
+     "scriptMsPerSecond": 86.7185655358446,
+     "heapMB": 22.565757751464844,
+     "nodes": 4240,
+     "layoutCount": 57
+    },
+    {
+     "name": "closed-after-GC",
+     "heapMB": 19.165966033935547,
+     "nodes": 301,
+     "resources": {
+      "intervals": 2,
+      "observers": 2,
+      "listeners": 18
+     }
+    }
+   ],
+   "errors": []
+  },
+  "after-work-2": {
+   "mode": "after",
+   "url": "work",
+   "viewport": {
+    "width": 1400,
+    "height": 900
+   },
+   "quality": "low",
+   "renderHost": "960x540 CSS px fixed across all cases",
+   "signal": "beat124",
+   "scene": "spectrum (Structural Lab in lab cases)",
+   "method": "2 s settling + 6 s per case; CDP CPU and heap, external RAF intervals; machine not isolated",
+   "result": [
+    {
+     "name": "closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999997,
+     "p50": 16.664999999999964,
+     "p95": 16.670000000000073,
+     "p99": 16.670000000000073,
+     "jank": 0,
+     "taskMsPerSecond": 114.58906183438324,
+     "scriptMsPerSecond": 74.86142509730296,
+     "heapMB": 21.990066528320312,
+     "nodes": 242,
+     "layoutCount": 0
+    },
+    {
+     "name": "overview",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 121.58206344676955,
+     "scriptMsPerSecond": 72.2954399981522,
+     "heapMB": 23.98998260498047,
+     "nodes": 2583,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.665999999999997,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000189,
+     "jank": 0,
+     "taskMsPerSecond": 152.23982339115292,
+     "scriptMsPerSecond": 71.52728588439523,
+     "heapMB": 24.42426300048828,
+     "nodes": 3141,
+     "layoutCount": 30
+    },
+    {
+     "name": "audio-charts-visible",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66598885793873,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000189,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 147.1514041541887,
+     "scriptMsPerSecond": 70.66622413027065,
+     "heapMB": 30.453250885009766,
+     "nodes": 3300,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 112.97416913677999,
+     "scriptMsPerSecond": 66.6557942779393,
+     "heapMB": 25.377124786376953,
+     "nodes": 3226,
+     "layoutCount": 30
+    },
+    {
+     "name": "diagnostics-collapsed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66598885793873,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 109.02830305104588,
+     "scriptMsPerSecond": 65.63752032767064,
+     "heapMB": 20.940757751464844,
+     "nodes": 3167,
+     "layoutCount": 30
+    },
+    {
+     "name": "REC",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666000000000004,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.67000000000553,
+     "jank": 0,
+     "taskMsPerSecond": 112.01312305503993,
+     "scriptMsPerSecond": 66.68687016457193,
+     "heapMB": 30.24335479736328,
+     "nodes": 3151,
+     "layoutCount": 30
+    },
+    {
+     "name": "laboratories",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66598885793873,
+     "p50": 16.665000000000873,
+     "p95": 16.67000000000553,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 147.25473437845642,
+     "scriptMsPerSecond": 100.76170808248742,
+     "heapMB": 22.61130142211914,
+     "nodes": 3400,
+     "layoutCount": 30
+    },
+    {
+     "name": "lab-override",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.66598885793875,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 136.56951189904711,
+     "scriptMsPerSecond": 90.9247346932798,
+     "heapMB": 23.389240264892578,
+     "nodes": 3405,
+     "layoutCount": 30
+    },
+    {
+     "name": "rapid-navigation",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.666002785515325,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 288.4355162370982,
+     "scriptMsPerSecond": 108.6761860596088,
+     "heapMB": 31.869487762451172,
+     "nodes": 3938,
+     "layoutCount": 107
+    },
+    {
+     "name": "inspector-closed",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 360,
+     "mean": 16.666000000000025,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 124.35827114572123,
+     "scriptMsPerSecond": 87.82779573160119,
+     "heapMB": 21.463504791259766,
+     "nodes": 4117,
+     "layoutCount": 30
+    },
+    {
+     "name": "closed-again",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.6660167130919,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 16.670000000012806,
+     "jank": 0,
+     "taskMsPerSecond": 102.22479301539411,
+     "scriptMsPerSecond": 61.56491482026789,
+     "heapMB": 20.60906219482422,
+     "nodes": 303,
+     "layoutCount": 0
+    },
+    {
+     "name": "open-close",
+     "renderSize": [
+      480,
+      270
+     ],
+     "frames": 359,
+     "mean": 16.851713091922004,
+     "p50": 16.66500000000815,
+     "p95": 16.669999999998254,
+     "p99": 33.330000000001746,
+     "jank": 0.011142061281337047,
+     "taskMsPerSecond": 217.75888452573506,
+     "scriptMsPerSecond": 92.97455194490337,
+     "heapMB": 20.359416961669922,
+     "nodes": 4502,
+     "layoutCount": 56
+    },
+    {
+     "name": "closed-after-GC",
+     "heapMB": 19.130802154541016,
+     "nodes": 301,
+     "resources": {
+      "intervals": 2,
+      "observers": 2,
+      "listeners": 18
+     }
+    }
+   ],
+   "errors": []
+  },
+  "profile-base-1": {
+   "mode": "profile",
+   "url": "181870c",
+   "renderHost": "960x540 CSS px",
+   "quality": "low",
+   "signal": "beat124",
+   "method": "1.5 s settling + 5 s per case with REC on; means of the samples exported for that window; machine not isolated",
+   "result": [
+    {
+     "name": "diagnostics",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.49565217546794726,
+      "max": 0.7849999964237213
+     },
+     "uiMs": {
+      "mean": 1.2584782644458439,
+      "max": 1.8600000143051147
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 0,
+      "max": 0
+     }
+    },
+    {
+     "name": "overview",
+     "samples": 24,
+     "collectionMs": {
+      "mean": 0.4754166665176551,
+      "max": 0.8900000154972076
+     },
+     "uiMs": {
+      "mean": 1.1518750029305618,
+      "max": 1.75
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 1,
+      "max": 1
+     }
+    },
+    {
+     "name": "audio",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.413043482148129,
+      "max": 0.5349999964237213
+     },
+     "uiMs": {
+      "mean": 1.4867391340110614,
+      "max": 2.1299999952316284
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 2,
+      "max": 2
+     }
+    },
+    {
+     "name": "experience · charts",
+     "samples": 24,
+     "collectionMs": {
+      "mean": 0.4881250001490116,
+      "max": 0.6500000059604645
+     },
+     "uiMs": {
+      "mean": 2.6356250010430813,
+      "max": 3.875
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 3,
+      "max": 3
+     }
+    },
+    {
+     "name": "render",
+     "samples": 24,
+     "collectionMs": {
+      "mean": 0.5116666679581007,
+      "max": 0.9399999976158142
+     },
+     "uiMs": {
+      "mean": 1.0118749998509884,
+      "max": 1.4500000178813934
+     },
+     "frameP95": {
+      "mean": 16.67000000000341,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 4,
+      "max": 4
+     }
+    },
+    {
+     "name": "audio · inspector closed",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.4754347814166028,
+      "max": 0.6499999761581421
+     },
+     "uiMs": {
+      "mean": 0.6386956520702528,
+      "max": 1.2450000047683716
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 5,
+      "max": 5
+     }
+    },
+    {
+     "name": "laboratories · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.47521739031957544,
+      "max": 0.7150000035762787
+     },
+     "uiMs": {
+      "mean": 1.2560869558997776,
+      "max": 1.7549999952316284
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 7,
+      "max": 7
+     }
+    },
+    {
+     "name": "audio · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.4708695696747821,
+      "max": 0.7050000131130219
+     },
+     "uiMs": {
+      "mean": 1.6026086975698886,
+      "max": 2.7349999845027924
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 8,
+      "max": 8
+     }
+    },
+    {
+     "name": "30 view changes · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5249999994816987,
+      "max": 0.8350000083446503
+     },
+     "uiMs": {
+      "mean": 1.0882608709128008,
+      "max": 1.875
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 10.695652173913043,
+      "max": 11
+     }
+    }
+   ],
+   "errors": []
+  },
+  "profile-base-2": {
+   "mode": "profile",
+   "url": "181870c",
+   "renderHost": "960x540 CSS px",
+   "quality": "low",
+   "signal": "beat124",
+   "method": "1.5 s settling + 5 s per case with REC on; means of the samples exported for that window; machine not isolated",
+   "result": [
+    {
+     "name": "diagnostics",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.8195652132448943,
+      "max": 1.25
+     },
+     "uiMs": {
+      "mean": 1.0471739172935486,
+      "max": 1.594999998807907
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 1,
+      "max": 1
+     }
+    },
+    {
+     "name": "overview",
+     "samples": 24,
+     "collectionMs": {
+      "mean": 0.9493749998509884,
+      "max": 1.3600000143051147
+     },
+     "uiMs": {
+      "mean": 1.122708335518837,
+      "max": 1.6150000095367432
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 2,
+      "max": 2
+     }
+    },
+    {
+     "name": "audio",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.7147826034089794,
+      "max": 1.219999998807907
+     },
+     "uiMs": {
+      "mean": 1.8547826124274212,
+      "max": 2.544999986886978
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 4,
+      "max": 4
+     }
+    },
+    {
+     "name": "experience · charts",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.6158695661503336,
+      "max": 1.4200000166893005
+     },
+     "uiMs": {
+      "mean": 3.3950000003628107,
+      "max": 4.299999982118607
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 6,
+      "max": 6
+     }
+    },
+    {
+     "name": "render",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5560869574546814,
+      "max": 0.7549999952316284
+     },
+     "uiMs": {
+      "mean": 0.8482608730378358,
+      "max": 1.225000023841858
+     },
+     "frameP95": {
+      "mean": 16.67000000000395,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 7,
+      "max": 7
+     }
+    },
+    {
+     "name": "audio · inspector closed",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5630434764468152,
+      "max": 0.8149999976158142
+     },
+     "uiMs": {
+      "mean": 0.6043478237546008,
+      "max": 1.4149999916553497
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 8,
+      "max": 8
+     }
+    },
+    {
+     "name": "laboratories · lab active",
+     "samples": 24,
+     "collectionMs": {
+      "mean": 0.6672916660706202,
+      "max": 1.0499999821186066
+     },
+     "uiMs": {
+      "mean": 1.1831250004470348,
+      "max": 2.365000009536743
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 12,
+      "max": 12
+     }
+    },
+    {
+     "name": "audio · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.6343478262424469,
+      "max": 0.8400000035762787
+     },
+     "uiMs": {
+      "mean": 1.2291304391363393,
+      "max": 2.205000013113022
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 13,
+      "max": 13
+     }
+    },
+    {
+     "name": "30 view changes · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.6867391324561575,
+      "max": 0.9050000011920929
+     },
+     "uiMs": {
+      "mean": 0.8204347828160161,
+      "max": 1.3799999952316284
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 14.782608695652174,
+      "max": 15
+     }
+    }
+   ],
+   "errors": []
+  },
+  "profile-work-1": {
+   "mode": "profile",
+   "url": "work",
+   "renderHost": "960x540 CSS px",
+   "quality": "low",
+   "signal": "beat124",
+   "method": "1.5 s settling + 5 s per case with REC on; means of the samples exported for that window; machine not isolated",
+   "result": [
+    {
+     "name": "diagnostics",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5371739138727603,
+      "max": 0.875
+     },
+     "uiMs": {
+      "mean": 0.8552173907342164,
+      "max": 1.5799999833106995
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 0,
+      "max": 0
+     }
+    },
+    {
+     "name": "overview",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5419565180073613,
+      "max": 0.8100000023841858
+     },
+     "uiMs": {
+      "mean": 1.0778260904809702,
+      "max": 1.9800000190734863
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 1,
+      "max": 1
+     }
+    },
+    {
+     "name": "audio",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5615217361761176,
+      "max": 0.8600000143051147
+     },
+     "uiMs": {
+      "mean": 1.4697826090066328,
+      "max": 2.1749999821186066
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 4,
+      "max": 4
+     }
+    },
+    {
+     "name": "experience · charts",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5519565214281497,
+      "max": 0.8650000095367432
+     },
+     "uiMs": {
+      "mean": 2.5973913047624673,
+      "max": 4.094999998807907
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 5,
+      "max": 5
+     }
+    },
+    {
+     "name": "render",
+     "samples": 24,
+     "collectionMs": {
+      "mean": 0.5118749986092249,
+      "max": 0.7150000035762787
+     },
+     "uiMs": {
+      "mean": 0.8708333348234495,
+      "max": 1.5600000023841858
+     },
+     "frameP95": {
+      "mean": 16.670000000004165,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 6,
+      "max": 6
+     }
+    },
+    {
+     "name": "audio · inspector closed",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5121739105038021,
+      "max": 0.7199999988079071
+     },
+     "uiMs": {
+      "mean": 0.6219565246416174,
+      "max": 0.9399999976158142
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 7,
+      "max": 7
+     }
+    },
+    {
+     "name": "laboratories · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.6236956521220829,
+      "max": 0.8550000190734863
+     },
+     "uiMs": {
+      "mean": 0.9682608700316885,
+      "max": 1.5649999976158142
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 10,
+      "max": 10
+     }
+    },
+    {
+     "name": "audio · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5647826065187869,
+      "max": 0.8950000107288361
+     },
+     "uiMs": {
+      "mean": 1.3169565213763195,
+      "max": 2.030000001192093
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 11,
+      "max": 11
+     }
+    },
+    {
+     "name": "30 view changes · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5684782603512639,
+      "max": 0.7899999916553497
+     },
+     "uiMs": {
+      "mean": 1.1423913046069767,
+      "max": 2.9249999821186066
+     },
+     "frameP95": {
+      "mean": 16.670000000005214,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 12,
+      "max": 12
+     }
+    }
+   ],
+   "errors": []
+  },
+  "profile-work-2": {
+   "mode": "profile",
+   "url": "work",
+   "renderHost": "960x540 CSS px",
+   "quality": "low",
+   "signal": "beat124",
+   "method": "1.5 s settling + 5 s per case with REC on; means of the samples exported for that window; machine not isolated",
+   "result": [
+    {
+     "name": "diagnostics",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.4545652192571889,
+      "max": 0.7699999809265137
+     },
+     "uiMs": {
+      "mean": 0.8091304354045702,
+      "max": 1.0149999856948853
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 0,
+      "max": 0
+     }
+    },
+    {
+     "name": "overview",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.47152174167011096,
+      "max": 0.7300000190734863
+     },
+     "uiMs": {
+      "mean": 0.9128260858680891,
+      "max": 1.574999988079071
+     },
+     "frameP95": {
+      "mean": 16.670000000000073,
+      "max": 16.670000000000073
+     },
+     "frameOver33": {
+      "mean": 1,
+      "max": 1
+     }
+    },
+    {
+     "name": "audio",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.4217391286207282,
+      "max": 0.5949999988079071
+     },
+     "uiMs": {
+      "mean": 1.511304347411446,
+      "max": 2.6449999809265137
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 2,
+      "max": 2
+     }
+    },
+    {
+     "name": "experience · charts",
+     "samples": 24,
+     "collectionMs": {
+      "mean": 0.4835416687031587,
+      "max": 0.8149999976158142
+     },
+     "uiMs": {
+      "mean": 2.8054166634877524,
+      "max": 3.6449999809265137
+     },
+     "frameP95": {
+      "mean": 16.67000000000189,
+      "max": 16.67000000000189
+     },
+     "frameOver33": {
+      "mean": 3,
+      "max": 3
+     }
+    },
+    {
+     "name": "render",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.427173912525177,
+      "max": 0.5800000131130219
+     },
+     "uiMs": {
+      "mean": 0.9539130420788474,
+      "max": 1.375
+     },
+     "frameP95": {
+      "mean": 16.67000000000379,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 4,
+      "max": 4
+     }
+    },
+    {
+     "name": "audio · inspector closed",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.41847826086956524,
+      "max": 0.5800000131130219
+     },
+     "uiMs": {
+      "mean": 0.6673913040886754,
+      "max": 0.9549999833106995
+     },
+     "frameP95": {
+      "mean": 16.670000000005214,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 5,
+      "max": 5
+     }
+    },
+    {
+     "name": "laboratories · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5060869520125182,
+      "max": 0.7150000035762787
+     },
+     "uiMs": {
+      "mean": 1.2741304350935894,
+      "max": 1.570000022649765
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 8,
+      "max": 8
+     }
+    },
+    {
+     "name": "audio · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.5443478239619214,
+      "max": 0.7949999868869781
+     },
+     "uiMs": {
+      "mean": 1.8776086957558342,
+      "max": 2.4099999964237213
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 9,
+      "max": 9
+     }
+    },
+    {
+     "name": "30 view changes · lab active",
+     "samples": 23,
+     "collectionMs": {
+      "mean": 0.49891304321911023,
+      "max": 0.8400000035762787
+     },
+     "uiMs": {
+      "mean": 0.9845652191535287,
+      "max": 2.2450000047683716
+     },
+     "frameP95": {
+      "mean": 16.67000000000553,
+      "max": 16.67000000000553
+     },
+     "frameOver33": {
+      "mean": 10,
+      "max": 10
+     }
+    }
+   ],
+   "errors": []
+  }
+ }
+}
