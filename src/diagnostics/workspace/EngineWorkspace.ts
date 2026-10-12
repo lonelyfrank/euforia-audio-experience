@@ -1,7 +1,7 @@
 import type { App } from '../../app/App';
 import type { AudioSourceId, CaptureStatus } from '../../types/audio';
 import { h } from '../../ui/dom';
-import type { DiagnosticMetric, Domain } from '../core/DiagnosticsTypes';
+import type { DiagnosticMetric } from '../core/DiagnosticsTypes';
 import type { DiagnosticsController } from '../core/DiagnosticsController';
 import { DiagnosticsDashboard, download } from '../ui/DiagnosticsDashboard';
 import type { DevelopmentTools } from './DevelopmentTools';
@@ -11,6 +11,7 @@ import { button, INITIAL_LAYOUT, inspectorShown, isEditing, liveBadge, nextLayou
 import { icon, logo, type IconName } from './icons';
 import './workspace.css';
 import { Overview } from './Overview';
+import { applySections, block, VIEW_DOMAINS, type Block } from './sections';
 
 type DevelopmentFactory = (inspector: HTMLElement, deck: HTMLElement) => DevelopmentTools;
 const VIEWS: readonly [WorkspaceView, string, IconName, string][] = [
@@ -23,7 +24,7 @@ const VIEWS: readonly [WorkspaceView, string, IconName, string][] = [
   ['laboratories', 'Laboratories', 'flask', 'Esperimenti temporanei sul mondo live · solo DEV'],
   ['diagnostics', 'Diagnostics & Reports', 'pulse', 'Acquisizione, replay, confronto e report'],
 ];
-/** The inspector always opens with these: the registry's own measures, each with the last ten seconds the workspace showed. */
+/** The engine's health (Overview, Rendering & Performance): the registry's own measures, each with the last ten seconds the workspace sampled. */
 const CARDS = [['FPS', 'fps.mean', TONE.green], ['Frame · p95', 'frame.p95', TONE.cyan], ['CPU · source', 'cpu.source', TONE.violet],
   ['GPU · frame', 'gpu.frame', TONE.magenta], ['Draw calls', 'render.calls', TONE.electric], ['Clock lead', 'latency.analysisLead', TONE.amber]] as const;
 const SOURCES: Record<AudioSourceId, readonly [string, IconName]> = { system: ['System', 'spk'], microphone: ['Microphone', 'mic'], fake: ['Test signal', 'sound'] };
@@ -63,7 +64,8 @@ export class EngineWorkspace {
   private state = h('span');
   private scene = h('strong');
   private buffer = h('small');
-  private labStatus = button('Termina laboratorio', () => this.development?.stopExperiment());
+  /** The one control that ends an experiment: there while a laboratory runs or a temporary override is in force. */
+  private labStatus = button('', () => this.development?.stopExperiment());
   private record = button('', () => this.controller.setRecording(!this.controller.recording), 'Registra · REC');
   private collapse = button('', () => this.arrange('sidebar'), 'Espandi / comprimi navigazione');
   private expandLabel = h('span');
@@ -76,6 +78,9 @@ export class EngineWorkspace {
   private deck = h('div');
   private disposed = false;
   private overview: Overview | null = null;
+  private health: HTMLDetailsElement | null = null;
+  /** Every block of the inspector with its section: what `applySections` shows or hides for the view. */
+  private blocks: Block[] = [];
   private readonly onKey = (event: KeyboardEvent): void => {
     const requested = shortcutView(event, !!this.createDevelopment);
     if (requested) {
@@ -134,8 +139,9 @@ export class EngineWorkspace {
     const center = h('div', { class: 'ws-center' }, h('div', { class: 'ws-heading' }, h('div', { class: 'ws-title' }, this.title, this.subtitle), this.expand), preview,
       this.createDevelopment && this.deck);
     this.cards = CARDS.map(([label, , tone]) => tile(label, { spark: sparkline(tone) }));
-    this.body = h('div', { class: 'ws-inspector-body', tabIndex: 0, role: 'region', ariaLabel: 'Analitiche della sezione' },
-      panel({ title: 'Engine — Live Analytics', icon: 'pulse', right: liveBadge() }, h('div', { class: 'ws-metrics' }, ...this.cards.map(c => c.element))));
+    this.overview = new Overview();
+    this.health = panel({ title: 'Engine — Live Analytics', icon: 'pulse', right: liveBadge() }, h('div', { class: 'ws-metrics' }, ...this.cards.map(c => c.element)));
+    this.body = h('div', { class: 'ws-inspector-body', tabIndex: 0, role: 'region', ariaLabel: 'Analitiche della sezione' }, this.overview.element, this.health);
     const inspector = h('div', { class: 'ws-inspector', id: INSPECTOR, role: 'complementary', ariaLabel: 'Inspector contestuale' },
       h('div', { class: 'ws-inspector-head' }, h('h2', {}, 'Inspector'), h('small', {}, 'vista 5 Hz'), this.widen), this.body);
     this.live = h('span', { class: 'ws-pill' }); this.source = h('span', { class: 'ws-pill' }); this.state = h('span', { class: 'ws-pill' });
@@ -145,9 +151,9 @@ export class EngineWorkspace {
       this.labStatus, this.record, this.inspect, reports, close), sidebar, center, inspector);
     this.arrange();
     document.body.append(shell);
-    this.overview = new Overview(); this.body.append(this.overview.element);
     if (this.createDevelopment) this.development = this.createDevelopment(this.body, this.deck);
     this.dashboard = new DiagnosticsDashboard(this.controller, this.body, !!this.createDevelopment);
+    this.blocks = [block(this.overview.element, 'overview'), block(this.health, 'health'), ...this.development?.blocks ?? [], ...this.dashboard.blocks];
     this.timer = window.setInterval(() => { this.sample(); this.refresh(); }, 200);
     close.focus();
   }
@@ -170,10 +176,10 @@ export class EngineWorkspace {
     for (const [id, item] of this.nav) { if (id === view) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current'); }
     const entry = VIEWS.find(([id]) => id === view)!;
     writeText(this.title, entry[1]); writeText(this.subtitle, entry[3]);
-    if (this.overview) this.overview.element.hidden = view !== 'overview';
+    // The view decides what the inspector holds; the components are then told what they have to show.
+    applySections(view, this.blocks);
     this.development?.setView(view);
-    const domain: Domain = view === 'overview' ? 'render' : view === 'laboratories' ? 'matter' : view;
-    this.dashboard?.setView(domain, view === 'diagnostics');
+    this.dashboard?.setDomains(VIEW_DOMAINS[view]);
     this.body.scrollTop = 0;
     this.refresh();
   }
@@ -191,6 +197,7 @@ export class EngineWorkspace {
     if (!this.shell || document.hidden) return;
     this.resolve();
     for (let i = 0; i < CARDS.length; i++) this.traces[i].push(this.metrics[i]?.value ?? NaN);
+    this.dashboard?.sample();
   }
   private refresh(): void {
     if (!this.shell || document.hidden) return;
@@ -204,10 +211,15 @@ export class EngineWorkspace {
     this.resolve();
     this.showStatus();
     this.record.setAttribute('aria-pressed', String(c.recording));
-    this.labStatus.hidden = !this.development?.active;
+    const lab = this.development?.labName ?? null, overrides = this.development?.overrides ?? 0;
+    this.labStatus.hidden = !lab && overrides === 0;
+    if (!this.labStatus.hidden) {
+      writeText(this.labStatus, lab ? `Termina ${lab}` : 'Ripristina override');
+      this.labStatus.title = `${lab ? 'Termina l\'esperimento' : 'Nessun laboratorio attivo'} · ripristina ${overrides} override temporanee · il workspace resta aperto`;
+    }
     writeText(this.scene, `${this.app.directionDebug.current?.source.preset.name ?? 'In attesa della scena'}${this.development?.active ? ' · LAB' : ''}`);
     writeText(this.buffer, `${canvas.width}×${canvas.height}`);
-    if (shown) {
+    if (shown && this.health && !this.health.hidden && this.health.open) {
       for (let i = 0; i < CARDS.length; i++) {
         const metric = this.metrics[i], value = metric?.value, card = this.cards[i];
         if (value === null || value === undefined) writeTile(card, null);
@@ -215,6 +227,8 @@ export class EngineWorkspace {
         card.spark!.update(this.traces[i]);
         card.element.title = metric ? `${metric.method} · ${metric.clock}` : 'In attesa di una misura disponibile';
       }
+    }
+    if (shown) {
       this.overview?.refresh(c);
       this.dashboard?.refresh();
     }
@@ -242,7 +256,7 @@ export class EngineWorkspace {
     if (!this.shell) return;
     clearInterval(this.timer); this.timer = 0;
     this.development?.dispose(); this.development = null;
-    this.overview = null;
+    this.overview = null; this.health = null; this.blocks = [];
     this.dashboard?.dispose(); this.dashboard = null;
     this.release?.(); this.release = null;
     if (this.stage && this.anchor) this.anchor.replaceWith(this.stage);

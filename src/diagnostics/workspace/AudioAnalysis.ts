@@ -4,7 +4,7 @@ import type { AudioFrame, MusicState } from '../../types/audio';
 import { h } from '../../ui/dom';
 import { barChart, lineChart, sparkline, SPECTRUM_RAMP, Trace, TRACE_LENGTH, TRACE_RATE, waveChart, type Sparkline } from './charts';
 import { fixedPanel, legend, meter, panel, tile, TONE, writeMeter, writeText, writeTile, type Meter, type Tile } from './components';
-import { icon, type IconName } from './icons';
+import type { IconName } from './icons';
 
 /**
  * Audio & Analysis (Shift+D): capture → acoustic analysis → clock, as the cockpit's panels. Presentation only: every
@@ -56,7 +56,6 @@ const TICKS = [[50, '50'], [100, '100'], [250, '250'], [500, '500'], [1000, '1k'
 /** Where the balance splits the spectrum into low, mid and high. */
 const REGIONS = [250, 2000] as const;
 const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const SOURCES = [['system', 'System', 'spk'], ['microphone', 'Microphone', 'mic'], ['fake', 'Test signal', 'sound']] as const;
 
 const left = (position: number) => ({ left: `${(position * 100).toFixed(2)}%` });
 /** A frequency in the unit that reads at its size: Hz below 1 kHz, kHz above. */
@@ -219,20 +218,21 @@ export class AudioAnalysis {
 
   // ---- under the viewport --------------------------------------------------------------------
 
-  /** What is being captured, and the signal as it arrives. Read-only: the source is chosen in the application, never from here. */
+  /**
+   * The signal as it arrives, and the device it comes from. Which source is in use is said once, in the toolbar; it is
+   * chosen in the application, never from here.
+   */
   private input(): HTMLElement {
-    const sources = SOURCES.map(([id, label, name]) => h('span', { class: 'ws-source', title: label, dataset: { source: id } }, icon(name, 15), h('span', {}, label)));
-    const device = h('span'), level = h('strong', {}, '—'), fill = h('i'), wave = waveChart(TONE.violet);
+    const device = h('strong', {}, '—'), level = h('strong', {}, '—'), fill = h('i'), wave = waveChart(TONE.violet);
     this.deck.push(a => {
       const { source, deviceName, status } = this.app.audio.state;
-      for (const chip of sources) { if (chip.dataset.source === source) chip.setAttribute('aria-current', 'true'); else chip.removeAttribute('aria-current'); }
       writeText(device, deviceName || (source ? status : 'Nessuna sorgente'));
       // AudioFrame.loudness is −60…0 dBFS mapped onto 0…1: shown back in its own unit.
       writeText(level, (a.loudness * 60 - 60).toFixed(1)); scale(fill, a.loudness);
       wave.update(a.waveform);
     });
-    return fixedPanel({ title: 'Audio Input', icon: 'spk', right: device },
-      h('div', { class: 'ws-input' }, h('div', { class: 'ws-sources', role: 'group', ariaLabel: 'Sorgente audio in uso' }, ...sources),
+    return fixedPanel({ title: 'Audio Input', icon: 'spk' },
+      h('div', { class: 'ws-input' }, h('div', { class: 'ws-stat ws-device' }, h('span', {}, 'Device'), h('div', { class: 'ws-card-value' }, device)),
         h('div', { class: 'ws-stat' }, h('span', {}, 'Input Level'), h('div', { class: 'ws-card-value' }, level, h('small', {}, 'dB')))),
       h('div', { class: 'ws-bar ws-level' }, fill), h('div', { class: 'ws-plot ws-waveform' }, wave.element));
   }

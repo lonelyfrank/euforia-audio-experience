@@ -12,18 +12,24 @@ import { h } from '../../ui/dom';
 import type { DiagnosticsController } from '../core/DiagnosticsController';
 import { AudioAnalysis } from './AudioAnalysis';
 import { button, panel, retitle, writeText, type WorkspaceView } from './components';
+import { block, type Block } from './sections';
 
 const CHARTS: Record<DebugView, string> = {
   experience: 'Regia, analisi, previsione ed eventi', world: 'Mondo, energia e forze', matter: 'Morfologia, materiale e primitive',
 };
+const charted = (view: WorkspaceView): view is DebugView => view in CHARTS;
 
 /** The laboratories: each a development world with its own inspector. One runs at a time (each pins the viewport's world). */
 export type Laboratory = 'structural' | 'solid';
 const LABS: Record<Laboratory, string> = { structural: 'Structural Lab', solid: 'Solid Dynamics' };
 
-/** Loaded only by the DEV branch of installDiagnostics; all experiments are owned by this workspace. */
+/**
+ * Loaded only by the DEV branch of installDiagnostics; all experiments are owned by this workspace. It builds the DEV
+ * blocks of the inspector and says which section each is (`blocks`): the view decides which are shown.
+ */
 export class DevelopmentTools {
   readonly element = h('div');
+  readonly blocks: Block[];
   private readonly controls = h('div', { class: 'ws-actions' });
   private readonly plots = h('div');
   /** The view's live charts: one retained canvas, whose block is renamed (not rebuilt) from a view to the next. */
@@ -31,6 +37,7 @@ export class DevelopmentTools {
   /** Audio & Analysis as panels, and what stands under the viewport in every view. */
   private readonly audio: AudioAnalysis;
   private readonly labHost = h('div');
+  private readonly experiment: HTMLElement;
   private debug: DebugOverlay | null = null;
   private lab: EngineCockpit | SolidCockpit | null = null;
   private running: Laboratory | null = null;
@@ -41,14 +48,12 @@ export class DevelopmentTools {
   private readonly initialSource;
   private readonly initialSignal;
   private signalChanged = false;
-  private view: WorkspaceView = 'overview';
   private readonly status = h('span', { class: 'ws-lab-status' });
   private readonly labButtons = (Object.keys(LABS) as Laboratory[]).map((lab) => {
     const item = button(`Avvia ${LABS[lab]}`, () => this.startLab(lab));
     item.dataset.lab = lab;
     return item;
   });
-  private readonly stopButton = button('Termina esperimento', () => this.stopExperiment());
   private readonly pin = h('select', { ariaLabel: 'Forma Matter' });
   private readonly signal = h('select', { ariaLabel: 'Segnale live di test' });
   /** The tunnel as it was or balanced, on the same sound: `tunnelLab`, back to the preset's own on leaving. */
@@ -67,11 +72,14 @@ export class DevelopmentTools {
     this.pin.onchange = () => { matterLab.form = this.pin.value as FormPin; };
     this.tunnel.append(new Option('Tunnel: preset', ''), new Option('Tunnel: Balanced', '1'), new Option('Tunnel: com\'era (legacy)', '0'));
     this.tunnel.onchange = () => { tunnelLab.balance = this.tunnel.value === '' ? null : Number(this.tunnel.value); };
-    this.controls.append(this.signal, this.pin, this.tunnel, ...this.labButtons, this.stopButton, this.status);
+    // Ending the experiment has one control, in the workspace's toolbar.
+    this.controls.append(this.signal, this.pin, this.tunnel, ...this.labButtons, this.status);
     this.element.className = 'ws-development';
     this.element.append(this.charts);
     this.audio = new AudioAnalysis(app, this.element, deck);
-    this.element.append(panel({ title: 'Experiment Controls', icon: 'flask', sub: 'modifiche temporanee, non salvate' }, this.controls), this.labHost);
+    this.experiment = panel({ title: 'Experiment Controls', icon: 'flask', sub: 'modifiche temporanee, non salvate' }, this.controls);
+    this.element.append(this.experiment, this.labHost);
+    this.blocks = [block(this.charts, 'charts'), block(this.audio.element, 'audio'), block(this.experiment, 'experiment'), block(this.labHost, 'laboratory')];
     parent.append(this.element);
     const query = new URLSearchParams(location.search), form = query.get('matter');
     if (form && ['auto', 'particles', 'wave', 'harmonic'].includes(form)) { matterLab.form = form as FormPin; this.pin.value = form; }
@@ -80,6 +88,14 @@ export class DevelopmentTools {
     this.requested = query.get('engine') === 'solid' ? 'solid' : 'structural';
   }
   get active(): boolean { return this.lab !== null; }
+  /** The laboratory in the viewport, by its name. */
+  get labName(): string | null { return this.running && LABS[this.running]; }
+  /** Temporary overrides in force: what ending the experiment gives back. */
+  get overrides(): number {
+    const lab = this.lab instanceof SolidCockpit ? this.lab.overrides
+      : this.lab ? Object.entries(structuralLab.tuning).filter(([key, value]) => value !== (key === 'coherence' || key === 'temperature' ? null : 1)).length : 0;
+    return lab + Number(matterLab.form !== this.initialForm) + Number(worldLab.only !== this.initialOnly) + Number(tunnelLab.balance !== null) + Number(this.signalChanged);
+  }
   /** Enters a laboratory. Without a name: the one already running, or the one the entry asked for. Another one running is left first. */
   startLab(lab: Laboratory = this.running ?? this.requested): void {
     if (this.running !== lab) {
@@ -89,7 +105,6 @@ export class DevelopmentTools {
       this.running = lab;
     }
     for (const item of this.labButtons) item.hidden = item.dataset.lab === lab;
-    this.setView(this.view);
   }
   stopExperiment(): void {
     this.lab?.dispose(); this.lab = null; this.running = null;
@@ -104,15 +119,10 @@ export class DevelopmentTools {
     this.signalChanged = false; this.signal.value = '';
     this.status.textContent = 'Override ripristinate';
   }
+  /** The view's sections have just been applied: what came into the inspector is made ready to show the present. */
   setView(view: WorkspaceView): void {
-    this.view = view;
-    this.labHost.hidden = view !== 'laboratories';
-    const plot = view === 'experience' || view === 'world' || view === 'matter';
-    this.charts.hidden = !plot;
-    this.audio.element.hidden = view !== 'audio';
-    this.element.hidden = !plot && view !== 'audio' && view !== 'laboratories';
-    if (view === 'audio') this.audio.show();
-    if (plot) {
+    if (!this.audio.element.hidden) this.audio.show();
+    if (!this.charts.hidden && charted(view)) {
       this.debug ??= new DebugOverlay(this.app, this.controller, this.plots);
       this.debug.setView(view);
       retitle(this.charts, CHARTS[view]);
@@ -124,13 +134,13 @@ export class DevelopmentTools {
    * after the panels' writes that would be a style pass of its own.
    */
   refresh(now: number, shown: boolean, deck: boolean): void {
-    if (this.lab) { this.lab.visible = shown && this.view === 'laboratories'; this.lab.refreshPanel(now); }
+    if (this.lab) { this.lab.visible = shown && !this.labHost.hidden; this.lab.refreshPanel(now); }
     if (shown && !this.charts.hidden && this.charts.open) this.debug?.refresh();
     this.audio.sample(now);
     this.audio.refresh(shown, deck);
-    const overrides = this.lab instanceof SolidCockpit ? this.lab.overrides
-      : Object.entries(structuralLab.tuning).filter(([key, value]) => value !== (key === 'coherence' || key === 'temperature' ? null : 1)).length;
-    writeText(this.status, this.running ? `${LABS[this.running]} attivo · ${overrides} override · pin temporaneo` : `Matter: ${matterLab.form} · ${worldLab.only ? 'primitive isolate' : 'nessun isolamento'}`);
+    if (shown && !this.experiment.hidden) {
+      writeText(this.status, this.running ? `${LABS[this.running]} attivo · ${this.overrides} override · pin temporaneo` : `Matter: ${matterLab.form} · ${worldLab.only ? 'primitive isolate' : 'nessun isolamento'}`);
+    }
   }
   dispose(): void { this.stopExperiment(); this.debug?.dispose(); this.audio.dispose(); this.element.remove(); }
 }

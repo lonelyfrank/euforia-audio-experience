@@ -85,12 +85,8 @@
 .ws-deck > .ws-section { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 .ws-deck .ws-section-body { flex:1; display:flex; flex-direction:column; min-height:0; }
 .ws-input { display:flex; align-items:center; gap:14px; }
-.ws-sources { flex:1; display:flex; gap:6px; min-width:0; }
-/* The source in use is named; the others stay as their icons (their names are in the tooltip), whatever the panel's width. */
-.ws-source { flex:none; display:inline-flex; align-items:center; justify-content:center; gap:8px; width:34px; height:30px; overflow:hidden; border:1px solid var(--ws-border); border-radius:var(--ws-radius-control); background:var(--ws-raised); color:var(--ws-muted); white-space:nowrap; }
-.ws-source > span { display:none; overflow:hidden; text-overflow:ellipsis; }
-.ws-source[aria-current=true] { flex:1 1 0; min-width:0; width:auto; padding:0 10px; color:var(--ws-text); font-weight:500; border-color:var(--ws-accent); background:rgba(123,77,255,.22); box-shadow:inset 0 0 0 1px rgba(155,123,255,.25); }
-.ws-source[aria-current=true] > span { display:block; }
+.ws-input .ws-device { flex:1 1 0; }
+.ws-device strong { overflow:hidden; text-overflow:ellipsis; }
 .ws-stat { flex:none; min-width:0; }
 .ws-stat > span { display:block; font-size:11px; color:var(--ws-muted); white-space:nowrap; }
 .ws-input .ws-stat strong { font-size:14px; line-height:18px; }

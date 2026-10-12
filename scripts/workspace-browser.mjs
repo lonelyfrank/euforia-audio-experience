@@ -56,6 +56,15 @@ const station = () => page.evaluate(() => {
     canvas: [window.__originalCanvas.clientWidth, window.__originalCanvas.clientHeight], inner: [innerWidth, innerHeight], dpr: Math.min(devicePixelRatio, 2), resizes: window.__resizes };
 });
 const settle = () => page.waitForTimeout(350);
+/** Which sections of the inspector are on screen, by one witness node each; a section this build does not have is absent. */
+const WITNESS = { health: '.ws-metrics .ws-spark', overview: ':scope > .ws-section > .ws-section-body > .ws-metrics-text', audio: '.ws-audio .ws-bars', charts: '.ws-debug canvas', experiment: '[aria-label="Forma Matter"]', laboratory: '.ws-lab-grid',
+  acquisition: '>nav', plot: '>canvas', registry: '>.labels', isolation: '>.experimental', replay: '>[aria-label="Scenario replay"]', reports: '>[aria-label="Carica report baseline JSON"]', timeline: '>footer' };
+const sections = () => page.evaluate(([witness, dashboard]) => {
+  const body = document.querySelector('.ws-inspector-body'), shadow = body.querySelector(dashboard).shadowRoot;
+  return Object.entries(witness).filter(([, selector]) => (selector[0] === '>' ? shadow.querySelector(selector.slice(1)) : body.querySelector(selector))?.getClientRects().length).map(([id]) => id).sort();
+}, [WITNESS, DASHBOARD]);
+/** What the typed map says the view holds, of the sections that exist in the page (a laboratory's inspector only while one runs). */
+const expected = (view, lab) => page.evaluate(async ([view, lab]) => (await import('/src/diagnostics/workspace/sections.ts')).VIEW_SECTIONS[view].filter(id => id !== 'laboratory' || lab).sort(), [view, lab]);
 const report = async () => {
   const pending = page.waitForEvent('download'); await click('Export JSON');
   return JSON.parse(await readFile(await (await pending).path(), 'utf8'));
@@ -107,10 +116,14 @@ try {
     assert.deepEqual(open.center, ['ws-heading', 'ws-preview', 'ws-deck'], 'under the viewport, only the capture deck');
     assert.equal(open.deck, 150, 'the deck has one height');
     assert.ok(Math.abs(open.canvas[0] - (open.view.w - 2)) <= 1 && Math.abs(open.canvas[1] - (open.view.h - 2)) <= 1, 'the one canvas fills the viewport');
-    assert.equal(await page.evaluate(selector => ['.ws-metrics .ws-spark', '.ws-audio .ws-bars', selector].every(s => document.querySelector(`.ws-inspector-body ${s}`)) && !!window.__originalCanvas.closest('.ws-preview'), DASHBOARD), true, 'tiles, panels and registry live in the inspector');
+    assert.equal(await page.evaluate(selector => ['.ws-audio .ws-bars', selector].every(s => document.querySelector(`.ws-inspector-body ${s}`)) && !!window.__originalCanvas.closest('.ws-preview'), DASHBOARD), true, 'audio panels and registry live in the inspector');
+    // Shift+D is the audio station and nothing else: no rendering tiles, experiment controls, isolation, acquisition controls, replay or reports.
+    assert.deepEqual(await sections(), ['audio', 'registry'], 'Audio & Analysis holds the audio panels and the audio registry only');
     assert.ok(open.audio.top < open.body.bottom - 200 && open.audio.panels >= 10, 'the audio panels are in view at once');
     assert.ok(open.audio.spectrum > 100 && open.audio.meters === 1, 'the spectrum is drawn from the live frame; level lists in one column');
-    assert.equal(await page.evaluate(() => document.querySelector('.ws-deck .ws-wave polyline').getAttribute('points').length > 100 && document.querySelector('.ws-source[aria-current]').dataset.source), 'fake', 'the deck shows the signal and the source in use');
+    assert.equal(await page.evaluate(() => document.querySelector('.ws-deck .ws-wave polyline').getAttribute('points').length > 100 && document.querySelector('.ws-deck .ws-device strong').textContent), 'Beat 124 BPM', 'the deck shows the signal and its device');
+    assert.deepEqual(await page.evaluate(() => [document.querySelectorAll('.ws-source').length, document.querySelector('.ws-pills').textContent.includes('Test signal')]), [0, true], 'the source in use is named once, in the toolbar');
+    assert.equal(await page.getByRole('button', { name: 'REC', exact: true }).count() + await page.locator(DASHBOARD).evaluate(el => [...el.shadowRoot.querySelectorAll('button')].filter(b => b.textContent === 'REC').length), 1, 'one REC control');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.euforia-workspace')).fontFamily.includes('Geist') && document.fonts.check('12px "Geist Variable"')), true, 'the cockpit is set in Geist');
     assert.ok(open.scrollable > 0, 'the inspector scrolls by itself');
     assert.deepEqual(open.overflow, [0, 0, 0], 'no horizontal overflow');
@@ -159,13 +172,15 @@ try {
       assert.ok(shown.chart.height > 100 && shown.chart.pixels === Math.round(shown.chart.css * shown.dpr), `${view} charts drawn in the inspector`);
       assert.deepEqual(shown.overflow, [0, 0, 0]);
       assert.equal(shown.audio, false, 'the audio panels step out of the other views');
+      assert.deepEqual(await sections(), await expected(view), `${view} holds its own sections`);
       if (view === 'experience') await page.evaluate(() => { window.__chart = document.querySelector('.ws-debug canvas'); });
     }
-    await navigate('render'); await navigate('overview');
+    for (const view of ['render', 'overview']) { await navigate(view); assert.deepEqual(await sections(), await expected(view), `${view} holds its own sections`); }
     await navigate('audio');
     assert.equal(await page.locator(DASHBOARD).evaluate(el => el.shadowRoot.querySelector('.row') === window.__audioMetricRow && document.querySelector('.ws-debug canvas') === window.__chart && document.querySelector('.ws-audio .ws-bars') === window.__audio), true, 'metric DOM, chart canvas and audio panels reused on domain return');
     assert.equal((await station()).resizes, steady, 'changing section never resizes the renderer');
     await navigate('diagnostics');
+    assert.deepEqual(await sections(), await expected('diagnostics'), 'registry, acquisition, isolation, replay, reports and timeline are all in Diagnostics & Reports');
     const second = await report();
     assert.equal(await page.evaluate(() => window.app.directionDebug.current === window.__initialScene), true, 'navigation preserves the scene instance');
     assert.ok(second.samples.length >= first.samples.length, 'REC survives navigation');
@@ -196,9 +211,10 @@ try {
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.ws-inspector-body .engine')].length), 3, 'cockpit blocks live in the inspector');
     await navigate('world');
     assert.equal(await page.evaluate(async () => (await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts')).structuralLab.active), true);
-    await click('Termina laboratorio');
+    assert.equal(await page.getByRole('button', { name: 'Termina esperimento', exact: true }).count(), 0, 'one control ends the experiment');
+    await click('Termina Structural Lab');
     assert.deepEqual(await page.evaluate(async () => { const { structuralLab } = await import('/src/visual-engine/primitives/WirePolygonPrimitive.ts'); return [structuralLab.active, structuralLab.tuning.coherence, window.app.pinnedScene]; }), [false, null, null]);
-    await navigate('matter'); await page.getByLabel('Forma Matter').selectOption('wave');
+    await navigate('laboratories'); await page.getByLabel('Forma Matter').selectOption('wave');
     await navigate('diagnostics'); await page.getByLabel('Isolamento sperimentale primitive').evaluate(el => { el.append(new Option('test', 'test')); el.value = 'test'; el.dispatchEvent(new Event('change')); });
     await click('Reset isolamento');
     await page.getByLabel('Scenario replay').selectOption('silence'); await click('Avvia replay');
