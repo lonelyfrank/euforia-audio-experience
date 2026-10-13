@@ -1,5 +1,6 @@
 import type { AnalysisFrame } from '../audio/features/decode';
 import { createCalibration, type CalibrationFrame } from './AdaptiveCalibration';
+import { createAnticipation, type AnticipationFrame } from './Anticipation';
 import { createMorphology, type SoundMorphology } from '../morphology/SoundMorphology';
 import { createResonanceFrame, type ResonanceFrame } from '../physics/MultiscaleResonance';
 import { createPhysicsFrame, type PhysicsFrame } from '../physics/ResonantPhysics';
@@ -132,6 +133,8 @@ export interface ExperienceSnapshot {
   morphology: SoundMorphology;
   /** How strongly this audio should move what answers it (AdaptiveCalibration.ts): the one source every consumer calibrates from. */
   calibration: CalibrationFrame;
+  /** What is expected and what became of it (Anticipation.ts): the account of the forecasts the world is charged with. A reading, not a force. */
+  anticipation: AnticipationFrame;
   /** Owned copy, so a later decode cannot mutate the heard snapshot. */
   acoustic: AnalysisFrame;
 }
@@ -153,7 +156,7 @@ export const createPlan = (): ExperiencePlan => ({ currentIntent: 'flow', nextIn
   transitionStart: 0, transitionEnd: 0, transitionConfidence: 0, maxIntensity: 1, desiredEntropy: 0, sceneContinuity: 1, contrastTarget: 0, confidence: 0 });
 export const createIntents = (): VisualIntent[] => INTENTS.map(kind => ({ kind, strength: 0, duration: 1, attack: 0.1, release: 1, spatialBias: 0, confidence: 0, time: 0 }));
 export function createSnapshot(acoustic: AnalysisFrame): ExperienceSnapshot {
-  return { state: createState(), plan: createPlan(), intents: createIntents(), physics: createPhysicsFrame(), resonance: createResonanceFrame(), world: createWorld(), morphology: createMorphology(), calibration: createCalibration(), acoustic };
+  return { state: createState(), plan: createPlan(), intents: createIntents(), physics: createPhysicsFrame(), resonance: createResonanceFrame(), world: createWorld(), morphology: createMorphology(), calibration: createCalibration(), anticipation: createAnticipation(), acoustic };
 }
 export const unit = (x: number): number => Math.min(1, Math.max(0, x));
 export const follow = (x: number, target: number, dt: number, tau: number): number => x + (target - x) * (1 - Math.exp(-dt / tau));

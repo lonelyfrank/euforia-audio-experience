@@ -2,7 +2,7 @@ import { springMatrix } from '../dynamics/Dynamics';
 import type { AnalysisFrame } from '../audio/features/decode';
 import { INTENT, unit, type ExperienceState, type VisualIntent } from '../experience/types';
 import {
-  BIAS_OMEGA, BIAS_ZETA, COHERENCE_TAU, createWorld, EXCITATION_TAU, ILLUMINATION_FADE, ILLUMINATION_RISE, MAX_BIAS_VELOCITY,
+  BIAS_OMEGA, BIAS_ZETA, CHARGE_RATE, COHERENCE_TAU, createWorld, EXCITATION_TAU, ILLUMINATION_FADE, ILLUMINATION_RISE, MAX_BIAS_VELOCITY,
   MAX_RADIAL_VELOCITY, MAX_SPEED, MAX_SPIN, OPENNESS_TAU, POTENTIAL_LEAK, RADIAL_OMEGA, RADIAL_ZETA, SHIMMER_TAU, SPIN_DRAG,
   TRAVEL_DRAG, TURBULENCE_RISE, TURBULENCE_SETTLE, type WorldState,
 } from './WorldState';
@@ -162,7 +162,7 @@ export class WorldEngine {
     f.illuminationTarget = unit(0.1 + 0.9 * s.energy) * p * (1 - 0.3 * w.potential);
     f.opennessTarget = unit(s.openness + 0.3 * weight(intents[INTENT.reveal]));
     // Prediction charges potential, weighted by its confidence: a doubtful forecast prepares little.
-    f.charge = 0.3 * (0.5 * unit(s.likelyBuild) * s.predictionConfidence + 0.7 * s.anticipation * s.anticipationConfidence);
+    f.charge = CHARGE_RATE * (0.5 * unit(s.likelyBuild) * s.predictionConfidence + 0.7 * s.anticipation * s.anticipationConfidence);
     account(w);
   }
 

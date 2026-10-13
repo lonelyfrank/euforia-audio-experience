@@ -26,6 +26,7 @@ const UNITS: Record<string, string> = {
   thrust: 'vu/s²', spinDrag: '1/s', travelDrag: '1/s', excitationRate: '1/s', shimmerRate: '1/s', charge: '1/s',
   releaseTime: 's', impulseTime: 's', nextBeatTime: 's', nextDownbeatTime: 's', nextPhraseTime: 's',
   transitionStart: 's', transitionEnd: 's', horizon: 's', predictionHorizon: 's', eventTime: 's', silenceDuration: 's',
+  opened: 'count', confirmed: 'count', expired: 'count', unannounced: 'count', since: 's', age: 's', lead: 's', releasedAt: 's', expiredAt: 's',
 };
 export function metric(store: DiagnosticsStore, domain: Domain, id: string, value: number | null, time: number, unit: string, source: string,
   clock: ClockDomain = 'audio', status: MetricStatus = 'valid', method = 'producer value', lowerIsBetter = false): void {
@@ -70,6 +71,8 @@ export function collectSnapshot(store: DiagnosticsStore, snapshot: ExperienceSna
   group(store, 'experience', 'experience', s.state, time, 'ExperienceEngine');
   group(store, 'experience', 'plan', s.plan, time, 'ExperiencePlanner');
   group(store, 'experience', 'morphology', s.morphology, time, 'SoundMorphology');
+  // What is expected and what became of it: opened, confirmed and lapsed anticipations, and the lead of the last one confirmed.
+  group(store, 'experience', 'anticipation', s.anticipation, time, 'AnticipationLedger');
   for (const intent of s.intents) {
     metric(store, 'experience', `intent.${intent.kind}`, intent.strength * intent.confidence, intent.time, '0..1', 'ExperiencePlanner', 'audio', 'valid', 'strength × confidence');
     metric(store, 'experience', `intentConfidence.${intent.kind}`, intent.confidence, intent.time, '0..1', 'ExperiencePlanner');

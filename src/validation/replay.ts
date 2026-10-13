@@ -169,6 +169,10 @@ export async function replay(pcm: Pcm, beats: { time: number; position: number }
     anticipations: anticipations.length, drops: drops.length,
     // An anticipation episode not followed by a release within 8 s.
     falseAnticipations: anticipations.filter((t) => !drops.some((d) => d >= t && d - t <= 8)).length,
+    // The engine's own account (experience/Anticipation.ts): what it expected, and what became of it.
+    anticipationsOpened: engine.anticipation.frame.opened, anticipationsConfirmed: engine.anticipation.frame.confirmed,
+    anticipationsExpired: engine.anticipation.frame.expired, releasesUnannounced: engine.anticipation.frame.unannounced,
+    dropTimes: drops.map((t) => t.toFixed(2)).join(' '),
     impacts: events.impact ?? 0, silences: silences.length,
     worldEnergyMax: round(maxEnergy), worldSpeedMax: round(maxSpeed),
     worldSaturatedShare: round(saturated / Math.max(1, presented)),

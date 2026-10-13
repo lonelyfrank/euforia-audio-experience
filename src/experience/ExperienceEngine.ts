@@ -3,8 +3,9 @@ import { copyMorphology, MorphologyEngine } from '../morphology/SoundMorphology'
 import { copyResonance, MultiscaleResonance } from '../physics/MultiscaleResonance';
 import { ResonantPhysics } from '../physics/ResonantPhysics';
 import { WorldEngine, WorldIntegrator } from '../world/WorldEngine';
-import { copyWorld } from '../world/WorldState';
+import { CHARGE_RATE, copyWorld } from '../world/WorldState';
 import { AdaptiveMusicCalibration, copyCalibration } from './AdaptiveCalibration';
+import { AnticipationLedger, copyAnticipation } from './Anticipation';
 import { EventStream } from './EventStream';
 import { TemporalMemory } from './TemporalMemory';
 import { ExperiencePlanner } from './ExperiencePlanner';
@@ -36,6 +37,11 @@ export class ExperienceEngine {
    * measures. Beside the world, not in it: nothing the existing scenes read is changed by it.
    */
   readonly calibration = new AdaptiveMusicCalibration();
+  /**
+   * What is expected and what became of it: the account of the forecasts the world is charged with and of the releases
+   * that confirm them. It reads the world's charge and potential and writes nothing back.
+   */
+  readonly anticipation = new AnticipationLedger();
   /** Extrapolates the presented world from its snapshot to the heard time (same held forces). */
   private readonly presentation = new WorldIntegrator();
   /** Discrete events (analysis and experience), ordered by capture time. */
@@ -172,6 +178,7 @@ export class ExperienceEngine {
         s.release = unit(s.releasePotential * (0.5 + structural));
         this.events.push('drop', a.time, s.release, s.anticipationConfidence, -1, unit(s.releasePotential + structural * 0.5), 0, significance);
         this.world.release(a.time, s.release);
+        this.anticipation.release(a.time);
         // The release resolves what was anticipated.
         s.releasePotential *= 0.2; s.anticipation *= 0.3; this.lastRelease = a.time; this.memory.drops++;
       }
@@ -186,13 +193,14 @@ export class ExperienceEngine {
     this.resonance.update(a, s, dt);
     this.morphology.update(a, dt);
     this.world.setForces(a, s, this.planner.intents, presence);
+    this.anticipation.update(a.time, dt, this.world.state.forces.charge / CHARGE_RATE, this.world.state.potential);
     if (a.time - this.lastSnapshot >= 1 / 120 - 1e-9) {
       const snapshot = this.history[this.written++ % HISTORY];
       Object.assign(snapshot.state, s); Object.assign(snapshot.plan, this.planner.plan);
       for (let i = 0; i < snapshot.intents.length; i++) Object.assign(snapshot.intents[i], this.planner.intents[i]);
       copyPhysics(snapshot.physics, this.physics.frame); copyResonance(snapshot.resonance, this.resonance.frame); copyFrame(snapshot.acoustic, a);
       copyWorld(snapshot.world, this.world.state); copyMorphology(snapshot.morphology, this.morphology.state);
-      copyCalibration(snapshot.calibration, this.calibration.frame);
+      copyCalibration(snapshot.calibration, this.calibration.frame); copyAnticipation(snapshot.anticipation, this.anticipation.frame);
       this.lastSnapshot = a.time;
     }
   }
@@ -221,7 +229,7 @@ export class ExperienceEngine {
 
   private restart(session: boolean): void {
     if (session) this.calibration.reset();
-    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.resonance.reset(); this.world.reset(); this.events.reset(); this.morphology.reset();
+    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.resonance.reset(); this.world.reset(); this.events.reset(); this.morphology.reset(); this.anticipation.reset();
     this.dEnergy.reset(); this.dComplexity.reset(); this.dTension.reset(); this.dOpenness.reset();
     this.shares.fill(0); this.scores.fill(0); this.trajectoryScores.fill(0);
     Object.assign(this.state, createState());
@@ -378,4 +386,5 @@ function copySnapshot(to: ExperienceSnapshot, from: ExperienceSnapshot): void {
   for (let i = 0; i < to.intents.length; i++) Object.assign(to.intents[i], from.intents[i]);
   copyPhysics(to.physics, from.physics); copyFrame(to.acoustic, from.acoustic); copyWorld(to.world, from.world);
   copyMorphology(to.morphology, from.morphology); copyResonance(to.resonance, from.resonance); copyCalibration(to.calibration, from.calibration);
+  copyAnticipation(to.anticipation, from.anticipation);
 }

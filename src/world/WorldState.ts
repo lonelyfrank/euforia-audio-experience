@@ -35,6 +35,8 @@ export const POTENTIAL_LEAK = 8;
 export const ILLUMINATION_RISE = 0.15;
 export const ILLUMINATION_FADE = 1.4;
 export const OPENNESS_TAU = 4;
+/** Charge rate (1/s) of the stored potential at a certain forecast: the build evidence, weighted by its confidence, times this. */
+export const CHARGE_RATE = 0.3;
 
 /** Forces held over the next step: the world's inputs at its last update (what extrapolation integrates). */
 export interface WorldForces {
