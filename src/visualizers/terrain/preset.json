@@ -1,0 +1,34 @@
+{
+  "name": "Generative Terrain",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 68,
+    "distance": 0,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.7,
+    "radius": 0.45,
+    "threshold": 0.15
+  },
+  "visual": {
+    "seed": 20261013,
+    "cell": 1.1,
+    "columns": 72,
+    "rows": 150,
+    "height": 2.4,
+    "pitch": 0.1,
+    "relief": 9,
+    "roughness": 0.5,
+    "valley": 5,
+    "stride": 9,
+    "fog": 0.02,
+    "exposure": 0.9,
+    "wave": 1.1
+  }
+}
