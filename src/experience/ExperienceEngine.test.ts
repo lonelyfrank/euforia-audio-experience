@@ -176,6 +176,28 @@ describe('event stream', () => {
     expect([0, 1, 2, 3].map((i) => s.at(i).audioTime)).toEqual([0.9, 1.0, 1.1, 1.5]);
   });
 
+  it('loses nothing and repeats nothing when the heard moment goes back (a latency raised, the clocks re-estimated)', async () => {
+    const { EventStream } = await import('./EventStream');
+    const s = new EventStream(), seen: string[] = [], cursor = { time: -Infinity, seq: 0 }, visit = (e: { type: string; audioTime: number }) => seen.push(`${e.type}@${e.audioTime}`);
+    s.push('impact', 1.0, 1, 1); s.push('beat', 1.9, 1, 1);
+    s.forEachHeard(cursor, 2, visit);
+    expect(seen).toEqual(['impact@1', 'beat@1.9']);
+    // The output latency is raised by 0.3 s: what is heard now is 1.7. An attack arrives that will be heard at 1.8, and a
+    // late one that was heard at 1.6.
+    s.push('impact', 1.8, 1, 1); s.push('onset', 1.6, 1, 1);
+    s.forEachHeard(cursor, 1.7, visit);
+    expect(seen.slice(2)).toEqual(['onset@1.6']);
+    s.push('drop', 1.75, 1, 1);
+    s.forEachHeard(cursor, 1.85, visit);
+    // Both are delivered when they are heard; what was shown before the step back (the beat at 1.9) is not shown again.
+    expect(seen.slice(3)).toEqual(['drop@1.75', 'impact@1.8']);
+    s.forEachHeard(cursor, 1.95, visit); s.forEachHeard(cursor, 2.4, visit);
+    expect(seen).toHaveLength(5);
+    s.push('beat', 2.5, 1, 1);
+    s.forEachHeard(cursor, 2.6, visit);
+    expect(seen.slice(5)).toEqual(['beat@2.5']);
+  });
+
   it('stamps build peak and drop on the audio clock, in order', () => {
     const e = new ExperienceEngine();
     feed(e, 30, (a, t) => {

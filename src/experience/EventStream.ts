@@ -40,6 +40,12 @@ export interface EventCursor {
   time: number;
   seq: number;
   epoch?: number;
+  /**
+   * While the heard moment is behind `time` (it went back: a latency raised, the clocks re-estimated): how far it has
+   * come since, and the arrivals that were there before it went back. Kept by the stream.
+   */
+  low?: number;
+  lowSeq?: number;
 }
 
 const CAPACITY = 256;
@@ -85,18 +91,27 @@ export class EventStream {
    * Visits, in audio-time order, the events heard by `heard` that `cursor` has
    * not seen: newer than its time, or arrived after it with an older time
    * (late insertions are delivered late rather than lost). Advances the cursor.
+   *
+   * `heard` may go back a little (the output latency was raised, the clock mapping re-estimated). What was shown
+   * before that is not shown again, and what arrives while the heard moment catches up is delivered when it is heard:
+   * for those arrivals the cursor keeps how far the heard moment has come since it went back.
    */
   forEachHeard(cursor: EventCursor, heard: number, visit: (event: AudioEvent) => void): void {
     if (cursor.epoch !== this.epoch) {
       // The stream restarted (session or analysis gap): its clock and arrivals start over.
-      cursor.time = -Infinity; cursor.seq = 0; cursor.epoch = this.epoch;
+      cursor.time = -Infinity; cursor.seq = 0; cursor.epoch = this.epoch; cursor.low = undefined;
     }
+    const low = cursor.low, lowSeq = cursor.lowSeq ?? 0;
     for (let i = 0; i < this.count; i++) {
       const e = this.at(i);
       if (e.audioTime > heard) break;
-      if (e.audioTime > cursor.time || e.seq > cursor.seq) visit(e);
+      // Seen already: there at the last call and heard by then, where "then" is the furthest the heard moment has been
+      // since the event arrived.
+      if (e.seq > cursor.seq || e.audioTime > (low !== undefined && e.seq > lowSeq ? low : cursor.time)) visit(e);
     }
-    cursor.time = Math.max(cursor.time, heard);
+    if (heard >= cursor.time) { cursor.time = heard; cursor.low = undefined; }
+    else if (low === undefined) { cursor.low = heard; cursor.lowSeq = cursor.seq; }
+    else if (heard > low) cursor.low = heard;
     // Only arrivals already heard are settled; future ones stay visible through their time.
     cursor.seq = this.seq;
   }
