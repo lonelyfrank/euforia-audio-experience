@@ -1,6 +1,11 @@
 import { expect, it } from 'vitest';
 import { newFrame } from '../audio/features/decode';
 import { AdaptiveMusicCalibration } from '../experience/AdaptiveCalibration';
+import { AnticipationLedger } from '../experience/Anticipation';
+import { createGeometry } from '../visual-engine/geometry/GeometryState';
+import { packTerrain, TERRAIN_VALUES } from '../visual-engine/primitives/terrainLaw';
+import { TerrainMotion } from '../visual-engine/primitives/terrainMotion';
+import terrain from '../visualizers/terrain/preset.json';
 import { createMotion, TunnelMotionCoordinator } from '../visualizers/tunnel/motion';
 import { createTopology, tunnelTopology } from '../visualizers/tunnel/topology';
 import { createWorld } from '../world/WorldState';
@@ -8,8 +13,9 @@ import { WorldView } from '../world/WorldView';
 
 /**
  * Synthetic CPU cost of what calibrates and coordinates the response: the adaptive calibration per analysis hop and
- * per rated attack, and the tunnel's motion coordinator per frame (with the architecture law it evaluates). No audio
- * path and no GPU: order of magnitude on the machine it runs on, with the tail beside the median.
+ * per rated attack, the anticipation account per hop, the tunnel's motion coordinator per frame (with the architecture
+ * law it evaluates) and the terrain's motion per frame (with the packing of what its shader reads). No audio path and
+ * no GPU: order of magnitude on the machine it runs on, with the tail beside the median.
  */
 
 interface Cost { n: number; p50: number; p95: number; p99: number; max: number }
@@ -30,7 +36,7 @@ function measure(calls: number, group: number, work: (k: number) => void): Cost 
   return summary(samples);
 }
 
-it('measures the adaptive calibration and the tunnel\'s motion coordinator (synthetic CPU, not live overhead)', { timeout: 120000 }, async () => {
+it('measures the adaptive calibration, the anticipation account, the tunnel\'s coordinator and the terrain\'s motion (synthetic CPU, not live overhead)', { timeout: 120000 }, async () => {
   // ---- calibration: one hop of a track that swings, with a kick in the lows ----
   const calibration = new AdaptiveMusicCalibration(), a = newFrame();
   a.presence = a.sounding = a.energyConfidence = 1; a.noiseFloorDb = -70; a.onsetDensity = 4; a.percussiveShare = 0.4;
@@ -61,10 +67,31 @@ it('measures the adaptive calibration and the tunnel\'s motion coordinator (synt
   };
   const asItWas = measure(200000, 100, frame(false)), balanced = measure(200000, 100, frame(true));
 
-  const rows = { calibrationPerHop: perHop, calibrationPerAttack: perAttack, tunnelTargetsAndArchitecture: asItWas, tunnelBalanced: balanced };
+  // ---- the anticipation account: one hop of evidence that comes and goes, with a release now and then ----
+  const ledger = new AnticipationLedger();
+  let heard = 0;
+  const perLedgerHop = measure(200000, 100, (k) => {
+    heard += 256 / 48000;
+    ledger.update(heard, 256 / 48000, 0.5 + 0.5 * Math.sin(heard * 0.4), 0.3);
+    if (k % 4000 === 0) ledger.release(heard);
+  });
+
+  // ---- the terrain: one frame of the same straining world, with the packing of what its shader reads ----
+  const ground = new TerrainMotion(terrain.visual), geometry = createGeometry(), packed = new Float32Array(TERRAIN_VALUES);
+  const terrainFrame = measure(200000, 100, (k) => {
+    clock += 1 / 60;
+    world.time = clock; world.travel += 2 / 60; world.angle += 0.5 / 60;
+    world.potential = 0.5 + 0.4 * Math.sin(clock * 0.7); world.turbulence = 0.4 + 0.3 * Math.sin(clock * 1.3); world.spin = 1.5 * Math.sin(clock * 0.9);
+    if (k % 600 === 0) { world.releaseTime = clock; world.releaseStrength = 0.6; }
+    view.update(world, gains);
+    packTerrain(packed, ground.step(1 / 60, view, geometry));
+  });
+
+  const rows = { calibrationPerHop: perHop, calibrationPerAttack: perAttack, anticipationPerHop: perLedgerHop, tunnelTargetsAndArchitecture: asItWas, tunnelBalanced: balanced, terrainMotion: terrainFrame };
   console.log('response bench:\n' + Object.entries(rows).map(([name, cost]) => `  ${name.padEnd(30)} ${show(cost)}`).join('\n'));
   // Far inside an analysis hop (5.3 ms) and a frame: a few microseconds at the worst percentile on any machine that runs the app.
   expect(perHop.p95).toBeLessThan(0.05); expect(perAttack.p95).toBeLessThan(0.05); expect(balanced.p95).toBeLessThan(0.05);
+  expect(perLedgerHop.p95).toBeLessThan(0.05); expect(terrainFrame.p95).toBeLessThan(0.05);
   // What the coordinator adds to a frame is what it costs over the targets it is given.
   expect(balanced.p50 - asItWas.p50).toBeLessThan(0.01);
   const path = (globalThis as unknown as { process?: { env: Record<string, string | undefined> } }).process?.env.EUFORIA_RESPONSE_BENCH_REPORT;

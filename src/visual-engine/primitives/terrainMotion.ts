@@ -98,7 +98,7 @@ const ramp = (x: number, [lo, hi]: readonly [number, number]): number => unit((x
 export class TerrainMotion {
   /** What the law reads this frame. */
   readonly values: TerrainValues = createTerrain();
-  /** Roll of the ground about the viewer (rad), and the release front's light, 0..1. */
+  /** Roll of the ground about the viewer (rad): it banks into the world's turn. */
   bank = 0;
   /** Ground speed shown (units/s), how far plates are allowed to lift (0..1) and the accent held (0..1): the tools read them. */
   speed = 0;

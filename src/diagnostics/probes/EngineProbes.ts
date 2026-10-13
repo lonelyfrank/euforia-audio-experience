@@ -136,9 +136,15 @@ export function collectEngine(app: App, store: DiagnosticsStore, render: Rendere
   metric(store, 'audio', 'latency.renderEstimate', ready ? timing.renderLatency : null, now, 's', 'Timing', 'render', 'estimated');
   metric(store, 'audio', 'latency.physical', null, now, 's', 'external calibration required', 'render');
   metric(store, 'audio', 'latency.analysisLead', ready ? timing.lead : null, now, 's', 'Timing', 'render', 'estimated');
+  // From the moment an attack is heard to the frame that shows it (0 when the analysis was early enough): the command, not the photons.
+  metric(store, 'audio', 'latency.impactLate', ready ? timing.impactLate : null, now, 's', 'Timing', 'render', 'estimated', 'attacks shown after they are heard, smoothed over the last ones; excludes display latency', true);
   if (ready && audio.experience.ready) collectSnapshot(store, audio.experience.presented, detailed);
 
   const world = visualWorld(app);
+  // A scene that is not a recipe says how it moves through its own debug numbers (the tunnel: its coordinator). They are
+  // written in development builds only, so only there are they measures.
+  const layer = app.directionDebug.current;
+  if (import.meta.env.DEV && layer && !world && layer.visualizer.debug) group(store, 'geometry', `scene.${layer.source.preset.name.toLowerCase().replace(/\s+/g, '-')}`, layer.visualizer.debug, now, 'Visualizer.debug', false, 'render');
   if (world) {
     group(store, 'geometry', 'geometry', world.mapper.state, world.frame.time, 'SonicGeometryMapper');
     group(store, 'geometry', 'visualWorld', world.debug, world.frame.time, 'VisualWorld');
