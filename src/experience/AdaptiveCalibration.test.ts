@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SignalGenerator, type TestSignal } from '../audio/capture/testSignals';
 import { newFrame, type AnalysisFrame } from '../audio/features/decode';
 import { WasmAnalysis } from '../audio/features/WasmAnalysis';
@@ -6,6 +6,9 @@ import {
   AdaptiveMusicCalibration, CALIBRATION_PHASES, createCalibration, EVIDENCE, GAIN_MAX, GAIN_MIN, MIN_RANGE, SCALE_CALM, type CalibrationFrame,
 } from './AdaptiveCalibration';
 import { ExperienceEngine } from './ExperienceEngine';
+
+// Minutes of hops with a dozen checks on each: on a power-limited machine, or beside the rest of the suite, more than the default 5 s.
+vi.setConfig({ testTimeout: 60000 });
 
 const RATE = 200;
 
