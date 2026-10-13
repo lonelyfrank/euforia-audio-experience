@@ -1,0 +1,969 @@
+{
+ "date": "2026-10-13",
+ "base": "a08fb85",
+ "branch": "music-response-terrain",
+ "cpu": {
+  "method": "bench/response.bench.test.ts: \u00b5s per call, timed in groups of 100 after a warm-up; vitest, machine not isolated; base and head alternated; alias-* = head with the shared parts bound to local constants in tunnel/motion.ts (the import getters of the harness removed)",
+  "runs": {
+   "base-1": {
+    "calibrationPerHop": {
+     "p50": 1.101,
+     "p95": 2.015,
+     "p99": 2.464
+    },
+    "calibrationPerAttack": {
+     "p50": 0.05,
+     "p95": 0.223,
+     "p99": 0.304
+    },
+    "tunnelTargetsAndArchitecture": {
+     "p50": 0.594,
+     "p95": 1.324,
+     "p99": 1.7
+    },
+    "tunnelBalanced": {
+     "p50": 2.332,
+     "p95": 4.314,
+     "p99": 5.351
+    }
+   },
+   "base-2": {
+    "calibrationPerHop": {
+     "p50": 1.085,
+     "p95": 2.143,
+     "p99": 2.616
+    },
+    "calibrationPerAttack": {
+     "p50": 0.048,
+     "p95": 0.217,
+     "p99": 0.362
+    },
+    "tunnelTargetsAndArchitecture": {
+     "p50": 0.572,
+     "p95": 1.199,
+     "p99": 1.524
+    },
+    "tunnelBalanced": {
+     "p50": 2.382,
+     "p95": 4.477,
+     "p99": 5.62
+    }
+   },
+   "head-1": {
+    "calibrationPerHop": {
+     "p50": 1.002,
+     "p95": 1.884,
+     "p99": 2.253
+    },
+    "calibrationPerAttack": {
+     "p50": 0.046,
+     "p95": 0.078,
+     "p99": 0.264
+    },
+    "anticipationPerHop": {
+     "p50": 0.052,
+     "p95": 0.122,
+     "p99": 0.267
+    },
+    "tunnelTargetsAndArchitecture": {
+     "p50": 0.594,
+     "p95": 1.216,
+     "p99": 1.554
+    },
+    "tunnelBalanced": {
+     "p50": 2.986,
+     "p95": 5.319,
+     "p99": 6.729
+    },
+    "terrainMotion": {
+     "p50": 2.661,
+     "p95": 5.006,
+     "p99": 6.412
+    }
+   },
+   "head-2": {
+    "calibrationPerHop": {
+     "p50": 1.009,
+     "p95": 1.946,
+     "p99": 2.339
+    },
+    "calibrationPerAttack": {
+     "p50": 0.059,
+     "p95": 0.212,
+     "p99": 0.314
+    },
+    "anticipationPerHop": {
+     "p50": 0.043,
+     "p95": 0.082,
+     "p99": 0.258
+    },
+    "tunnelTargetsAndArchitecture": {
+     "p50": 0.644,
+     "p95": 1.381,
+     "p99": 1.744
+    },
+    "tunnelBalanced": {
+     "p50": 3.204,
+     "p95": 5.906,
+     "p99": 7.345
+    },
+    "terrainMotion": {
+     "p50": 2.761,
+     "p95": 5.149,
+     "p99": 6.99
+    }
+   },
+   "alias-1": {
+    "calibrationPerHop": {
+     "p50": 1.04,
+     "p95": 1.935,
+     "p99": 2.314
+    },
+    "calibrationPerAttack": {
+     "p50": 0.054,
+     "p95": 0.173,
+     "p99": 0.334
+    },
+    "anticipationPerHop": {
+     "p50": 0.045,
+     "p95": 0.108,
+     "p99": 0.264
+    },
+    "tunnelTargetsAndArchitecture": {
+     "p50": 0.615,
+     "p95": 1.336,
+     "p99": 1.745
+    },
+    "tunnelBalanced": {
+     "p50": 2.694,
+     "p95": 4.842,
+     "p99": 6.166
+    },
+    "terrainMotion": {
+     "p50": 2.942,
+     "p95": 5.497,
+     "p99": 6.958
+    }
+   },
+   "alias-2": {
+    "calibrationPerHop": {
+     "p50": 0.94,
+     "p95": 1.977,
+     "p99": 2.381
+    },
+    "calibrationPerAttack": {
+     "p50": 0.054,
+     "p95": 0.111,
+     "p99": 0.284
+    },
+    "anticipationPerHop": {
+     "p50": 0.055,
+     "p95": 0.204,
+     "p99": 0.285
+    },
+    "tunnelTargetsAndArchitecture": {
+     "p50": 0.525,
+     "p95": 1.095,
+     "p99": 1.554
+    },
+    "tunnelBalanced": {
+     "p50": 2.648,
+     "p95": 4.977,
+     "p99": 6.534
+    },
+    "terrainMotion": {
+     "p50": 2.787,
+     "p95": 5.243,
+     "p99": 7.115
+    }
+   }
+  }
+ },
+ "gpu": {
+  "method": "Chromium headless 1243, ANGLE (Intel, Mesa Intel(R) UHD Graphics (CML GT2), OpenGL ES 3.2), 1280x720, vsync on, reflection off, signal buildDrop restarted for every run; frame intervals from one measuring requestAnimationFrame (so rafPerFrame 2 = the engine's one); base (port 1432) and head (1431) alternated; switch = scene changed every 6 s between tunnel and terrain (head) or tunnel and spectrum (base, head), resources read after a forced gc",
+  "runs": {
+   "tunnel-base-1": {
+    "scene": "tunnel",
+    "quality": "low",
+    "seconds": 36,
+    "frames": 2162,
+    "fps": 60.002,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 16.67,
+    "over20ms": 0,
+    "over33ms": 0,
+    "drawCallsPerFrame": 3,
+    "trianglesPerFrame": 10753,
+    "linesPerFrame": 0,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33544987,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 32597138,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "change": 3.275,
+      "reversals": 0,
+      "last": 121.935,
+      "max": 121.935
+     },
+     "twist": {
+      "change": 0.002,
+      "reversals": 1.361,
+      "last": 0.008,
+      "max": 0.011
+     },
+     "ring": {
+      "change": 0.142,
+      "reversals": 19.111,
+      "last": 0.145,
+      "max": 0.201
+     },
+     "gap": {
+      "change": 0.018,
+      "reversals": 0.194,
+      "last": 0.0,
+      "max": 0.168
+     },
+     "bend": {
+      "change": 0.1,
+      "reversals": 1.028,
+      "last": 0.344,
+      "max": 1.476
+     },
+     "release": {
+      "change": 0.056,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.569
+     }
+    }
+   },
+   "tunnel-head-1": {
+    "scene": "tunnel",
+    "quality": "low",
+    "seconds": 36,
+    "frames": 2162,
+    "fps": 60.002,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 16.67,
+    "over20ms": 0,
+    "over33ms": 0,
+    "drawCallsPerFrame": 3,
+    "trianglesPerFrame": 10753,
+    "linesPerFrame": 0,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33882892,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 32936763,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "change": 3.275,
+      "reversals": 0,
+      "last": 122.1,
+      "max": 122.1
+     },
+     "twist": {
+      "change": 0.002,
+      "reversals": 1.361,
+      "last": 0.008,
+      "max": 0.011
+     },
+     "ring": {
+      "change": 0.142,
+      "reversals": 18.5,
+      "last": 0.145,
+      "max": 0.201
+     },
+     "gap": {
+      "change": 0.018,
+      "reversals": 0.194,
+      "last": 0.0,
+      "max": 0.168
+     },
+     "bend": {
+      "change": 0.1,
+      "reversals": 1.028,
+      "last": 0.344,
+      "max": 1.476
+     },
+     "release": {
+      "change": 0.056,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.574
+     }
+    }
+   },
+   "tunnel-base-2": {
+    "scene": "tunnel",
+    "quality": "low",
+    "seconds": 36,
+    "frames": 2163,
+    "fps": 60.002,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 16.67,
+    "over20ms": 0,
+    "over33ms": 0,
+    "drawCallsPerFrame": 3,
+    "trianglesPerFrame": 10753,
+    "linesPerFrame": 0,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33518915,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 32569102,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "change": 3.276,
+      "reversals": 0,
+      "last": 122.061,
+      "max": 122.061
+     },
+     "twist": {
+      "change": 0.002,
+      "reversals": 1.361,
+      "last": 0.008,
+      "max": 0.011
+     },
+     "ring": {
+      "change": 0.143,
+      "reversals": 18.667,
+      "last": 0.145,
+      "max": 0.2
+     },
+     "gap": {
+      "change": 0.018,
+      "reversals": 0.194,
+      "last": 0.0,
+      "max": 0.168
+     },
+     "bend": {
+      "change": 0.1,
+      "reversals": 1.028,
+      "last": 0.344,
+      "max": 1.476
+     },
+     "release": {
+      "change": 0.056,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.573
+     }
+    }
+   },
+   "tunnel-head-2": {
+    "scene": "tunnel",
+    "quality": "low",
+    "seconds": 36,
+    "frames": 2163,
+    "fps": 60.002,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 16.67,
+    "over20ms": 0,
+    "over33ms": 0,
+    "drawCallsPerFrame": 3,
+    "trianglesPerFrame": 10753,
+    "linesPerFrame": 0,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33899036,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 32984079,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "change": 3.276,
+      "reversals": 0,
+      "last": 121.996,
+      "max": 121.996
+     },
+     "twist": {
+      "change": 0.002,
+      "reversals": 1.417,
+      "last": 0.008,
+      "max": 0.011
+     },
+     "ring": {
+      "change": 0.144,
+      "reversals": 18.833,
+      "last": 0.144,
+      "max": 0.201
+     },
+     "gap": {
+      "change": 0.018,
+      "reversals": 0.194,
+      "last": 0.0,
+      "max": 0.168
+     },
+     "bend": {
+      "change": 0.1,
+      "reversals": 1.083,
+      "last": 0.344,
+      "max": 1.476
+     },
+     "release": {
+      "change": 0.056,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.572
+     }
+    }
+   },
+   "terrain-head-1": {
+    "scene": "terrain",
+    "quality": "low",
+    "seconds": 36,
+    "frames": 2163,
+    "fps": 60.002,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 16.67,
+    "over20ms": 0,
+    "over33ms": 0,
+    "drawCallsPerFrame": 3,
+    "trianglesPerFrame": 7477,
+    "linesPerFrame": 11345,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 1,
+     "programs": 3,
+     "heap": 33850249,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 1,
+     "programs": 3,
+     "heap": 32989628,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "speed": {
+      "change": 1.506,
+      "reversals": 8.417,
+      "last": 2.555,
+      "max": 13.169
+     },
+     "terrace": {
+      "change": 0.062,
+      "reversals": 0.306,
+      "last": 0.169,
+      "max": 0.556
+     },
+     "lift": {
+      "change": 0.068,
+      "reversals": 0.139,
+      "last": 0.0,
+      "max": 0.709
+     },
+     "release": {
+      "change": 0.056,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.572
+     },
+     "tension": {
+      "change": 0.037,
+      "reversals": 0.361,
+      "last": 0.285,
+      "max": 0.478
+     },
+     "fronts": {
+      "change": 1.25,
+      "reversals": 0.444,
+      "last": 0,
+      "max": 8
+     }
+    }
+   },
+   "terrain-head-2": {
+    "scene": "terrain",
+    "quality": "low",
+    "seconds": 36,
+    "frames": 2162,
+    "fps": 60.002,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 16.67,
+    "over20ms": 0,
+    "over33ms": 0,
+    "drawCallsPerFrame": 3,
+    "trianglesPerFrame": 7477,
+    "linesPerFrame": 11345,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 1,
+     "programs": 3,
+     "heap": 33844665,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 1,
+     "programs": 3,
+     "heap": 33001396,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "speed": {
+      "change": 1.497,
+      "reversals": 8.306,
+      "last": 2.583,
+      "max": 13.169
+     },
+     "terrace": {
+      "change": 0.062,
+      "reversals": 0.306,
+      "last": 0.17,
+      "max": 0.556
+     },
+     "lift": {
+      "change": 0.067,
+      "reversals": 0.139,
+      "last": 0.0,
+      "max": 0.701
+     },
+     "release": {
+      "change": 0.056,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.569
+     },
+     "tension": {
+      "change": 0.037,
+      "reversals": 0.361,
+      "last": 0.285,
+      "max": 0.478
+     },
+     "fronts": {
+      "change": 1.167,
+      "reversals": 0.361,
+      "last": 0,
+      "max": 8
+     }
+    }
+   },
+   "terrain-head-high": {
+    "scene": "terrain",
+    "quality": "high",
+    "seconds": 36,
+    "frames": 1450,
+    "fps": 40.234,
+    "p50": 16.67,
+    "p95": 33.335,
+    "p99": 33.335,
+    "max": 50,
+    "over20ms": 703,
+    "over33ms": 703,
+    "drawCallsPerFrame": 17,
+    "trianglesPerFrame": 21615,
+    "linesPerFrame": 32622,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 13,
+     "programs": 12,
+     "heap": 32329984,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 13,
+     "programs": 12,
+     "heap": 33723812,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "speed": {
+      "change": 1.481,
+      "reversals": 8.694,
+      "last": 2.567,
+      "max": 13.169
+     },
+     "terrace": {
+      "change": 0.062,
+      "reversals": 0.306,
+      "last": 0.168,
+      "max": 0.556
+     },
+     "lift": {
+      "change": 0.067,
+      "reversals": 0.139,
+      "last": 0.0,
+      "max": 0.703
+     },
+     "release": {
+      "change": 0.056,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.569
+     },
+     "tension": {
+      "change": 0.037,
+      "reversals": 0.361,
+      "last": 0.284,
+      "max": 0.478
+     },
+     "fronts": {
+      "change": 1.25,
+      "reversals": 0.444,
+      "last": 0,
+      "max": 8
+     }
+    }
+   },
+   "tunnel-head-high": {
+    "scene": "tunnel",
+    "quality": "high",
+    "seconds": 36,
+    "frames": 1303,
+    "fps": 36.157,
+    "p50": 33.33,
+    "p95": 33.335,
+    "p99": 33.34,
+    "max": 50,
+    "over20ms": 851,
+    "over33ms": 851,
+    "drawCallsPerFrame": 17,
+    "trianglesPerFrame": 61455,
+    "linesPerFrame": 0,
+    "rafPerFrame": 2,
+    "switches": 0,
+    "before": {
+     "geometries": 3,
+     "textures": 15,
+     "programs": 12,
+     "heap": 33038409,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 15,
+     "programs": 12,
+     "heap": 34356289,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "change": 3.275,
+      "reversals": 0,
+      "last": 122.245,
+      "max": 122.245
+     },
+     "twist": {
+      "change": 0.002,
+      "reversals": 1.306,
+      "last": 0.008,
+      "max": 0.011
+     },
+     "ring": {
+      "change": 0.128,
+      "reversals": 14.389,
+      "last": 0.147,
+      "max": 0.2
+     },
+     "gap": {
+      "change": 0.017,
+      "reversals": 0.194,
+      "last": 0.0,
+      "max": 0.17
+     },
+     "bend": {
+      "change": 0.1,
+      "reversals": 1.083,
+      "last": 0.343,
+      "max": 1.476
+     },
+     "release": {
+      "change": 0.055,
+      "reversals": 0.083,
+      "last": 0.0,
+      "max": 0.569
+     }
+    }
+   },
+   "switch": {
+    "scene": "tunnel",
+    "quality": "low",
+    "seconds": 66,
+    "frames": 3958,
+    "fps": 59.942,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 66.66,
+    "over20ms": 2,
+    "over33ms": 2,
+    "drawCallsPerFrame": 3.271,
+    "trianglesPerFrame": 10496,
+    "linesPerFrame": 5933,
+    "rafPerFrame": 2.091,
+    "switches": 10,
+    "before": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33905456,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 34519612,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "reversals": 0,
+      "last": 18.151
+     },
+     "twist": {
+      "reversals": 0.636,
+      "last": 0.009
+     },
+     "ring": {
+      "reversals": 10.439,
+      "last": 0.18
+     },
+     "gap": {
+      "reversals": 0.182,
+      "last": 0.0
+     },
+     "bend": {
+      "reversals": 0.5,
+      "last": 0.418
+     },
+     "release": {
+      "change": 0.068,
+      "reversals": 0.288,
+      "last": 0.0,
+      "max": 0.57
+     }
+    }
+   },
+   "switch-base": {
+    "scene": "tunnel",
+    "quality": "low",
+    "seconds": 30,
+    "frames": 1800,
+    "fps": 59.902,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 66.665,
+    "over20ms": 1,
+    "over33ms": 1,
+    "drawCallsPerFrame": 2.782,
+    "trianglesPerFrame": 7116,
+    "linesPerFrame": 0,
+    "rafPerFrame": 2.2,
+    "switches": 4,
+    "before": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33532375,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 32684412,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "change": 3.527,
+      "reversals": 0.133,
+      "last": 24.12,
+      "max": 31.605
+     },
+     "twist": {
+      "change": 0.002,
+      "reversals": 0.967,
+      "last": 0.006,
+      "max": 0.01
+     },
+     "ring": {
+      "change": 0.109,
+      "reversals": 11.533,
+      "last": 0.187,
+      "max": 0.201
+     },
+     "gap": {
+      "change": 0.017,
+      "reversals": 0.167,
+      "last": 0.0,
+      "max": 0.192
+     },
+     "bend": {
+      "change": 0.354,
+      "reversals": 0.867,
+      "last": 0.559,
+      "max": 3
+     },
+     "release": {
+      "change": 0.033,
+      "reversals": 0.1,
+      "last": 0.0,
+      "max": 0.473
+     }
+    }
+   },
+   "switch-head-spectrum": {
+    "scene": "tunnel",
+    "quality": "low",
+    "seconds": 30,
+    "frames": 1800,
+    "fps": 59.902,
+    "p50": 16.665,
+    "p95": 16.67,
+    "p99": 16.67,
+    "max": 66.665,
+    "over20ms": 1,
+    "over33ms": 1,
+    "drawCallsPerFrame": 2.777,
+    "trianglesPerFrame": 7080,
+    "linesPerFrame": 0,
+    "rafPerFrame": 2.2,
+    "switches": 4,
+    "before": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33903588,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "after": {
+     "geometries": 3,
+     "textures": 3,
+     "programs": 3,
+     "heap": 33101873,
+     "listeners": 20,
+     "intervals": 2
+    },
+    "motion": {
+     "travel": {
+      "change": 3.524,
+      "reversals": 0.133,
+      "last": 24.05,
+      "max": 31.603
+     },
+     "twist": {
+      "change": 0.002,
+      "reversals": 0.967,
+      "last": 0.006,
+      "max": 0.01
+     },
+     "ring": {
+      "change": 0.11,
+      "reversals": 11.467,
+      "last": 0.187,
+      "max": 0.201
+     },
+     "gap": {
+      "change": 0.017,
+      "reversals": 0.167,
+      "last": 0.0,
+      "max": 0.193
+     },
+     "bend": {
+      "change": 0.354,
+      "reversals": 0.867,
+      "last": 0.559,
+      "max": 3
+     },
+     "release": {
+      "change": 0.033,
+      "reversals": 0.1,
+      "last": 0.0,
+      "max": 0.474
+     }
+    }
+   }
+  }
+ }
+}

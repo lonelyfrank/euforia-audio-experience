@@ -7,7 +7,8 @@
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
   `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md`, `docs/solid-dynamics.md`,
-  `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md` e `docs/tunnel-motion.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md`, `docs/tunnel-motion.md`, `docs/music-response.md` e
+  `docs/generative-terrain.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -109,6 +110,21 @@
   Nessun tempo proprio: follower esatti per un ingresso tenuto nel frame, età di eventi datati (`EventCursor`), fermo quando il mondo è
   fermo. Bassi, alti, luce e avanzamento non cedono mai. `balance: 0` è il Tunnel com'era e non chiama il coordinatore: `architecture`
   in `topology.ts` è la legge di `tunnelTopology`, cambiarle insieme. `tunnelLab` è solo DEV.
+- Music response (`docs/music-response.md`): un solo predittore. L'anticipazione è la carica del mondo (`forces.charge`: evidenza di build ×
+  confidenza → `potential`); `experience/Anticipation.ts` ne tiene solo il conto (aperta / confermata / scaduta), legge e non scrive nulla
+  nel mondo, e le scene **non** ramificano sulla sua fase: leggono il potenziale come forza. I follower di chi viaggia nel mondo sono in
+  `visualizers/shared/motion.ts` (`RateFollower`, `HysteresisGate`, `AccentGate`), esatti per un ingresso tenuto nel frame e fermi a riposo:
+  Tunnel e Terrain ne sono fatti, ciò che cede a cosa resta di ciascuna scena. Il Tunnel è fissato bit per bit da
+  `tunnel/preservation.test.ts` (digest registrati prima dell'estrazione): un cambio lì è un cambio di ciò che il Tunnel mostra, e va
+  motivato nello stesso commit (`EUFORIA_TUNNEL_DIGEST=1` per registrarli). `EventStream.forEachHeard` regge un momento udito che arretra:
+  non azzerare `cursor.low` a mano. Quando scatta un `drop` (`ExperienceEngine`) non si cambia senza musica reale: vedi §2.4–2.5.
+- Generative Terrain (`docs/generative-terrain.md`): scena autonoma (`visualizers/terrain`, recipe di una primitiva), nessun legame con il
+  Tunnel in nessuno dei due versi. Il suolo è un reticolo fisso: la mesh vi scorre di celle intere (`row`/`shift`, `col`/`shiftX`), il
+  paesaggio è una funzione pura del punto e si ripete ogni `PERIOD` righe (ogni scala e ogni placca lo divide). `terrainHeight` è scritta in
+  GLSL e in TS (`terrainLaw.ts`): cambiarle insieme. Ogni termine che il mondo aggiunge vale zero a riposo; nessun vertice è mosso da
+  un'ampiezza audio; le placche sono traslazioni rigide; solo un rilascio cambia la configurazione. Due draw call, nessun pass, nessuna
+  texture. Non è una fixture del rig Free. Portali e transizioni fra ambienti sono solo uno studio (`docs/world-transitions.md`): non
+  implementarli senza autorizzazione, e mai con uno scene manager parallelo.
 - Engine Workspace (`docs/engine-workspace.md`): la vista decide cosa mostra l'inspector (`VIEW_SECTIONS` + `applySections` in
   `diagnostics/workspace/sections.ts`); un componente costruisce i blocchi e ne dichiara la sezione, non si mostra né si nasconde da sé, e
   nascondere non ferma campionamento né storici. Un solo ingresso alle viste (`EngineWorkspace.navigate`): entrare in Laboratories apre

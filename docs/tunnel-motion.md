@@ -32,6 +32,8 @@ uniform degli shader esistenti   (nessuno shader, nessuna geometria, nessun pass
 | `…/tunnel/TunnelVisualizer.ts` | calcola i target come prima, li passa al coordinatore, scrive gli uniform |
 | `…/tunnel/preset.json` | `balance: 1` (versione 4) |
 | `visualizers/regimes.test.ts`, `grammar.test.ts`, `bench/response.bench.test.ts` | test e benchmark |
+| `visualizers/shared/motion.ts` | dal 13 ottobre: `RateFollower`, `HysteresisGate`, `AccentGate`, `follow`. Sono i follower, il cancello e gli accenti di questo coordinatore, estratti perché li usa anche Generative Terrain; i tre livelli, le quote di cessione e tutte le costanti restano in `motion.ts` |
+| `…/tunnel/preservation.test.ts` | digest di ogni numero del coordinatore e della scena su una sessione di 30 s, registrati prima dell'estrazione: il Tunnel è identico bit per bit ([music-response](music-response.md) §6, §11) |
 
 Non c'è una seconda simulazione del Tunnel, nessuna scena nuova, nessun planner, nessun bus: gli
 accenti leggono lo stesso `EventStream` di tutti, con un `EventCursor`.

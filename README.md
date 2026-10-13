@@ -35,7 +35,9 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 - **Adaptive Music Calibration**: quanta risposta merita l'audio che si sta catturando, imparata per hop dalle misure che il DSP già esporta (noise floor, percentili del loudness, bande relative): livello nel range del brano con stiramento limitato, attività di bassi/medi/alti, attacchi valutati contro gli accenti abituali, gain limitato dal rumore, carattere del brano. Sta accanto al mondo, non dentro: nessuna scena esistente cambia. Non è la calibrazione di sincronia audio-video, che resta com'era ([docs/adaptive-calibration.md](docs/adaptive-calibration.md))
 - **Tunnel Balanced**: un coordinatore decide quanto di ogni trasformazione del Tunnel si vede insieme. Il viaggio resta continuo e dominante, i bassi e gli alti tengono tutta la loro risposta, torsione, curvatura e forma seguono più lentamente e cedono mentre la parete è aperta; la parete si apre solo quando il mondo tira davvero o un evento spicca (isteresi, un evento alla volta). `balance: 0` nel preset è il Tunnel com'era ([docs/tunnel-motion.md](docs/tunnel-motion.md))
 - **Solid Dynamics** (sperimentale, prima milestone; laboratorio solo in sviluppo): gli stessi elementi tenuti insieme come corpi tridimensionali. Tetraedro, cubo e icosaedro sono condizioni iniziali: link (spigoli e controventi interni), facce e celle volumetriche risolti nello stesso passo fisso (vincoli XPBD di lunghezza, flessione e volume). Il suono sposta ciò a cui link e celle tendono, mai un vertice; un link troppo carico cede, facce e celle che teneva si aprono, i pezzi restano gli stessi elementi e, in un mondo vivo e ordinato, si ritrovano un link alla volta. Il rendering mostra lo stato della simulazione e nient'altro ([docs/solid-dynamics.md](docs/solid-dynamics.md))
-- 11 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**, **Matter Field**, **Vector Field**, **Spectral Shell**
+- **Generative Terrain** (sperimentale): una valle low-poly senza fine, sorvolata con la musica. Il suolo è un reticolo fisso su cui la mesh scorre (nessun asset, nessun chunk, due draw call); il viaggio è quello del mondo, seguito come nel Tunnel; la pressione alza il rilievo, il potenziale accumulato lo raccoglie in terrazze e stringe la valle, lo sforzo solleva placche rigide, un rilascio è una cresta che corre lungo la valle e lascia un altro suolo. Scena autonoma accanto a Infinite Tunnel, non ancora composta dal rig Free ([docs/generative-terrain.md](docs/generative-terrain.md))
+- **Risposta musicale consolidata**: i follower del coordinatore del Tunnel sono condivisi fra le scene che viaggiano nel mondo (il Tunnel resta identico bit per bit); il motore tiene il conto di ciò che si aspetta (anticipazioni aperte, confermate, scadute) senza un secondo predittore ([docs/music-response.md](docs/music-response.md))
+- 12 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**, **Matter Field**, **Vector Field**, **Spectral Shell**, **Generative Terrain**
 - Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
 - Qualità Auto / Low / Medium / High, fullscreen, auto-hide di controlli e cursore
@@ -137,8 +139,10 @@ Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/real
 [Structural Dynamics: elementi, legami, frattura, riformazione, cockpit del motore](docs/structural-dynamics.md),
 [Solid Dynamics: corpi volumetrici, solver, frattura e ricomposizione, laboratorio](docs/solid-dynamics.md),
 [Rigid Resonant Body: conservazione della forma, pulsazione, frattura sugli eventi](docs/rigid-resonant-body.md),
-[Adaptive Music Calibration](docs/adaptive-calibration.md), [Tunnel Motion Coordinator](docs/tunnel-motion.md);
-[rapporto di questo intervento, test e benchmark](docs/resonant-body-report.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
+[Adaptive Music Calibration](docs/adaptive-calibration.md), [Tunnel Motion Coordinator](docs/tunnel-motion.md),
+[Music Response: come il Tunnel traduce la musica, anticipazione, componenti condivisi, rapporto e checklist audio](docs/music-response.md),
+[Generative Terrain](docs/generative-terrain.md), [transizioni fra ambienti e portali (studio, non implementato)](docs/world-transitions.md);
+[rapporto dell'intervento precedente, test e benchmark](docs/resonant-body-report.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
 
@@ -271,12 +275,13 @@ src/
   visualizers/
     registry.ts     auto-discovery delle scene
     palettes.ts     i 4 preset di colore
-    shared/         BaseVisualizer, dispose, defineVisualizer
+    shared/         BaseVisualizer, dispose, defineVisualizer; motion.ts: follower, cancello e accenti di chi viaggia nel mondo
     tunnel/ spectrum/ particle-field/ galaxy/ liquid/ oscilloscope/ resonant-field/
                     index.ts + <Nome>Visualizer.ts + preset.json
                     (tunnel/topology.ts e particle-field/regimes.ts: come il mondo trasforma la scena, funzioni pure)
     vector-field/   recipe: il mondo come campo vettoriale (traccianti + linee di campo)
     spectral-shell/ recipe: la membrana a disco di Matter Field con il proprio passato attorno come gusci
+    terrain/        recipe: Generative Terrain, una valle low-poly senza fine (primitiva e legge in visual-engine/primitives/terrain*)
     spectral-matter/ recipe con la sola materia (laboratorio del Matter Engine)
     matter-field/   recipe del Visual Engine: materia + fronti + filamenti + membrana + grafo
     resonant-field/ recipe con la sola membrana (la scena precedente resta per il confronto in DEV)
@@ -505,6 +510,7 @@ Spectral Matter interpreta la densità come quantità di materia (circa 96.000 /
 - **Matter Engine**: prima milestone. Morfologia tarata sui segnali di prova attraverso il DSP reale, forme verificate sul riferimento CPU e a schermo con segnali sintetici (fotogrammi, non il movimento); **nessuna prova con musica reale**. Con mix densi e armonia che cambia in fretta la rete dei parziali è poco leggibile; i poligoni sono tratteggiati, non riempiti; geometria spettrale, volume e illuminazione direzionale non esistono ancora. Misure di costo prese su una macchina carica ([dettagli](docs/matter-engine.md)).
 - **Structural Dynamics**: prima milestone. La simulazione gira su CPU per centinaia di elementi (non decine di migliaia); soglie di carico, tempi di coesione, memoria e guadagni della risonanza sono tarati solo su segnali sintetici; verificata con test automatici e su una Intel UHD con sorgente sintetica, **non con musica reale né a occhio nel tempo**. Esiste solo nello Structural Lab di sviluppo: nessuna scena del prodotto la usa ancora. La risonanza multiscala gira in ogni sessione (~20 µs per hop sulla macchina di sviluppo carica).
 - **Rigid Resonant Body, Adaptive Calibration, Tunnel Balanced**: tarati su segnali sintetici e provati su GPU reale solo con quelli. **Non verificati con musica reale né a occhio nel tempo**: soglia e cooldown del gate, riferimento e carattere della calibrazione, tempi e soglie del coordinatore sono punti di partenza. I frammenti dei tre solidi sono piccoli (vertici soli e catene non hanno forma da tenere); la calibrazione non entra nel World Engine (per non cambiare ciò che Spectrum legge) ([rapporto](docs/resonant-body-report.md)).
+- **Generative Terrain e risposta musicale**: legge, moto e ciclo di vita verificati con test automatici e su una Intel UHD con segnali sintetici (60 fps a Low come il Tunnel; a High né l'uno né l'altro tengono i 60 fps su quella GPU). **Nessuna prova con musica reale né a occhio nel tempo**; nessuna parità GPU ↔ CPU della legge del terreno. Misurato e **non corretto**: sul segnale sintetico l'evento `drop` scatta circa 2 s prima e 2 s dopo il drop musicale, e la ripresa dopo una pausa viene letta come un build ([music-response](docs/music-response.md) §2.4–2.5)
 - **Solid Dynamics**: prima milestone, solo nel laboratorio di sviluppo. Rigidezze, ampiezze della spinta risonante, soglie di frattura e forza della memoria sono tarate su segnali sintetici (sul segnale di prova il drop distrugge quasi del tutto il corpo); la ricomposizione non è garantita (cubo e icosaedro spesso si ritrovano solo in parte); nessuna collisione; un corpo alla volta nel laboratorio; simulazione su CPU per decine di vertici. **Non verificata con musica reale né a occhio nel tempo**; tempo GPU non misurato ([limiti](docs/solid-dynamics.md)).
 - Il World Engine è un modello fisico visivo, non meccanica calibrata; coefficienti tarati su segnali sintetici, non ancora su musica reale né con prova percettiva.
 - ERB, roughness, armonicità, H/P/R e range di loudness sono approssimazioni live, non strumenti certificati o separazione di sorgenti. La taratura percettiva su un corpus reale resta da eseguire.

@@ -40,6 +40,10 @@ Le metriche non presenti nella scena corrente restano indisponibili.
 | `latency.renderEstimate` | frame medio × renderFrames | s render, estimated | non scan-out misurato |
 | `latency.analysisLead` | heardTime − analysis.time | s render, estimated | positivo: mondo estrapolato |
 | `latency.physical` | richiede calibrazione esterna | s | null |
+| `latency.impactLate` | dal momento in cui un attacco è udito al frame che lo mostra (media mobile degli ultimi) | s render, estimated | comando, non fotoni; 0 se l'analisi è arrivata in tempo |
+| `anticipation.level`, `.stored`, `.age`, etichetta `.phase` | la carica del mondo seguita su 0,4 s; potenziale; età dell'anticipazione aperta; none / uncertain / probable / confirmed | audio | lettura della stessa previsione che carica il mondo, non una seconda |
+| `anticipation.opened / confirmed / expired / unannounced`, `.lead` | conto per sessione; secondi dall'apertura al rilascio dell'ultima confermata | count / s audio | «confermata» = un rilascio è arrivato, non che fosse sul drop |
+| `scene.<nome>.*` | i numeri di `Visualizer.debug` di una scena che non è una recipe (Tunnel: `speed`, `occupancy`, `aperture`, `accent`, `accents`, `refused`, `twist`) | model unit, render | solo DEV: in release quei numeri non sono scritti |
 | `experience.<campo>` | scalari ExperienceState dello snapshot già presentato | audio/state.time, model unit salvo tempi | narrativa/trajectory/silenceKind sono labels testuali; non ricalcolate |
 | `plan.<campo>` | piano già scelto da ExperiencePlanner | audio/state.time; finestre/horizon in s | currentIntent/nextIntent sono labels |
 | `morphology.<campo>` | SoundMorphology per hop nello snapshot | audio, model unit | nessun classificatore |
