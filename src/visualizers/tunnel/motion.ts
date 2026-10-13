@@ -1,7 +1,8 @@
-import type { AudioEvent, EventCursor, EventStream } from '../../experience/EventStream';
+import type { EventStream } from '../../experience/EventStream';
 import { unit } from '../../experience/types';
 import { REST_WORLD } from '../../world/WorldState';
 import type { WorldView } from '../../world/WorldView';
+import { AccentGate, clamp, finite, follow, HysteresisGate, RateFollower } from '../shared/motion';
 import { architecture, createTopology, crackOf, type TunnelTopology } from './topology';
 
 /*
@@ -30,6 +31,10 @@ import { architecture, createTopology, crackOf, type TunnelTopology } from './to
  * frame (so the same at any frame rate), all at rest when the world is. The
  * accents of C are ages of dated events, read with a cursor. `balance` 0 is the
  * tunnel as it was: the scene then does not come here at all.
+ *
+ * The followers, the gate and the accents are the shared ones (shared/motion.ts:
+ * the terrain travels with the same); which transformation is in which layer,
+ * what gives way to what and by how much is the tunnel's own, and stays here.
  */
 
 /** The targets of one frame, as the scene computes them from the world and as they are shown. One reused object each. */
@@ -96,12 +101,6 @@ const ACCENT_TIME = 0.5;
 /** How much of each invasive part of B gives way while C fills the picture. */
 const YIELD = { twist: 0.6, bend: 0.5, shape: 0.35, oval: 0.5, waveguide: 0.4, roll: 0.5 };
 
-/** Closer than this to what it follows, a follower is there: what the world has stopped asking for stops, it does not fade for ever. */
-const ARRIVED = 1e-5;
-const follow = (y: number, x: number, k: number): number => (Math.abs(y - x) < ARRIVED ? x : x + (y - x) * k);
-const clamp = (x: number, lo: number, hi: number): number => (x < lo ? lo : x > hi ? hi : x);
-const finite = (x: number): number => (Number.isFinite(x) ? x : 0);
-
 /**
  * Development switch: `balance` set replaces the preset's (0: the tunnel as it was, 1: balanced), to compare the two
  * on the same sound. Read in development builds only; nothing in the product sets it and nothing of it is persisted.
@@ -120,33 +119,23 @@ export class TunnelMotionCoordinator {
   accent = 0;
   /** What is left of the camera's roll while C fills the picture (× the roll the scene computes; 1: all of it). */
   rollShare = 1;
-  /** Accents taken and refused (below the bar, or too soon) since the last reset: the tools read them. */
-  accents = 0;
-  refused = 0;
   private fresh = true;
-  private open = false;
   /** The occupancy of the frame before. */
   private occupied = 0;
-  private speed = 0;
-  private turnRate = 0;
+  private readonly travel = new RateFollower();
+  private readonly turning = new RateFollower();
   private tension = 0;
   private disorder = 0;
   private spin = 0;
-  private accentTime = -Infinity;
-  private accentLevel = 0;
+  private readonly gate = new HysteresisGate(OPEN, CLOSE, OPEN_TIME, CLOSE_TIME);
+  private readonly events = new AccentGate(ACCENT_AT, ACCENT_EVERY);
   private lastTime = -Infinity;
-  private readonly cursor: EventCursor = { time: -Infinity, seq: 0 };
-  private heard = 0;
   /** `radius`: that of the corridor at rest (units), which the range of the wall's radius is a share of. */
   constructor(private readonly radius: number) {}
 
-  private readonly visit = (event: AudioEvent): void => {
-    if (event.type !== 'impact' && event.type !== 'drop') return;
-    const weight = unit(finite(event.significance));
-    // One accent at a time: an event that does not stand out, or comes too soon after one that did, opens nothing.
-    if (weight < ACCENT_AT || event.audioTime - this.accentTime < ACCENT_EVERY || !Number.isFinite(event.audioTime)) { this.refused++; return; }
-    this.accentTime = event.audioTime; this.accentLevel = unit(0.5 + 0.5 * (weight - ACCENT_AT) / (1 - ACCENT_AT)); this.accents++;
-  };
+  /** Accents taken and refused (below the bar, or too soon) since the last reset: the tools read them. */
+  get accents(): number { return this.events.taken; }
+  get refused(): number { return this.events.refused; }
 
   /**
    * One frame. `raw`: the targets the scene computed from the world, untouched (they are the tunnel as it was);
@@ -159,41 +148,31 @@ export class TunnelMotionCoordinator {
     // No clock, or another session: nothing of the last frames holds. The next live frame starts from the world as it is.
     if (world === REST_WORLD || world.time < this.lastTime - 1) this.reset();
     this.lastTime = world === REST_WORLD ? -Infinity : world.time;
-    if (events && world !== REST_WORLD) {
-      // A scene mounted into a running session starts from now: what was heard before it was there opens nothing in it.
-      if (this.cursor.epoch === undefined) { this.cursor.time = now; this.cursor.seq = events.seq; this.cursor.epoch = events.epoch; }
-      this.heard = now;
-      events.forEachHeard(this.cursor, now, this.visit);
-    }
+    if (events && world !== REST_WORLD) this.events.read(events, now);
     const tension = unit(finite(view.tension)), disorder = unit(finite(view.disorder)), spin = clamp(finite(view.spin), -1, 1);
     const speed = h > 0 ? raw.advance / h : 0, turnRate = h > 0 ? raw.turn / h : 0;
     if (this.fresh) {
       // The first frame takes the world's momentum and the targets as they are: a scene that is mounted does not fade its motion in.
       Object.assign(m, raw);
-      this.speed = speed; this.turnRate = turnRate; this.tension = tension; this.disorder = disorder; this.spin = spin;
-      this.open = crackOf(tension, disorder) > OPEN; this.aperture = this.open ? 1 : 0;
+      this.travel.rate = speed; this.turning.rate = turnRate; this.tension = tension; this.disorder = disorder; this.spin = spin;
+      this.gate.prime(crackOf(tension, disorder)); this.aperture = this.gate.aperture;
       this.occupied = this.occupancy = unit(0.9 * Math.max(rawTopology.gapAxial / 0.36, rawTopology.gapAngular / 0.28, rawTopology.lift / 0.2) * this.aperture + 0.5 * rawTopology.release);
       this.fresh = false;
     }
 
     // ---- A: primary motion. The exact answer of a follower to a speed held through the frame, and its integral. ----
-    const travel = Math.exp(-h / TRAVEL_TAU), turning = Math.exp(-h / TURN_TAU);
-    m.advance = Math.max(0, speed * h + (this.speed - speed) * TRAVEL_TAU * (1 - travel));
-    this.speed = follow(this.speed, speed, travel);
-    m.turn = turnRate * h + (this.turnRate - turnRate) * TURN_TAU * (1 - turning);
-    this.turnRate = follow(this.turnRate, turnRate, turning);
+    m.advance = Math.max(0, this.travel.step(h, speed, TRAVEL_TAU));
+    m.turn = this.turning.step(h, turnRate, TURN_TAU);
     m.fov = follow(m.fov, raw.fov, Math.exp(-h / FOV_TAU));
 
     // ---- C: special events. What the wall reads of the world, the gate that lets it open, the accent of an event that stands out. ----
     this.tension = follow(this.tension, tension, Math.exp(-h / TENSION_TAU));
     this.disorder = follow(this.disorder, disorder, Math.exp(-h / DISORDER_TAU));
     this.spin = follow(this.spin, spin, Math.exp(-h / SPIN_TAU));
-    const drive = crackOf(this.tension, this.disorder);
-    if (drive > OPEN) this.open = true; else if (drive < CLOSE) this.open = false;
-    this.aperture = this.open ? Math.min(1, this.aperture + h / OPEN_TIME) : Math.max(0, this.aperture - h / CLOSE_TIME);
-    const release = rawTopology.release, age = this.heard - this.accentTime;
+    this.aperture = this.gate.step(h, crackOf(this.tension, this.disorder));
+    const release = rawTopology.release;
     // While a release is passing it is the event: an accent beside it would be a second one.
-    this.accent = age >= 0 && Number.isFinite(age) ? this.accentLevel * Math.exp(-age / ACCENT_TIME) * (1 - unit(2 * release)) : 0;
+    this.accent = this.events.value(ACCENT_TIME) * (1 - unit(2 * release));
     const magnitude = Math.abs(this.spin);
     architecture(t, this.tension, this.disorder, magnitude, this.spin / (magnitude + SPIN_SOFT), this.accent, view, this.aperture);
     this.occupancy = unit(0.9 * Math.max(t.gapAxial / 0.36, t.gapAngular / 0.28, t.lift / 0.2) + 0.5 * release);
@@ -230,11 +209,11 @@ export class TunnelMotionCoordinator {
   /** Nothing of the last frames holds: the next one starts from the world as it is. */
   reset(): void {
     Object.assign(this.motion, REST_MOTION); Object.assign(this.held, REST_MOTION); Object.assign(this.topology, REST_TOPOLOGY);
-    this.fresh = true; this.open = false;
-    this.speed = this.turnRate = this.tension = this.disorder = this.spin = this.occupancy = this.occupied = this.aperture = this.accent = this.accentLevel = 0;
+    this.fresh = true;
+    this.travel.reset(); this.turning.reset(); this.gate.reset(); this.events.reset();
+    this.tension = this.disorder = this.spin = this.occupancy = this.occupied = this.aperture = this.accent = 0;
     this.rollShare = 1;
-    this.accentTime = this.lastTime = -Infinity;
-    this.accents = this.refused = 0;
+    this.lastTime = -Infinity;
   }
 }
 
