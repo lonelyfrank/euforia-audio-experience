@@ -134,6 +134,14 @@
   presunto; inerzia del clock ≤ 2 battute / 4 s. La regia la segue solo quando `leads` (`followCognition`, finestra del planner),
   altrimenti percorso reattivo. Ring e pool a capacità fissa. `scenarios.ts` è un mock del DSP (test e laboratorio, DEV); il
   laboratorio non fissa né sovrascrive nulla; le override della cognizione passano da `controller.overrides`.
+- Musical cues (`experience/MusicalCues.ts`, `docs/scene-families.md`): ciò su cui agiscono le azioni strutturali nuove
+  (solidi che si formano, emergono, si rompono). Adattatore per hop in `ExperienceEngine`, solo eventi, cognizione e
+  anticipazione già esistenti; non scrive nel mondo, nello stato né nell'`EventStream` (Tunnel invariato). Anticipazione
+  (livello), previsione (`prepare` / `withdraw`), osservazione (`accent`, `phrase`), conferma (`release` = rilascio
+  **udito**) restano distinte; l'esecuzione è il conto del consumatore. Il `drop` dell'Experience non è mai un cue da solo
+  (abbinato a un rilascio udito ±0,5 s o contato non confermato). Un'azione che rompe o fa emergere in modo significativo
+  legge solo `release` confermati; le previsioni preparano e si ritirano, mai confermano. Le scene leggono i cue dallo
+  snapshot con `forEachCue` e un cursore.
 - Engine Workspace (`docs/engine-workspace.md`): la vista decide cosa mostra l'inspector (`VIEW_SECTIONS` + `applySections` in
   `diagnostics/workspace/sections.ts`); un componente costruisce i blocchi e ne dichiara la sezione, non si mostra né si nasconde da sé, e
   nascondere non ferma campionamento né storici. Un solo ingresso alle viste (`EngineWorkspace.navigate`): entrare in Laboratories apre

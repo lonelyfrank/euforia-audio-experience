@@ -136,7 +136,7 @@ export class MusicalCognition {
     Object.assign(this.frame.understanding, fresh.understanding, { styles: this.frame.understanding.styles });
     this.frame.understanding.styles.fill(0); this.frame.understanding.styles[0] = 1;
     for (const key of ['proposed', 'confirmed', 'refuted', 'expired', 'brier', 'error', 'lead'] as const) this.frame.stats[key].fill(0);
-    Object.assign(this.frame.stats, { missedBeats: 0, surprises: 0, stateChanges: 0, releases: 0, releasesUnannounced: 0, experienceDrops: 0, experienceDropsOff: 0, experienceDropsUnheard: 0, dropOffset: 0 });
+    Object.assign(this.frame.stats, { missedBeats: 0, surprises: 0, stateChanges: 0, releases: 0, releasesUnannounced: 0, lastRelease: 0, experienceDrops: 0, experienceDropsOff: 0, experienceDropsUnheard: 0, dropOffset: 0 });
     Object.assign(this.frame.diagnostics, { hops: 0, updateMicros: 0, bars: 0, beats: 0, fallback: 'no grid yet', memoryBytes: bytes });
     this.frame.time = 0; this.frame.enabled = enabled; this.frame.leads = false;
     this.grouping.beats = this.grouping.offset = this.grouping.confidence = 0; this.source = NONE;
@@ -303,7 +303,7 @@ export class MusicalCognition {
     this.lowBackAt = -1;
     if (time - this.lastRelease < RELEASE_GAP) return;
     const s = this.frame.stats, now = this.now;
-    this.lastRelease = time; s.releases++; this.withoutLow = 0; this.extended = false;
+    this.lastRelease = s.lastRelease = time; s.releases++; this.withoutLow = 0; this.extended = false;
     this.onRelease?.(time);
     const open = this.ledger.open('release');
     if (!(open && this.ledger.observe('release', time, now))) {

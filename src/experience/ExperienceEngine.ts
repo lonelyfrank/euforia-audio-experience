@@ -8,6 +8,7 @@ import { AdaptiveMusicCalibration, copyCalibration } from './AdaptiveCalibration
 import { AnticipationLedger, copyAnticipation } from './Anticipation';
 import { MusicalCognition } from './cognition/MusicalCognition';
 import { copyCognition, presentClock } from './cognition/types';
+import { copyCues, MusicalCues } from './MusicalCues';
 import { EventStream } from './EventStream';
 import { TemporalMemory } from './TemporalMemory';
 import { ExperiencePlanner } from './ExperiencePlanner';
@@ -49,6 +50,8 @@ export class ExperienceEngine {
    * and this engine already know. It reads and writes nothing of the world, the state or the events.
    */
   readonly cognition = new MusicalCognition();
+  /** What the scenes' structural actions may act on (MusicalCues.ts), per hop from the events, the cognition and the anticipation. */
+  readonly cues = new MusicalCues();
   /** Extrapolates the presented world from its snapshot to the heard time (same held forces). */
   private readonly presentation = new WorldIntegrator();
   /** Discrete events (analysis and experience), ordered by capture time. */
@@ -206,6 +209,7 @@ export class ExperienceEngine {
     this.morphology.update(a, dt);
     this.world.setForces(a, s, this.planner.intents, presence);
     this.anticipation.update(a.time, dt, this.world.state.forces.charge / CHARGE_RATE, this.world.state.potential);
+    this.cues.hop(a.time, this.events, this.cognition.frame, this.anticipation.frame);
     if (a.time - this.lastSnapshot >= 1 / 120 - 1e-9) {
       const snapshot = this.history[this.written++ % HISTORY];
       Object.assign(snapshot.state, s); Object.assign(snapshot.plan, this.planner.plan);
@@ -213,7 +217,7 @@ export class ExperienceEngine {
       copyPhysics(snapshot.physics, this.physics.frame); copyResonance(snapshot.resonance, this.resonance.frame); copyFrame(snapshot.acoustic, a);
       copyWorld(snapshot.world, this.world.state); copyMorphology(snapshot.morphology, this.morphology.state);
       copyCalibration(snapshot.calibration, this.calibration.frame); copyAnticipation(snapshot.anticipation, this.anticipation.frame);
-      copyCognition(snapshot.cognition, this.cognition.frame);
+      copyCognition(snapshot.cognition, this.cognition.frame); copyCues(snapshot.cues, this.cues.frame);
       this.lastSnapshot = a.time;
     }
   }
@@ -243,7 +247,7 @@ export class ExperienceEngine {
 
   private restart(session: boolean): void {
     if (session) { this.calibration.reset(); this.cognition.reset(); } else this.cognition.interrupt();
-    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.resonance.reset(); this.world.reset(); this.events.reset(); this.morphology.reset(); this.anticipation.reset();
+    this.memory.reset(); this.planner.reset(); this.physics.reset(); this.resonance.reset(); this.world.reset(); this.events.reset(); this.morphology.reset(); this.anticipation.reset(); this.cues.reset();
     this.dEnergy.reset(); this.dComplexity.reset(); this.dTension.reset(); this.dOpenness.reset();
     this.shares.fill(0); this.scores.fill(0); this.trajectoryScores.fill(0);
     Object.assign(this.state, createState());
@@ -400,5 +404,5 @@ function copySnapshot(to: ExperienceSnapshot, from: ExperienceSnapshot): void {
   for (let i = 0; i < to.intents.length; i++) Object.assign(to.intents[i], from.intents[i]);
   copyPhysics(to.physics, from.physics); copyFrame(to.acoustic, from.acoustic); copyWorld(to.world, from.world);
   copyMorphology(to.morphology, from.morphology); copyResonance(to.resonance, from.resonance); copyCalibration(to.calibration, from.calibration);
-  copyAnticipation(to.anticipation, from.anticipation); copyCognition(to.cognition, from.cognition);
+  copyAnticipation(to.anticipation, from.anticipation); copyCognition(to.cognition, from.cognition); copyCues(to.cues, from.cues);
 }

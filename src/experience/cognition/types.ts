@@ -168,6 +168,8 @@ export interface CognitionStats {
   /** Releases heard (audio evidence), and those no prediction announced. */
   releases: number;
   releasesUnannounced: number;
+  /** Capture time of the last release heard (0: none this session): what the musical cues confirm a release with. */
+  lastRelease: number;
   /** The experience's own `drop` events, compared with the releases heard: how many, how many fell ±0.5 s off one, and the last offset (s; − = early). */
   experienceDrops: number;
   experienceDropsOff: number;
@@ -224,7 +226,7 @@ const kinds = (): Uint32Array => new Uint32Array(PREDICTION_KINDS.length);
 const measures = (): Float32Array => new Float32Array(PREDICTION_KINDS.length);
 export const createStats = (): CognitionStats => ({
   proposed: kinds(), confirmed: kinds(), refuted: kinds(), expired: kinds(), brier: measures(), error: measures(), lead: measures(),
-  missedBeats: 0, surprises: 0, stateChanges: 0, releases: 0, releasesUnannounced: 0, experienceDrops: 0, experienceDropsOff: 0, experienceDropsUnheard: 0, dropOffset: 0,
+  missedBeats: 0, surprises: 0, stateChanges: 0, releases: 0, releasesUnannounced: 0, lastRelease: 0, experienceDrops: 0, experienceDropsOff: 0, experienceDropsUnheard: 0, dropOffset: 0,
 });
 export const createCognition = (): CognitionFrame => ({
   time: 0, enabled: true, leads: false, clock: createClock(), understanding: createUnderstanding(),
