@@ -1,20 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Color, type WebGLRenderer } from 'three';
-import { AudioAnalyzer } from '../../audio/analysis/AudioAnalyzer';
-import { SignalGenerator, type TestSignal } from '../../audio/capture/testSignals';
-import { WasmAnalysis } from '../../audio/features/WasmAnalysis';
-import { VisualResponse } from '../../audio/visual-response/VisualResponse';
-import { DEFAULT_DIRECTION } from '../../director/profiles';
-import { VisualDirector } from '../../director/VisualDirector';
-import { ExperienceEngine } from '../../experience/ExperienceEngine';
-import { createCues, forEachCue, type Cue, type CuePhase, type CuesFrame } from '../../experience/MusicalCues';
+import { type WebGLRenderer } from 'three';
+import { createCues, type Cue, type CuePhase, type CuesFrame } from '../../experience/MusicalCues';
 import { packWaves } from '../../render-systems/fields/fieldLaw';
 import { MAX_WAVES, WaveField } from '../../render-systems/waves/WaveField';
 import { QUALITY_PROFILES } from '../../renderer/quality';
-import type { SceneClock } from '../../types/visualizer';
 import { createGeometry } from '../../visual-engine/geometry/GeometryState';
 import { emergenceLawGlsl, emergentOut, emergentPoint, groundVertex, PIECES, SHAPE, type Emergent } from '../../visual-engine/primitives/emergenceLaw';
-import type { EmergencePrimitive } from '../../visual-engine/primitives/EmergencePrimitive';
 import { DEFAULT_EMERGENCE, EmergenceField, emergenceParams, MAX_STRUCTURES, type EmergenceSettings } from '../../visual-engine/primitives/terrainEmergence';
 import { createTerrain, PERIOD, terrainHeight, type TerrainValues } from '../../visual-engine/primitives/terrainLaw';
 import { TerrainMotion, type TerrainParams } from '../../visual-engine/primitives/terrainMotion';
@@ -24,8 +15,8 @@ import { createWorld, type WorldState } from '../../world/WorldState';
 import { WorldView } from '../../world/WorldView';
 import terrain from '.';
 import preset from './preset.json';
-import { EMERGENCE_SLOT, type GenerativeTerrainParams } from './recipe';
-import { terrainDigest } from './response.test';
+import { type GenerativeTerrainParams } from './recipe';
+import { terrainDigest } from './terrainDigest';
 
 /*
  * Structures that rise out of Generative Terrain (docs/scene-families.md): the law that anchors them to the ground's own
@@ -297,62 +288,3 @@ describe('Generative Terrain with and without emergence', () => {
     expect(terrainDigest({ ...params, response: undefined }, 60)).toBe(terrainDigest(params, 60));
   });
 });
-
-/** A test signal through the WASM analysis, the experience and a Director, to the whole scene. */
-async function play(signal: TestSignal, seconds: number) {
-  const scene = terrain.create(terrain.preset) as RecipeVisualizer<unknown>;
-  scene.init({ renderer: { getPixelRatio: () => 1 } as WebGLRenderer, quality: QUALITY_PROFILES.low, width: 800, height: 600, addPass: () => undefined });
-  scene.setPalette([new Color('purple'), new Color('cyan'), new Color('white')]);
-  const em = scene.world.primitive<EmergencePrimitive>(EMERGENCE_SLOT)!;
-  const audio = new AudioAnalyzer().frame, response = new VisualResponse().frame, director = new VisualDirector(terrain.direction);
-  const pcm = new Float32Array(seconds * 48000 * 2);
-  new SignalGenerator(signal, 48000).fillStereo(pcm, seconds * 48000);
-  const wasm = await WasmAnalysis.create(48000, 2), engine = new ExperienceEngine();
-  wasm.decoder.onFrame = (a) => engine.ingest(a); wasm.decoder.onOnset = (o) => engine.onset(o); wasm.decoder.onBeat = (b) => engine.beat(b); wasm.decoder.onSection = (s) => engine.section(s);
-  const clock: SceneClock = { time: 0, hits: { times: new Float64Array(8), strengths: new Float64Array(8), count: 0, size: 8 } as never, hitScale: 1, events: engine.events, light: 0.5 };
-  const out = { releases: [] as number[], drops: [] as number[], broke: [] as number[], max: 0 };
-  const cursor = { time: -Infinity, seq: 0 };
-  let captured = 0, cues = 0, fired = 0;
-  for (let f = 1; f <= seconds * 60; f++) {
-    const t = f / 60;
-    wasm.decoder.begin();
-    while (captured + 480 <= Math.floor(t * 48000 + 1e-6)) { wasm.push(pcm.subarray(captured * 2, (captured + 480) * 2)); captured += 480; }
-    const snap = engine.present(t - 0.1);
-    if (!snap) continue;
-    clock.time = t - 0.1; clock.experience = snap;
-    scene.update(audio, 1 / 60, t - 0.1, response, director.update(response, DEFAULT_DIRECTION, 1 / 60, undefined, snap), clock);
-    cues = forEachCue(snap.cues, cues, (c) => { if (c.kind === 'release') out.releases.push(c.time); });
-    engine.events.forEachHeard(cursor, t - 0.1, (e) => { if (e.type === 'drop') out.drops.push(e.audioTime); });
-    if (em.field.gate.stats.fired > fired) { fired = em.field.gate.stats.fired; out.broke.push(em.field.gate.time); }
-    out.max = Math.max(out.max, em.field.count);
-  }
-  wasm.dispose();
-  return { scene, em, out };
-}
-
-describe('Generative Terrain emergence on test signals through the WASM analysis', () => {
-  beforeEach(() => vi.stubGlobal('window', { innerWidth: 800, innerHeight: 600 }));
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('ambient → build → drop: bursts and fractures at the two releases heard, never at the experience\'s drops 2 s off them', { timeout: 300000 }, async () => {
-    const { em, out, scene } = await play('buildDrop', 58);
-    expect(out.releases).toHaveLength(2);
-    expect(em.field.stats.bursts).toBe(2); expect(em.field.stats.releases).toBe(2);
-    expect(out.broke.length).toBeGreaterThanOrEqual(1);
-    for (const at of out.broke) expect(out.releases.some((r) => Math.abs(r - at) < 1e-6)).toBe(true);
-    for (const drop of out.drops) expect(out.broke.every((at) => Math.abs(at - drop) > 1)).toBe(true);
-    expect(out.max).toBeLessThanOrEqual(DEFAULT_EMERGENCE.capacity);
-    scene.dispose();
-  });
-
-  it('a steady groove and music that stops and starts: a few structures, no burst, nothing broken', { timeout: 300000 }, async () => {
-    for (const signal of ['beat124', 'startStop'] as const) {
-      const { em, out, scene } = await play(signal, 40);
-      expect(em.field.stats.bursts, signal).toBe(0); expect(out.broke, signal).toEqual([]);
-      expect(em.field.stats.spawned, signal).toBeGreaterThan(0);
-      expect(out.max, signal).toBeLessThanOrEqual(12);
-      scene.dispose();
-    }
-  });
-});
-

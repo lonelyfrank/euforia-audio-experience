@@ -5,6 +5,12 @@ come terreno da sorvolare. Non sostituisce nulla e non conosce il Tunnel; quello
 comune è il mondo e i follower di [shared/motion](../src/visualizers/shared/motion.ts)
 (vedi [music-response](music-response.md)).
 
+> **Aggiornamento 14 ottobre 2026** ([scene-families](scene-families.md)): la risposta musicale ha tre scale
+> (`TerrainResponse`: un colpo resta locale, massa e superficie seguono il groove; `LEGACY_RESPONSE` è il moto
+> descritto qui sotto, bit per bit) e dal suolo possono emergere strutture ancorate alla sua legge (slot
+> `emergence`, due draw call in più, una a Low). Con `emergence.enabled = false` la scena è esattamente il
+> suolo descritto in questo documento.
+
 > Il Tunnel è il mondo come corridoio. Il terreno è lo stesso mondo come suolo: stessa corsa, stessa
 > tensione, stesso rilascio, un'altra materia.
 

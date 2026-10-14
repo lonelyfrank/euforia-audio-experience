@@ -79,6 +79,9 @@ export function collectSnapshot(store: DiagnosticsStore, snapshot: ExperienceSna
   // What is expected and what became of it: opened, confirmed and lapsed anticipations, and the lead of the last one confirmed.
   group(store, 'experience', 'anticipation', s.anticipation, time, 'AnticipationLedger');
   collectCognition(store, s.cognition);
+  // What the scenes' structural actions may act on: the moment's reading and the cues of the session, by kind (MusicalCues).
+  group(store, 'experience', 'cues', s.cues, s.cues.time, 'MusicalCues');
+  group(store, 'experience', 'cues.stats', s.cues.stats, s.cues.time, 'MusicalCues');
   for (const intent of s.intents) {
     metric(store, 'experience', `intent.${intent.kind}`, intent.strength * intent.confidence, intent.time, '0..1', 'ExperiencePlanner', 'audio', 'valid', 'strength × confidence');
     metric(store, 'experience', `intentConfidence.${intent.kind}`, intent.confidence, intent.time, '0..1', 'ExperiencePlanner');

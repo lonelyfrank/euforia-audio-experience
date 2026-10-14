@@ -8,7 +8,7 @@
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
   `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md`, `docs/solid-dynamics.md`,
   `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md`, `docs/tunnel-motion.md`, `docs/music-response.md`,
-  `docs/generative-terrain.md` e `docs/musical-cognition.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/generative-terrain.md`, `docs/musical-cognition.md` e `docs/scene-families.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -122,9 +122,23 @@
   Tunnel in nessuno dei due versi. Il suolo è un reticolo fisso: la mesh vi scorre di celle intere (`row`/`shift`, `col`/`shiftX`), il
   paesaggio è una funzione pura del punto e si ripete ogni `PERIOD` righe (ogni scala e ogni placca lo divide). `terrainHeight` è scritta in
   GLSL e in TS (`terrainLaw.ts`): cambiarle insieme. Ogni termine che il mondo aggiunge vale zero a riposo; nessun vertice è mosso da
-  un'ampiezza audio; le placche sono traslazioni rigide; solo un rilascio cambia la configurazione. Due draw call, nessun pass, nessuna
-  texture. Non è una fixture del rig Free. Portali e transizioni fra ambienti sono solo uno studio (`docs/world-transitions.md`): non
+  un'ampiezza audio; le placche sono traslazioni rigide; solo un rilascio cambia la configurazione. Il suolo: due draw call, nessun pass,
+  nessuna texture. Tre scale (`TerrainResponse`): un colpo arriva al suolo localmente (fronti, placca di un accento, scintille), la massa e
+  la superficie seguono il groove; `LEGACY_RESPONSE` è il moto di prima bit per bit (`terrain/response.test.ts`, digest registrati prima del
+  cambio). Non è una fixture del rig Free. Portali e transizioni fra ambienti sono solo uno studio (`docs/world-transitions.md`): non
   implementarli senza autorizzazione, e mai con uno scene manager parallelo.
+- Emersione dal terreno (`docs/scene-families.md`): uno slot dopo il suolo (`emergence`), assente se `emergence.enabled` è falso (allora la
+  scena è il suolo e basta). Una struttura è ancorata a un punto del reticolo e legge il suolo con `terrainHeight` stessa e gli stessi
+  uniform (`TerrainPrimitive.shared`): mai una copia delle altezze. `emergentPoint` è scritta in GLSL e in TS (`emergenceLaw.ts`): cambiarle
+  insieme e ripetere `runTerrainParity()` (`terrainParity.ts`): base delle celle = vertici del suolo sulla GPU, solidi sotto il minimo dei nove
+  punti attorno. Pezzi rigidi, funzione pura dell'età della frattura; pulsazione uniforme ≤ `PULSE_LIMIT`. Il ciclo di vita
+  (`terrainEmergence.ts`) vive sul tempo della musica (fermo in silenzio), nasce dalle righe che entrano in vista (niente viaggio, niente
+  nuove strutture), densità dallo stato lento della musica (mai il livello, mai un colpo); agisce solo sui cue musicali: frattura e burst solo
+  su un `release` confermato, tramite `FractureGate`. Pool a capacità fissa (≤ 64), budget di formazione e di frattura; Low disegna solo i
+  bordi con la stessa logica. La modalità "distacco di una regione del suolo" non esiste: non improvvisarla spostando vertici del suolo.
+- Solidi fra le particelle (`visual-engine/primitives/solidSlot.ts`, laboratorio Emergence): un esperimento DEV, montato a runtime con
+  `VisualWorld.add` e tolto con `remove`; nessuna recipe di prodotto lo contiene. I corpi sono di `SolidSystem` (un solo solver), la
+  popolazione (`SolidPrimitive` con `population`) dice quali passi del ciclo usa; si rompono solo sui cue (default: solo `release`).
 - Musical Cognition (`docs/musical-cognition.md`): `experience/cognition/`, per hop dentro `ExperienceEngine`, solo misure ed
   eventi già esportati dal DSP più l'evidenza di build dell'Experience (`CognitionContext`): niente FFT, niente PCM, niente secondo
   beat tracker (il clock estende la griglia del DSP, non la corregge). Non scrive nel mondo, nello stato Experience né

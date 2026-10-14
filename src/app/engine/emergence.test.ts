@@ -5,10 +5,12 @@ import { SOLIDS_SLOT } from '../../visual-engine/primitives/solidSlot';
 import type { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
 import { LABS } from '../../diagnostics/workspace/Experiment';
 import { findVisualizer } from '../../visualizers/registry';
-import { createParticleSolids, ParticleSolidsExperiment, populationOf } from './emergence';
+import { EMERGENCE_SLOT } from '../../visualizers/terrain/recipe';
+import type { EmergencePrimitive } from '../../visual-engine/primitives/EmergencePrimitive';
+import { createParticleSolids, ParticleSolidsExperiment, populationOf, TerrainEmergenceExperiment } from './emergence';
 
-function world(id = 'matter-field') {
-  const definition = findVisualizer(id)!, scene = definition.create(definition.preset) as RecipeVisualizer<unknown>;
+function world(id = 'matter-field', visual?: Record<string, unknown>) {
+  const definition = findVisualizer(id)!, scene = definition.create(visual ? { ...definition.preset, visual: { ...definition.preset.visual, ...visual } } : definition.preset) as RecipeVisualizer<unknown>;
   scene.init({ renderer: { getPixelRatio: () => 1, extensions: { has: () => true }, getRenderTarget: () => null, setRenderTarget: vi.fn(), render: vi.fn() } as unknown as WebGLRenderer, quality: QUALITY_PROFILES.low, width: 320, height: 240, addPass: () => undefined });
   scene.setPalette([new Color('purple'), new Color('cyan'), new Color('white')]);
   return scene.world;
@@ -67,5 +69,39 @@ describe('the Emergence laboratory, without its DOM: solids among the particles'
     expect(lab.primitive!.cuesTaken.accents).toBe(1);
     expect(populationOf({ ...createParticleSolids(), bodies: 9 }).bodies).toHaveLength(3);
     lab.detach();
+  });
+});
+
+describe('the Emergence laboratory, without its DOM: structures out of the ground', () => {
+  it('starts from the field in view, changes it in place, and gives back exactly what was there', () => {
+    const lab = new TerrainEmergenceExperiment(), w = world('terrain'), field = () => (w.primitive(EMERGENCE_SLOT) as EmergencePrimitive).field;
+    const original = { ...field().params }, first = w.primitive(EMERGENCE_SLOT);
+    lab.apply(w);
+    expect(lab.settings).toMatchObject({ ...original, enabled: true }); expect(lab.changes).toBe(0);
+    lab.settings!.capacity = 8; lab.settings!.modes = 'extrude'; lab.settings!.response = 0;
+    lab.apply(w);
+    expect(field().params).toMatchObject({ capacity: 8, modes: 'extrude', response: 0 }); expect(lab.changes).toBe(3);
+    expect(w.primitive(EMERGENCE_SLOT)).toBe(first);
+    // Off: the ground alone; on again, a new field with the lab's settings.
+    lab.settings!.enabled = false; lab.apply(w);
+    expect(ids(w)).toEqual(['ground']);
+    lab.settings!.enabled = true; lab.apply(w);
+    expect(ids(w)).toEqual(['ground', EMERGENCE_SLOT]); expect(field().params.capacity).toBe(8);
+    lab.detach();
+    expect(ids(w)).toEqual(['ground', EMERGENCE_SLOT]); expect(field().params).toEqual(original);
+    lab.detach();
+  });
+
+  it('a terrain that had no emergence gets none back; synthetic cues take the field\'s own path', () => {
+    const w = world('terrain', { emergence: { enabled: false } }), lab = new TerrainEmergenceExperiment();
+    expect(ids(w)).toEqual(['ground']);
+    const p = lab.apply(w)!;
+    expect(ids(w)).toEqual(['ground', EMERGENCE_SLOT]);
+    lab.offer('prediction', 1); lab.offer('withdraw', 1.5); lab.offer('release', 2); lab.offer('accent', 2.5);
+    expect(p.field.stats).toMatchObject({ prepares: 1, withdraws: 1, releases: 1, bursts: 1 });
+    lab.reset();
+    expect(p.field.stats.releases).toBe(0);
+    lab.detach();
+    expect(ids(w)).toEqual(['ground']);
   });
 });

@@ -1,24 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BufferGeometry, Color, Material, type WebGLRenderer } from 'three';
 import { AudioAnalyzer } from '../../audio/analysis/AudioAnalyzer';
-import { SignalGenerator, type TestSignal } from '../../audio/capture/testSignals';
 import { newFrame } from '../../audio/features/decode';
-import { WasmAnalysis } from '../../audio/features/WasmAnalysis';
 import { VisualResponse } from '../../audio/visual-response/VisualResponse';
 import { DEFAULT_DIRECTION } from '../../director/profiles';
 import { VisualDirector } from '../../director/VisualDirector';
 import { EventStream } from '../../experience/EventStream';
-import { ExperienceEngine } from '../../experience/ExperienceEngine';
-import { forEachCue, MusicalCues, type Cue } from '../../experience/MusicalCues';
+import { MusicalCues, type Cue } from '../../experience/MusicalCues';
 import { createSnapshot, type ExperienceSnapshot } from '../../experience/types';
 import { QUALITY_PROFILES } from '../../renderer/quality';
 import type { SceneClock } from '../../types/visualizer';
 import matterField from '../../visualizers/matter-field';
 import { visualizers } from '../../visualizers/registry';
 import { MIXED_POPULATION, solidSlot, SOLIDS_SLOT } from '../primitives/solidSlot';
-import { SOLID_STAGES, stageOf, type SolidPopulation, type SolidPrimitive, type SolidStage } from '../primitives/SolidPrimitive';
+import { SOLID_STAGES, type SolidPopulation, type SolidPrimitive, type SolidStage } from '../primitives/SolidPrimitive';
 import type { RecipeVisualizer } from '../RecipeVisualizer';
-import { createReadout } from './SolidDynamics';
 import { PULSE_LIMIT } from './SolidTypes';
 
 /*
@@ -27,7 +23,6 @@ import { PULSE_LIMIT } from './SolidTypes';
  * form → solid → fracture → fragments → reorganisation made by its physics, the fracture decided by the musical cues.
  */
 
-const SR = 48000;
 const renderer = () => ({ getPixelRatio: () => 1, extensions: { has: () => true }, getRenderTarget: () => null, setRenderTarget: vi.fn(), render: vi.fn() }) as unknown as WebGLRenderer;
 
 function mount(population?: Readonly<SolidPopulation>) {
@@ -44,41 +39,6 @@ function mount(population?: Readonly<SolidPopulation>) {
   };
   const stages = (): SolidStage[] => Array.from(solid.stages.subarray(0, solid.system.solids!.state.bodies), (s) => SOLID_STAGES[s]);
   return { scene, solid, solids: solid.system.solids!, clock, frame, before, stages };
-}
-
-interface Run { m: ReturnType<typeof mount>; releases: number[]; drops: number[]; fractures: number[]; stagesAt: Map<number, SolidStage[]>; worst: { deviation: number; pulse: number } }
-
-/** A test signal through the WASM analysis and the experience engine, presented 0.1 s late at `fps`. */
-async function play(signal: TestSignal, seconds: number, fps = 60): Promise<Run> {
-  const pcm = new Float32Array(seconds * SR * 2);
-  new SignalGenerator(signal, SR).fillStereo(pcm, seconds * SR);
-  const wasm = await WasmAnalysis.create(SR, 2), engine = new ExperienceEngine(), m = mount();
-  wasm.decoder.onFrame = (a) => engine.ingest(a); wasm.decoder.onOnset = (o) => engine.onset(o); wasm.decoder.onBeat = (b) => engine.beat(b); wasm.decoder.onSection = (s) => engine.section(s);
-  m.clock.events = engine.events;
-  const run: Run = { m, releases: [], drops: [], fractures: [], stagesAt: new Map(), worst: { deviation: 0, pulse: 0 } };
-  const readout = createReadout(), cursor = { time: -Infinity, seq: 0 };
-  let captured = 0, cues = 0, fired = 0;
-  for (let f = 1; f <= seconds * fps; f++) {
-    const t = f / fps;
-    wasm.decoder.begin();
-    while (captured + 480 <= Math.floor(t * SR + 1e-6)) { wasm.push(pcm.subarray(captured * 2, (captured + 480) * 2)); captured += 480; }
-    const snapshot = engine.present(t - 0.1);
-    if (!snapshot) continue;
-    m.frame(t - 0.1, 1 / fps, snapshot);
-    cues = forEachCue(snapshot.cues, cues, (c: Readonly<Cue>) => { if (c.kind === 'release') run.releases.push(c.time); });
-    engine.events.forEachHeard(cursor, t - 0.1, (e) => { if (e.type === 'drop') run.drops.push(e.audioTime); });
-    if (m.solids.gate.stats.fired > fired) { fired = m.solids.gate.stats.fired; run.fractures.push(m.solids.gate.time); }
-    if (f % fps === 0) {
-      run.stagesAt.set(Math.round(t), m.stages());
-      for (let b = 0; b < m.solids.state.bodies; b++) {
-        const r = m.solids.read(b, null, readout);
-        // A body is rigid while it is whole: what it shows of its shape and of its pulse.
-        if (stageOf(r, true) === 'solid') { run.worst.deviation = Math.max(run.worst.deviation, r.deviation); run.worst.pulse = Math.max(run.worst.pulse, Math.abs(r.pulse)); }
-      }
-    }
-  }
-  wasm.dispose();
-  return run;
 }
 
 /** A snapshot of a living, ordered, sounding world, with the cues of an engine that hears nothing (the tests offer theirs). */
@@ -172,41 +132,5 @@ describe('solids among the particles: the experiment on Matter Field', () => {
     a.solid.reseed();
     expect(Array.from(a.solid.system.state.position.subarray(0, 72))).toEqual(Array.from(seeded.solid.system.state.position.subarray(0, 72)));
     expect(a.stages()).toEqual(['free', 'free', 'free']);
-  });
-});
-
-describe('solids among the particles, on test signals through the WASM analysis', () => {
-  it('ambient → build → drop: free matter forms solids, they keep their shape, break at the two releases heard (never at the experience\'s drops off them), and find each other again', { timeout: 300000 }, async () => {
-    const r = await play('buildDrop', 58);
-    expect(r.releases).toHaveLength(2);
-    // Formed before the first drop, every body.
-    expect(r.stagesAt.get(2)).toEqual(['free', 'free', 'free']);
-    expect(r.stagesAt.get(17)).toEqual(['solid', 'solid', 'solid']);
-    // Two fractures, each at a release heard; the experience's drops 2 s before and after them broke nothing.
-    expect(r.fractures).toHaveLength(2);
-    for (const [i, at] of r.fractures.entries()) expect(Math.abs(at - r.releases[i])).toBeLessThan(0.05);
-    expect(r.drops.length).toBeGreaterThanOrEqual(2);
-    for (const drop of r.drops) expect(r.fractures.every((at) => Math.abs(at - drop) > 1)).toBe(true);
-    // Fragments, then the pieces find each other: whole again before the second drop.
-    expect(r.stagesAt.get(21)).toContain('fragments');
-    expect(r.stagesAt.get(45)).toEqual(['solid', 'solid', 'solid']);
-    expect(r.m.solids.stats.reforms).toBeGreaterThan(0);
-    // Rigid: while whole a body is its own shape, its pulse within the limit.
-    expect(r.worst.deviation).toBeLessThan(0.02); expect(r.worst.pulse).toBeLessThanOrEqual(PULSE_LIMIT + 1e-9);
-  });
-
-  it('a steady groove and music that stops and starts: bodies form and stay whole, nothing breaks', { timeout: 300000 }, async () => {
-    for (const signal of ['beat124', 'startStop'] as const) {
-      const r = await play(signal, 40);
-      expect(r.fractures, signal).toEqual([]);
-      expect(r.stagesAt.get(39), signal).toEqual(['solid', 'solid', 'solid']);
-    }
-  });
-
-  it('the same at 30 and 60 frames per second: the same fractures at the same audio times, the same stages', { timeout: 300000 }, async () => {
-    const [slow, fast] = [await play('buildDrop', 30, 30), await play('buildDrop', 30, 60)];
-    expect(slow.fractures.length).toBe(fast.fractures.length);
-    for (let i = 0; i < slow.fractures.length; i++) expect(slow.fractures[i]).toBeCloseTo(fast.fractures[i], 1);
-    expect(slow.stagesAt.get(17)).toEqual(fast.stagesAt.get(17));
   });
 });

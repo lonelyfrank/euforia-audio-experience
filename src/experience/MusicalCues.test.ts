@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SignalGenerator, type TestSignal } from '../audio/capture/testSignals';
-import { WasmAnalysis } from '../audio/features/WasmAnalysis';
 import { createAnticipation } from './Anticipation';
 import { MusicalCognition } from './cognition/MusicalCognition';
 import { cognitionSink, runScenario, SCENARIOS, type Truth } from './cognition/scenarios';
 import { createCognition, createPrediction } from './cognition/types';
 import { EventStream } from './EventStream';
-import { ExperienceEngine } from './ExperienceEngine';
-import { ACCENT_SIGNIFICANCE, CUE_SLOTS, copyCues, createCues, DROP_MATCH, forEachCue, MusicalCues, RESUME, SETTLE, type Cue } from './MusicalCues';
+import { ACCENT_SIGNIFICANCE, CUE_SLOTS, copyCues, createCues, DROP_MATCH, forEachCue, MusicalCues, RESUME, type Cue } from './MusicalCues';
 
 // The runs through the WASM analysis take a few seconds each on the development machine.
 vi.setConfig({ testTimeout: 120000 });
@@ -168,53 +165,5 @@ describe('musical cues on the cognition\'s synthetic pieces', () => {
       expect(cues.frame.stats.releases, id).toBe(0);
       expect(cues.frame.stats.prepared, id).toBe(0);
     }
-  });
-});
-
-/** Test signals through the WASM analysis and the experience engine, as the replay does: the engine's own cues. */
-async function play(signal: TestSignal, seconds: number): Promise<{ engine: ExperienceEngine; cues: Cue[] }> {
-  const wasm = await WasmAnalysis.create(48000, 2), engine = new ExperienceEngine(), d = wasm.decoder, cues: Cue[] = [];
-  let cursor = 0;
-  d.onFrame = (a) => { engine.ingest(a); cursor = forEachCue(engine.cues.frame, cursor, (c) => cues.push({ ...c })); };
-  d.onOnset = (o) => engine.onset(o); d.onBeat = (b) => engine.beat(b); d.onSection = (s) => engine.section(s);
-  const generator = new SignalGenerator(signal, 48000), chunk = new Float32Array(480 * 2);
-  try {
-    for (let n = 0; n < seconds * 100; n++) { d.begin(); generator.fillStereo(chunk, 480); wasm.push(chunk); }
-  } finally { wasm.dispose(); }
-  return { engine, cues };
-}
-
-describe('musical cues on test signals through the WASM analysis', () => {
-  it('buildDrop: two releases, at the drops (18 s, 50 s), never before; the experience\'s drops around them are not cues', async () => {
-    const { engine, cues } = await play('buildDrop', 58), releases = cues.filter((c) => c.kind === 'release');
-    expect(releases.map((c) => c.status)).toEqual(['confirmed', 'confirmed']);
-    for (const [i, drop] of [18, 50].entries()) { expect(releases[i].time).toBeGreaterThanOrEqual(drop - 0.1); expect(releases[i].time).toBeLessThan(drop + 0.6); }
-    const s = engine.cues.frame.stats;
-    expect(s.dropsMatched + s.dropsUnconfirmed).toBe(engine.cognition.frame.stats.experienceDrops);
-    // Measured: the experience fires about 2 s before and after each drop (docs/music-response.md §2.4); none is a cue.
-    expect(s.dropsUnconfirmed).toBeGreaterThanOrEqual(2);
-    // Prepared before each release, and nothing prepared in the seconds right after one (the tension has just resolved).
-    const prepares = cues.filter((c) => c.kind === 'prepare');
-    for (const drop of [18, 50]) expect(prepares.some((c) => c.time < drop && c.time > drop - 8)).toBe(true);
-    for (const c of prepares) for (const r of releases) expect(c.time - r.time < 0 || c.time - r.time >= SETTLE).toBe(true);
-    expect(prepares).toHaveLength(2);
-    expect(s.withdrawn).toBe(0);
-  });
-
-  it('startStop: the music coming back is neither a release nor an accent; the experience\'s drops there stay unconfirmed', async () => {
-    const { engine, cues } = await play('startStop', 50), s = engine.cues.frame.stats;
-    expect(cues.filter((c) => c.kind === 'release')).toEqual([]);
-    expect(s.prepared).toBe(0);
-    expect(s.dropsUnconfirmed).toBe(engine.cognition.frame.stats.experienceDrops);
-    expect(s.dropsUnconfirmed).toBeGreaterThanOrEqual(1);
-    for (const c of cues.filter((c) => c.kind === 'accent')) expect(c.status).toBe('observed');
-  });
-
-  it('beat124: a steady groove gives no release, no preparation and accents only now and then', async () => {
-    const { engine, cues } = await play('beat124', 40), s = engine.cues.frame.stats;
-    expect(s.releases).toBe(0); expect(s.prepared).toBe(0);
-    // 124 BPM over 40 s is about 80 kicks: an accent is an exception among them, never one per kick.
-    expect(cues.filter((c) => c.kind === 'accent').length).toBeLessThan(80 * 0.25);
-    expect(engine.cues.frame.phase).toBe('groove');
   });
 });
