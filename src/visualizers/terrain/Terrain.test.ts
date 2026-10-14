@@ -17,6 +17,7 @@ import { createGeometry } from '../../visual-engine/geometry/GeometryState';
 import { BEHIND, createTerrain, PERIOD, TERRAIN, terrainAcross, terrainBand, terrainBound, terrainDepth, terrainHeight, terrainMeander, type TerrainValues } from '../../visual-engine/primitives/terrainLaw';
 import { CONFIGURATIONS, FRONT_SPEED, strainOf, TerrainMotion } from '../../visual-engine/primitives/terrainMotion';
 import { terrainQuality, type TerrainPrimitive } from '../../visual-engine/primitives/TerrainPrimitive';
+import { emergenceDrawCalls } from '../../visual-engine/primitives/EmergencePrimitive';
 import type { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
 import { createWorld, type WorldState } from '../../world/WorldState';
 import { REST_VIEW, WorldView } from '../../world/WorldView';
@@ -24,6 +25,7 @@ import { findVisualizer, visualizers } from '../registry';
 import tunnelPreset from '../tunnel/preset.json';
 import { TunnelVisualizer } from '../tunnel/TunnelVisualizer';
 import preset from './preset.json';
+import { EMERGENCE_SLOT, type GenerativeTerrainParams } from './recipe';
 
 const P = preset.visual, GAINS = { motion: 1, expansion: 1, turbulence: 1 };
 const rest = (set: Partial<TerrainValues> = {}): TerrainValues => ({ ...createTerrain(), cell: P.cell, relief: P.relief, rough: P.roughness, valley: P.valley, seedX: 7, seedY: 11, ...set });
@@ -328,7 +330,8 @@ describe('Generative Terrain: the scene', () => {
     return { scene, world, events, passes, update };
   }
   const definition = findVisualizer('terrain')!;
-  const mount = (quality = QUALITY_PROFILES.low) => rig(definition.create(definition.preset) as RecipeVisualizer<typeof P>, quality);
+  const mount = (quality = QUALITY_PROFILES.low, emergence = true) =>
+    rig(definition.create({ ...definition.preset, visual: { ...definition.preset.visual, emergence: { ...(P as GenerativeTerrainParams).emergence, enabled: emergence } } }) as RecipeVisualizer<typeof P>, quality);
   const ground = (r: ReturnType<typeof mount>): TerrainPrimitive => r.scene.world.primitive<TerrainPrimitive>('ground')!;
   const terrain = (r: ReturnType<typeof mount>): Float32Array => {
     let uniforms: ShaderMaterial['uniforms'] | undefined;
@@ -347,7 +350,8 @@ describe('Generative Terrain: the scene', () => {
   });
 
   it('two draw calls from one vertex buffer, no pass, no texture; fewer cells at a lower quality, the same extent', () => {
-    const low = mount(QUALITY_PROFILES.low), high = mount(QUALITY_PROFILES.high);
+    // The ground alone (the emergence off): as it always was.
+    const low = mount(QUALITY_PROFILES.low, false), high = mount(QUALITY_PROFILES.high, false);
     for (const r of [low, high]) {
       const drawn: (Mesh | LineSegments)[] = [];
       r.scene.scene.traverse((object) => { if (object instanceof Mesh || object instanceof LineSegments) drawn.push(object); });
@@ -363,6 +367,15 @@ describe('Generative Terrain: the scene', () => {
     expect(a.columns % 2).toBe(0);
     expect(ground(high).vertices).toBeLessThan(40000);
     low.scene.dispose(); high.scene.dispose();
+    // With the structures that rise out of it: their edges (and facets above Low) after the ground's, still no pass and no texture.
+    for (const quality of [QUALITY_PROFILES.low, QUALITY_PROFILES.high]) {
+      const r = mount(quality), drawn: (Mesh | LineSegments)[] = [];
+      r.scene.scene.traverse((object) => { if (object instanceof Mesh || object instanceof LineSegments) drawn.push(object); });
+      expect(drawn).toHaveLength(2 + emergenceDrawCalls(quality)); expect(r.passes).toHaveLength(0);
+      expect(r.scene.world.mounted.map((m) => m.slot.id)).toEqual(['ground', EMERGENCE_SLOT]);
+      for (const object of drawn) for (const uniform of Object.values((object.material as ShaderMaterial).uniforms)) expect(uniform.value instanceof Texture).toBe(false);
+      r.scene.dispose();
+    }
   });
 
   it('follows the world: it flies with the world\'s travel, terraces under stored potential, and is still without a clock', () => {
@@ -409,7 +422,8 @@ describe('Generative Terrain: the scene', () => {
     r.update(0.5);
     r.scene.dispose();
     const terrainCost = [geometries.mock.calls.length, materials.mock.calls.length, textures.mock.calls.length];
-    expect(terrainCost.slice(0, 2)).toEqual([2, 2]); expect(r.scene.scene.children).toHaveLength(0); expect(r.scene.world.mounted).toHaveLength(0);
+    // The ground's two geometries and materials, and at Low the emergence's edges (one of each).
+    expect(terrainCost.slice(0, 2)).toEqual([2 + emergenceDrawCalls(QUALITY_PROFILES.low), 2 + emergenceDrawCalls(QUALITY_PROFILES.low)]); expect(r.scene.scene.children).toHaveLength(0); expect(r.scene.world.mounted).toHaveLength(0);
     geometries.mockClear(); materials.mockClear(); textures.mockClear();
     const t = rig(new TunnelVisualizer(tunnelPreset));
     t.update(0.5); t.scene.dispose();

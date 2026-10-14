@@ -36,6 +36,21 @@
       "highs": 1,
       "groove": 0.6,
       "surface": 0.4
+    },
+    "emergence": {
+      "enabled": true,
+      "capacity": 28,
+      "emerging": 6,
+      "fragments": 4,
+      "spacing": 6,
+      "density": 0.12,
+      "rate": 1,
+      "response": 1,
+      "pulse": 0.06,
+      "fracture": true,
+      "modes": "both",
+      "low": 0.3,
+      "high": 0.7
     }
   }
 }

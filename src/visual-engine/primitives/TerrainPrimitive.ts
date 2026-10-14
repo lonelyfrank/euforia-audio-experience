@@ -96,7 +96,12 @@ export class TerrainPrimitive implements Primitive {
   readonly debug = { speed: 0, row: 0, tension: 0, terrace: 0, aperture: 0, lift: 0, accent: 0, accents: 0, refused: 0, release: 0, fronts: 0, ring: 0, stir: 0 };
   /** Vertices of the lattice, and of the lines drawn over it (the lattice's own, plus two for each diagonal). */
   readonly lattice: number;
-  private readonly params: TerrainParams;
+  /**
+   * The uniforms both of its materials bind (the packed terrain law, the fronts, light, air, span, colours): stable
+   * objects, rewritten each frame. What stands on this ground binds the same ones, so it reads the very same law.
+   */
+  readonly shared: Record<string, { value: unknown }>;
+  readonly params: TerrainParams;
   private readonly wire: ShaderMaterial;
   private readonly fill: ShaderMaterial;
   private readonly wireGeometry = new BufferGeometry();
@@ -134,7 +139,7 @@ export class TerrainPrimitive implements Primitive {
     this.elements = lines.length / 2 + faces.length / 3;
     this.vertices = total;
 
-    const shared = {
+    const shared = this.shared = {
       uTerrain: { value: this.uTerrain }, uWaveA: { value: context.uWaveA }, uWaveB: { value: context.uWaveB },
       uLight: { value: new Vector4() }, uAir: { value: new Vector4(0, p.fog, (rows - BEHIND) * p.cell, 1) }, uSpan: { value: (columns / 2 - 1) * p.cell },
       uColorA: { value: new Color() }, uColorB: { value: new Color() }, uColorC: { value: new Color() },
