@@ -93,7 +93,7 @@ export class TerrainPrimitive implements Primitive {
   readonly elements: number;
   readonly vertices: number;
   readonly motion: TerrainMotion;
-  readonly debug = { speed: 0, row: 0, tension: 0, terrace: 0, aperture: 0, lift: 0, accent: 0, accents: 0, refused: 0, release: 0, fronts: 0 };
+  readonly debug = { speed: 0, row: 0, tension: 0, terrace: 0, aperture: 0, lift: 0, accent: 0, accents: 0, refused: 0, release: 0, fronts: 0, ring: 0, stir: 0 };
   /** Vertices of the lattice, and of the lines drawn over it (the lattice's own, plus two for each diagonal). */
   readonly lattice: number;
   private readonly params: TerrainParams;
@@ -179,6 +179,7 @@ export class TerrainPrimitive implements Primitive {
       const d = this.debug;
       d.speed = motion.speed; d.row = values.row; d.tension = motion.tension; d.terrace = values.terrace; d.aperture = motion.aperture; d.lift = values.lift;
       d.accent = motion.accent; d.accents = motion.accents; d.refused = motion.refused; d.release = values.release; d.fronts = frame.timed ? frame.waves.active(frame.time) : 0;
+      d.ring = motion.ring; d.stir = motion.stir;
     }
   }
 

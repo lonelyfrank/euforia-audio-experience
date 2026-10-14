@@ -18,7 +18,13 @@ import { BEHIND, createTerrain, PERIOD, terrainMeander, type TerrainValues } fro
  *              the mesh slides over the lattice by whole cells, so the landscape is rigid and continuous for ever
  *   lows       the world's pressure raises the relief; its excitation the finer octave (a struck ground rings)
  *   mids       hard-edged, angular sound folds the crests sharp
- *   highs      shimmer makes the ground tremble (the light of the highs is the material's)
+ *   highs      shimmer makes the ground's surface stir (the light of the highs is the material's)
+ *
+ * Three scales of time, kept apart (TerrainResponse): a kick or a hat is the micro scale, and it reaches the ground
+ * locally (the world's wave fronts, a plate that an accent lifts, the sparks of the material), never as the whole
+ * landscape pumping; the groove — how strongly the music has been ringing and stirring for the last beats — is the
+ * intermediate scale the ground's mass and surface follow; builds, drops heard and sections are the structural scale
+ * (terraces, the throat, the release front and the configuration it leaves).
  *   build      stored potential gathers the heights onto terraces and draws the valley in ahead
  *   strain     potential held with disorder lifts whole plates: a gate with hysteresis, as the tunnel's wall;
  *              an event that stands out lifts them for an instant, one at a time
@@ -49,6 +55,36 @@ export interface TerrainParams {
   fog: number;
   exposure: number;
   wave: number;
+  /** How the registers and the scales of the music reach the ground (absent: DEFAULT_RESPONSE). */
+  response?: Partial<TerrainResponse>;
+}
+
+/**
+ * How each register reaches the ground and over which time. The registers are a configurable reading, not laws of
+ * music: lows give the landscape its mass (relief, the finer octave), mids its detail (folded crests), highs its
+ * surface (a stir of every point). Gains 0 … 2 (1: the law's own); times 0 … 4 s.
+ */
+export interface TerrainResponse {
+  lows: number;
+  mids: number;
+  highs: number;
+  /** Seconds over which the ground's mass follows the world's excitation (the groove, not each kick; 0: each kick). */
+  groove: number;
+  /** Seconds over which its surface follows the shimmer (the activity of the highs, not each hat; 0: each hat). */
+  surface: number;
+}
+
+/** The ground as it answered before the scales were separated: each kick rang the whole landscape, each hat shook it. */
+export const LEGACY_RESPONSE: Readonly<TerrainResponse> = { lows: 1, mids: 1, highs: 1, groove: 0, surface: 0 };
+/** The ground's own answer: the same registers, the micro scale left to the fronts and the light. */
+export const DEFAULT_RESPONSE: Readonly<TerrainResponse> = { lows: 1, mids: 1, highs: 1, groove: 0.6, surface: 0.4 };
+const GAIN = [0, 2] as const;
+const TIME = [0, 4] as const;
+const bound = (x: unknown, [lo, hi]: readonly [number, number], fallback: number): number => typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : fallback;
+/** A response within its bounds, what is missing or not a number being the default's. */
+export function terrainResponse(r: Partial<TerrainResponse> = {}): TerrainResponse {
+  const d = DEFAULT_RESPONSE;
+  return { lows: bound(r.lows, GAIN, d.lows), mids: bound(r.mids, GAIN, d.mids), highs: bound(r.highs, GAIN, d.highs), groove: bound(r.groove, TIME, d.groove), surface: bound(r.surface, TIME, d.surface) };
 }
 
 /** The travel's speed, the lean and the bank follow the world over these times (s). */
@@ -107,6 +143,11 @@ export class TerrainMotion {
   /** What the ground reads of the world, as it is followed. */
   tension = 0;
   disorder = 0;
+  /** The groove the ground's mass follows (the world's excitation over its time) and the activity its surface follows (the shimmer). */
+  ring = 0;
+  stir = 0;
+  /** How the registers and the scales reach the ground; the tools may change it while it plays (DEV). */
+  readonly response: TerrainResponse;
   /** Ground travelled, as rows (kept within a period: the landscape repeats there). */
   private position = 0;
   private fresh = true;
@@ -120,6 +161,7 @@ export class TerrainMotion {
   private readonly structure = new Reorganization(CONFIGURATIONS.length, 0x746572);
 
   constructor(private readonly params: TerrainParams) {
+    this.response = terrainResponse(params.response);
     const v = this.values, seed = seedOf(params.seed, 0x746572);
     v.cell = params.cell; v.relief = params.relief; v.rough = params.roughness; v.valley = params.valley;
     v.seedX = seed % 61; v.seedY = (seed >>> 8) % 127;
@@ -141,9 +183,11 @@ export class TerrainMotion {
     const tension = unit(finite(view.tension)), disorder = unit(finite(view.disorder)), spin = clamp(finite(view.spin), -1, 1), lateral = clamp(finite(view.lateral), -1, 1);
     const rate = h > 0 ? finite(view.dTravel) * p.stride / h : 0;
     const sharp = unit(Math.max(finite(geometry.edgeHardness), finite(geometry.angularity)));
+    const r = this.response, excitation = unit(finite(view.excitation)), shimmer = unit(finite(view.shimmer));
     if (this.fresh) {
       // The first frame takes the world as it is: a scene that is mounted does not fade its motion in.
       this.travel.rate = rate; this.tension = tension; this.disorder = disorder; this.spin = spin; this.lean = lateral; this.ridge = sharp;
+      this.ring = excitation; this.stir = shimmer;
       this.gate.prime(strainOf(tension, disorder)); this.aperture = this.gate.aperture;
       this.fresh = false;
     }
@@ -182,12 +226,15 @@ export class TerrainMotion {
     const after = CONFIGURATIONS[this.structure.current], before = CONFIGURATIONS[this.structure.previous];
     v.plateAfter = after[0]; v.stepsAfter = after[1]; v.plateBefore = before[0]; v.stepsBefore = before[1];
 
-    // ---- the registers: lows raise the relief and ring the finer octave, mids fold the crests, highs tremble ----
-    v.relief = p.relief * (1 + SWELL * clamp(finite(view.pressure), -0.6, 0.9));
-    v.crest = 1 + RING * unit(finite(view.excitation));
-    this.ridge = follow(this.ridge, sharp * (1 - YIELD * lifted), Math.exp(-h / FORM_TAU));
+    // ---- the registers: lows raise the relief and ring the finer octave, mids fold the crests, highs stir the surface ----
+    // The intermediate scale: the groove and the activity of the highs, followed over their times; a kick or a hat is not the landscape's.
+    this.ring = r.groove > 0 ? follow(this.ring, excitation, Math.exp(-h / r.groove)) : excitation;
+    this.stir = r.surface > 0 ? follow(this.stir, shimmer, Math.exp(-h / r.surface)) : shimmer;
+    v.relief = p.relief * (1 + SWELL * r.lows * clamp(finite(view.pressure), -0.6, 0.9));
+    v.crest = 1 + RING * r.lows * this.ring;
+    this.ridge = follow(this.ridge, unit(sharp * r.mids * (1 - YIELD * lifted)), Math.exp(-h / FORM_TAU));
     v.ridge = this.ridge;
-    v.quake = QUAKE * p.roughness * unit(finite(view.shimmer));
+    v.quake = QUAKE * p.roughness * r.highs * this.stir;
     v.wave = p.wave;
     for (const key of KEYS) if (!Number.isFinite(v[key])) v[key] = REST[key];
     return v;
@@ -197,7 +244,7 @@ export class TerrainMotion {
   reset(): void {
     this.fresh = true;
     this.travel.reset(); this.gate.reset(); this.events.reset(); this.structure.reset();
-    this.tension = this.disorder = this.spin = this.lean = this.ridge = this.aperture = this.accent = this.speed = this.bank = 0;
+    this.tension = this.disorder = this.spin = this.lean = this.ridge = this.aperture = this.accent = this.speed = this.bank = this.ring = this.stir = 0;
     this.lastTime = -Infinity;
   }
 }

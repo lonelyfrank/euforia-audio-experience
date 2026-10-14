@@ -251,7 +251,9 @@ describe('terrain motion: the ground under the shared world', () => {
     f.run(1);
     f.run(3, (world) => { world.radius = 0.6; world.excitation = 0.8; world.shimmer = 0.5; world.bias = -0.8; world.spin = 2; f.geometry.edgeHardness = 0.9; });
     const v = f.motion.values;
-    expect(v.relief).toBeCloseTo(P.relief * (1 + 0.35 * 0.6), 9); expect(v.crest).toBeCloseTo(1.4, 9); expect(v.quake).toBeCloseTo(0.6 * P.roughness * 0.5, 9);
+    expect(v.relief).toBeCloseTo(P.relief * (1 + 0.35 * 0.6), 9);
+    // The finer octave and the surface follow the groove over their own times (response.test.ts): held three seconds, they are there.
+    expect(v.crest).toBeCloseTo(1.4, 2); expect(v.quake).toBeCloseTo(0.6 * P.roughness * 0.5, 3);
     expect(v.ridge).toBeGreaterThan(0.85); expect(v.lean).toBeLessThan(-0.75); expect(Math.abs(f.motion.bank)).toBeGreaterThan(0.05); expect(Math.abs(f.motion.bank)).toBeLessThanOrEqual(0.1);
     // The pressure is bounded both ways: the relief never collapses and never runs away.
     f.run(1, (world) => { world.radius = -50; });

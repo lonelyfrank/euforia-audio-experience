@@ -29,6 +29,13 @@
     "stride": 9,
     "fog": 0.02,
     "exposure": 0.9,
-    "wave": 1.1
+    "wave": 1.1,
+    "response": {
+      "lows": 1,
+      "mids": 1,
+      "highs": 1,
+      "groove": 0.6,
+      "surface": 0.4
+    }
   }
 }
