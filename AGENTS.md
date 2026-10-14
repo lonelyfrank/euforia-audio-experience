@@ -7,8 +7,8 @@
   `docs/acoustic-model.md`, `docs/experience-planner.md`, `docs/physics-engine.md`,
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
   `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md`, `docs/solid-dynamics.md`,
-  `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md`, `docs/tunnel-motion.md`, `docs/music-response.md` e
-  `docs/generative-terrain.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md`, `docs/tunnel-motion.md`, `docs/music-response.md`,
+  `docs/generative-terrain.md` e `docs/musical-cognition.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -125,6 +125,15 @@
   un'ampiezza audio; le placche sono traslazioni rigide; solo un rilascio cambia la configurazione. Due draw call, nessun pass, nessuna
   texture. Non è una fixture del rig Free. Portali e transizioni fra ambienti sono solo uno studio (`docs/world-transitions.md`): non
   implementarli senza autorizzazione, e mai con uno scene manager parallelo.
+- Musical Cognition (`docs/musical-cognition.md`): `experience/cognition/`, per hop dentro `ExperienceEngine`, solo misure ed
+  eventi già esportati dal DSP più l'evidenza di build dell'Experience (`CognitionContext`): niente FFT, niente PCM, niente secondo
+  beat tracker (il clock estende la griglia del DSP, non la corregge). Non scrive nel mondo, nello stato Experience né
+  nell'`EventStream` (con `config.enabled = false` tutto è come prima: test). Osservazioni, interpretazioni e previsioni restano
+  distinte: le previsioni hanno finestra, confidenza, evidenza ed esito, mai retroattive; il rilascio è **udito**, mai confermato da
+  un'aspettativa; il `drop` dell'Experience resta com'è e viene solo confrontato. Battute e frasi solo con evidenza, mai un 4/4
+  presunto; inerzia del clock ≤ 2 battute / 4 s. La regia la segue solo quando `leads` (`followCognition`, finestra del planner),
+  altrimenti percorso reattivo. Ring e pool a capacità fissa. `scenarios.ts` è un mock del DSP (test e laboratorio, DEV); il
+  laboratorio non fissa né sovrascrive nulla; le override della cognizione passano da `controller.overrides`.
 - Engine Workspace (`docs/engine-workspace.md`): la vista decide cosa mostra l'inspector (`VIEW_SECTIONS` + `applySections` in
   `diagnostics/workspace/sections.ts`); un componente costruisce i blocchi e ne dichiara la sezione, non si mostra né si nasconde da sé, e
   nascondere non ferma campionamento né storici. Un solo ingresso alle viste (`EngineWorkspace.navigate`): entrare in Laboratories apre

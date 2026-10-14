@@ -37,6 +37,7 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 - **Solid Dynamics** (sperimentale, prima milestone; laboratorio solo in sviluppo): gli stessi elementi tenuti insieme come corpi tridimensionali. Tetraedro, cubo e icosaedro sono condizioni iniziali: link (spigoli e controventi interni), facce e celle volumetriche risolti nello stesso passo fisso (vincoli XPBD di lunghezza, flessione e volume). Il suono sposta ciò a cui link e celle tendono, mai un vertice; un link troppo carico cede, facce e celle che teneva si aprono, i pezzi restano gli stessi elementi e, in un mondo vivo e ordinato, si ritrovano un link alla volta. Il rendering mostra lo stato della simulazione e nient'altro ([docs/solid-dynamics.md](docs/solid-dynamics.md))
 - **Generative Terrain** (sperimentale): una valle low-poly senza fine, sorvolata con la musica. Il suolo è un reticolo fisso su cui la mesh scorre (nessun asset, nessun chunk, due draw call); il viaggio è quello del mondo, seguito come nel Tunnel; la pressione alza il rilievo, il potenziale accumulato lo raccoglie in terrazze e stringe la valle, lo sforzo solleva placche rigide, un rilascio è una cresta che corre lungo la valle e lascia un altro suolo. Scena autonoma accanto a Infinite Tunnel, non ancora composta dal rig Free ([docs/generative-terrain.md](docs/generative-terrain.md))
 - **Risposta musicale consolidata**: i follower del coordinatore del Tunnel sono condivisi fra le scene che viaggiano nel mondo (il Tunnel resta identico bit per bit); il motore tiene il conto di ciò che si aspetta (anticipazioni aperte, confermate, scadute) senza un secondo predittore ([docs/music-response.md](docs/music-response.md))
+- **Musical Cognition**: un livello che capisce la musica mentre la ascolta, senza conoscerla in anticipo. Un orologio musicale che estende la griglia del DSP (agganciato, in inerzia per al più due battute in una pausa, perso; continuità della battuta alla ripresa; beat verificati sugli attacchi; plausibilità half/double-time; battute solo con evidenza, mai un 4/4 presunto), una memoria strutturale limitata (metro dai cambiamenti, ripetizione, confini, frasi di 4/8/16/32 battute inferite con un posterior), priori musicali universali e profili stilistici pesati (mai una classificazione), uno stato musicale con isteresi e ragione, aspettativa e sorpresa (anche per un beat atteso che manca), e previsioni con finestra, confidenza, evidenza ed esito (confermate, smentite, scadute) di cui si misura la calibrazione. Il rilascio è udito, mai previsto. La regia la segue solo quando è sicura; non scrive nulla nel mondo: nessuna scena cambia ([docs/musical-cognition.md](docs/musical-cognition.md))
 - 12 scene su GPU: **Infinite Tunnel**, **Spectrum**, **Particle Field**, **Galaxy**, **Liquid**, **Oscilloscope**, **Resonant Field**, **Spectral Matter**, **Matter Field**, **Vector Field**, **Spectral Shell**, **Generative Terrain**
 - Composizione finale: cielo con alone e stelle, **pavimento riflettente** con increspature, linea d'orizzonte, **crossfade di 0,9 s** tra le scene
 - 4 preset di colore (**Nebula**, **Aurora**, **Ember**, **Mono**) che ricolorano scena e accento della UI
@@ -101,6 +102,7 @@ Live capture (system / microphone / test)
             ├─ memoria multiscala / motivi / narrativa / trajectory / previsione
             ├─ EventStream ordinato per tempo audio (impatti e drop con `significance`)
             ├─ AdaptiveMusicCalibration → CalibrationFrame: accanto al mondo, mai dentro
+            ├─ MusicalCognition → CognitionFrame: clock, memoria, lettura, previsioni ed esiti; letta dalla regia, mai una forza
             ├─ ExperiencePlanner → VisualIntent / contrasto / entropia
             ├─ WorldEngine → WorldState: corpi (pressione, spin, travel, bias) e campi
             │    (eccitazione, turbolenza, coerenza, potenziale, luce, apertura); forze e impulsi
@@ -141,7 +143,8 @@ Contratti: [analisi realtime: thread, clock, stati, eventi, benchmark](docs/real
 [Rigid Resonant Body: conservazione della forma, pulsazione, frattura sugli eventi](docs/rigid-resonant-body.md),
 [Adaptive Music Calibration](docs/adaptive-calibration.md), [Tunnel Motion Coordinator](docs/tunnel-motion.md),
 [Music Response: come il Tunnel traduce la musica, anticipazione, componenti condivisi, rapporto e checklist audio](docs/music-response.md),
-[Generative Terrain](docs/generative-terrain.md), [transizioni fra ambienti e portali (studio, non implementato)](docs/world-transitions.md);
+[Generative Terrain](docs/generative-terrain.md), [Musical Cognition: orologio, memoria, interpretazione, previsioni, regia, laboratorio](docs/musical-cognition.md),
+[transizioni fra ambienti e portali (studio, non implementato)](docs/world-transitions.md);
 [rapporto dell'intervento precedente, test e benchmark](docs/resonant-body-report.md). La cronologia resta in [experience-engine](docs/experience-engine.md).
 
 Principi:
@@ -243,6 +246,8 @@ src/
   director/         mood, Experience, matrice, VisualDirector, AutoDirection
   timing/           clock capture→host, cue percepiti, gate del ritmo, calibrazione
   experience/       memoria, narrativa, trajectory, previsione, event stream, planner, intenti, history
+    cognition/      Musical Cognition: clock, memoria strutturale, conoscenza, interpretazione, previsioni, regia;
+                    scenari sintetici di feature e loro valutazione (test e laboratorio)
   morphology/       SoundMorphology: proprietà continue del suono dalle misure del DSP (docs/matter-engine.md)
   world/            WorldState, WorldEngine (forze, impulsi, energia), WorldView (adattatore per layer), WorldTrace,
                     Reorganization (quale struttura ha lasciato l'ultimo rilascio)

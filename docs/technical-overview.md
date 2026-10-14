@@ -23,7 +23,7 @@ Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-plann
 [Spectral Shell](spectral-shell.md), [Structural Dynamics](structural-dynamics.md),
 [Solid Dynamics](solid-dynamics.md), [Rigid Resonant Body](rigid-resonant-body.md),
 [Adaptive Music Calibration](adaptive-calibration.md), [Tunnel Motion Coordinator](tunnel-motion.md),
-[Music Response](music-response.md), [Generative Terrain](generative-terrain.md),
+[Music Response](music-response.md), [Generative Terrain](generative-terrain.md), [Musical Cognition](musical-cognition.md),
 [transizioni fra ambienti (studio)](world-transitions.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
@@ -58,6 +58,7 @@ frontend, backend e WASM della stessa revisione.
 | Rigid Resonant Body | `visual-engine/structural/SolidDynamics.ts` (`fit`, `breathe`, `shatter`), `SolidState.ts` (`rest`, `frame`, `settled`), `FractureGate.ts` | Un materiale di `SolidSystem`, non un sistema: riferimento di forma per pezzo, shape matching dopo le proiezioni XPBD (stesso passo, stesse 4 iterazioni), pulsazione come scala unica di ciò a cui link, cerniere, celle e fit tendono (≤ 6 %), frattura automatica solo quando un evento dell'`EventStream` passa il gate (significance, confidenza, isteresi, cooldown, budget), lungo un piano, per la legge di carico dei link. Il materiale di prodotto è `legacy`: senza ritenzione né pulsazione il passo è quello di prima, bit per bit ([rigid-resonant-body](rigid-resonant-body.md)) |
 | Adaptive Music Calibration | `experience/AdaptiveCalibration.ts`, `ExperienceEngine.calibration`, `ExperienceSnapshot.calibration`, `AudioEvent.significance` | Per hop, sulle misure già esportate dal DSP: riferimenti consolidati che seguono i percentili del loudness, livello nel range del brano (stiramento limitato), attività relativa di bassi/medi/alti, voto degli attacchi contro gli accenti abituali, gain limitato dal noise floor, carattere. Accanto al World Engine, mai dentro. Distinta dalla calibrazione di sincronia ([adaptive-calibration](adaptive-calibration.md)) |
 | Anticipazione (conto) | `experience/Anticipation.ts`, `ExperienceEngine.anticipation`, `ExperienceSnapshot.anticipation` | Per hop: legge la carica del mondo (`forces.charge / CHARGE_RATE`) e i rilasci, tiene fase (none / uncertain / probable / confirmed) e contatori (aperte, confermate, scadute, non annunciate). Non predice e non scrive nel mondo; le scene non ramificano sulla fase. |
+| Musical Cognition | `experience/cognition/`, `ExperienceEngine.cognition`, `ExperienceSnapshot.cognition`, `director.ts` | Per hop, dalle misure e dagli eventi del DSP e dall'evidenza di build dell'Experience: clock (stato, inerzia ≤ 2 battute / 4 s, continuità, verifica sugli onset, ottava, battute solo con evidenza), memoria strutturale (ring 256 beat / 64 battute, metro dai cambiamenti, ripetizione, confini, posterior delle frasi), priori e profili stilistici, interprete con isteresi, registro delle previsioni con esiti e Brier, rilascio udito. Non scrive nel mondo, nello stato né negli eventi; la regia (finestra del planner, griglia di frase dello show) la segue solo quando `leads`. `config.enabled = false`: Experience e regia di prima ([musical-cognition](musical-cognition.md)) |
 | Moto condiviso | `visualizers/shared/motion.ts` | `RateFollower` (velocità seguita, distanza esatta del frame), `HysteresisGate`, `AccentGate`, `follow`: i pezzi del coordinatore del Tunnel che non riguardano un tunnel. Usati da Tunnel e Terrain. |
 | Generative Terrain | `visualizers/terrain/`, `visual-engine/primitives/terrain{Law,Motion}.ts`, `TerrainPrimitive.ts` | Recipe di una primitiva: reticolo fisso su cui la mesh scorre, legge dell'altezza in GLSL e TS, lettura del mondo per il suolo. Due draw call, nessun pass. |
 | Tunnel Motion Coordinator | `visualizers/tunnel/motion.ts`, `topology.ts` (`architecture`) | Decide quanto di ogni target del Tunnel si vede: viaggio continuo (integrale esatto di un follower), forma e torsione seguite e limitate, apertura della parete con isteresi, accenti solo da eventi che spiccano, cessione progressiva di B mentre C occupa il quadro. `balance: 0` non chiama il coordinatore ([tunnel-motion](tunnel-motion.md)) |
@@ -228,6 +229,19 @@ solo misure già esportate dal DSP, sta in `ExperienceEngine` per hop, non entra
 del Tunnel non ha tempo proprio: follower esatti per un ingresso tenuto nel frame, età di eventi
 datati, e a `balance` 0 non viene chiamato.
 
+**Musical Cognition.** Invarianti: (1) un solo tracker: la griglia è quella del DSP, il clock la estende e non la
+corregge; (2) causale: nessuna decisione usa audio dopo l'hop; (3) osservazioni, interpretazioni e previsioni restano
+distinte: una previsione non è un evento, è rifiutata se il suo istante è passato e confermata solo da un'osservazione
+dentro la sua finestra e successiva alla proposta; (4) il rilascio è **udito** (quota di basso che rientra con un attacco
+basso, o un `drop` del DSP), mai confermato da un'aspettativa; il `drop` dell'Experience non si tocca (§2.4 di
+[music-response](music-response.md)) ed è solo confrontato; (5) posizioni di battuta e di frase solo con evidenza (metro
+pubblicato o cambiamenti; confidenza), mai un 4/4 presunto; il clock non resta in inerzia oltre 2 battute / 4 s;
+(6) la cognizione non scrive nel mondo, nello stato Experience né nell'event stream (mondo, stato ed eventi identici
+acceso / spento: test); la regia la legge dallo snapshot e torna al percorso reattivo per frame quando non `leads`;
+(7) memoria e pool a capacità fissa, nessuna allocazione per hop; (8) `scenarios.ts` è un mock del DSP per i test e il
+laboratorio, non una prova del tracker. Le override di sviluppo della cognizione passano da `controller.overrides`.
+Dettagli, misure e limiti in [musical-cognition](musical-cognition.md).
+
 **Visual Systems.** `render-systems/` non contiene significato musicale: legge
 `WorldView`, snapshot, intenti e lo stream di eventi, e tiene solo storia di rendering
 (particelle, fronti, buffer di memoria, inerzia dell'osservatore). Le onde nascono
@@ -392,6 +406,11 @@ build debug, `desktop:dev`). Regressione in `structure.rs`, WASM ricostruito.
 La sezione in fondo conserva la baseline precedente.
 I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 
+Musical Cognition (14 ottobre 2026): nessuna modifica a DSP, wire, WASM, World Engine, event stream, scene, UI
+cinematica, impostazioni. `npm run check`: **691 test superati, 1 saltato (preesistente), 81 file** (48 nuovi, benchmark incluso), build;
+`workspace-browser.mjs acceptance` e `release` superati su Chromium con GPU Intel UHD. Non provati: musica reale,
+Tauri / WebKitGTK, Windows, hardware più debole. Esiti, benchmark e limiti in [musical-cognition](musical-cognition.md) §7–9.
+
 ## Miglioramenti prioritari successivi
 
 | Priorità | Lavoro | Criterio di completamento |
@@ -411,6 +430,7 @@ I risultati prestazionali precedenti restano datati nei rispettivi documenti.
 | Media | Migrare le scene legacy a recipe e al modello fisico | Galaxy (orbite, `wells` a spirale), Liquid (superficie fluida, fronti condivisi), Oscilloscope (`SignalTracePrimitive`); parete del Tunnel come primitiva che legge `uField` / `uWave*`; **Spectrum resta com'è** |
 | Alta | Matter Engine su musica reale | Tono, accordo, mix denso e percussioni danno corpi diversi e leggibili a occhio; quote delle forme, tempi dei nodi ed esposizione tarati su un corpus; costo a 1080p e in WebView2 su macchina scarica |
 | Alta | Spectral Matter su musica reale | Le nove domande percettive di [visual-systems](visual-systems.md) con un corpus vario e occhi; costo GPU a 1080p e in WebView2; poi riuso di `FeedbackPass`/`WaveField` nelle scene esistenti |
+| Alta | Musical Cognition su musica reale | Checklist di [musical-cognition](musical-cognition.md) §10 su un corpus annotato (beat, downbeat, frasi, drop): soglie, priori di frase e profili rivisti, confidenze calibrate sul Brier; poi la decisione su §2.4 di music-response con lo scarto misurato `dropOffset`; ripresa dopo una pausa che sposta la battuta |
 | Alta | Taratura del World Engine su musica reale | `npm run replay` su un corpus locale vario (casi difficili inclusi), poi prova visiva per scena; nessun priore di genere |
 | Media | Ring nativo proporzionato al sample rate | Verificare delay 400 ms e finestra voci a 44,1/48/96/192 kHz; il buffer nativo è ancora fisso a 48.000 campioni |
 | Media | Regressioni DOM e GPU in browser | Focus trap, ARIA, fullscreen, idle, chiusura/rimontaggio, snapshot per tutte le scene; lo smoke Chromium corrente compila gli shader, ma non sostituisce test di cattura e WebView desktop |

@@ -482,7 +482,7 @@ Infinite Tunnel, poi Generative Terrain, sullo stesso brano; in DEV anche Tunnel
 
 ## 13. Prossima iterazione
 
-1. **Decidere §2.4** con musica reale: se il rilascio cade lontano dal drop, una proposta separata
+1. **Decidere §2.4** con musica reale (dal 14 ottobre lo scarto è misurato: la [Musical Cognition](musical-cognition.md) confronta ogni `drop` con il rilascio udito, `dropOffset` / `experienceDropsOff` / `experienceDropsUnheard`): se il rilascio cade lontano dal drop, una proposta separata
    sul criterio del rilascio (fine del build + rientro dei bassi), con il Tunnel confrontato prima / dopo.
 2. `runTerrainParity()` (GPU ↔ CPU della legge del terreno), come per campi e traccianti.
 3. Strutture secondarie del terreno come secondo slot della recipe (guglie istanziate ai bordi della
