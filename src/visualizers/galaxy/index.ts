@@ -8,6 +8,7 @@ export default defineVisualizer<GalaxyParams>({
   name: 'Galaxy',
   description: 'A three-armed spiral disc that swells on the kick.',
   icon: 'galaxy',
+  category: 'spectrum',
   order: 4,
   direction: {
     capabilities: { particles: true, cameraMotion: true, distortion: true, depth: true },

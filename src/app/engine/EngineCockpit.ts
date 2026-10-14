@@ -7,7 +7,7 @@ import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
 import structuralLabScene, { STRUCTURAL_LAB } from '../../visual-engine/structural/lab/index';
 import { createTuning, LIFECYCLES, ROLE_COUNT, ROLES, type StructuralTuning } from '../../visual-engine/structural/StructuralTypes';
 import type { VisualWorld } from '../../visual-engine/VisualWorld';
-import { registerLaboratory, visualizers } from '../../visualizers/registry';
+import { registerLaboratory, sceneCategories, scenesOf } from '../../visualizers/registry';
 import type { App } from '../App';
 
 /** Structural inspectors embedded in the Engine Workspace inspector. No independent window, listener or RAF.
@@ -155,7 +155,9 @@ export class EngineCockpit {
     for (const module of MODULES) nav.append(h('button', { type: 'button', dataset: { module }, onclick: () => this.select(module) }, module));
 
     const world = h('select', { ariaLabel: 'Mondo del laboratorio', onchange: () => { this.world = world.value; this.app.pinScene(this.world); world.blur(); } },
-      new Option('Structural Lab', STRUCTURAL_LAB), ...visualizers.map((v) => new Option(v.name, v.id)));
+      new Option('Structural Lab', STRUCTURAL_LAB),
+      // The product's scenes by family, from the registry's own metadata.
+      ...sceneCategories().map((c) => { const group = document.createElement('optgroup'); group.label = c.name; group.append(...scenesOf(c.id).map((v) => new Option(v.name, v.id))); return group; }));
     const views = h('div', { class: 'engine-list' });
     for (const view of STRUCTURE_VIEWS) {
       views.append(h('button', { type: 'button', dataset: { view }, onclick: () => { structuralLab.view = view; this.mark(views, 'view', view); } }, VIEW_LABELS[view]));

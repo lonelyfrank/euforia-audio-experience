@@ -21,6 +21,7 @@ export default defineRecipe<StructuralLabParams>({
   description: 'Development sandbox of the structural engine: a wire polygon in free matter, the field that carries it and the fronts that strike it.',
   order: 1000,
   icon: 'scene',
+  category: 'particles',
   direction: { capabilities: { particles: true, cameraMotion: true, depth: true, distortion: true }, mappings: [{ source: 'intensity', target: 'bloom', amount: 0.4 }] },
   preset: structuralLabPreset,
   recipe: structuralLabRecipe,

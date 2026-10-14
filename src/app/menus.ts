@@ -6,9 +6,20 @@ import type { AudioSourceId } from '../types/audio';
 import type { DialMenu } from '../ui/Dial';
 import { swatch } from '../ui/icons';
 import { PALETTES, type PaletteId } from '../visualizers/palettes';
-import { findVisualizer, visualizers } from '../visualizers/registry';
+import { SCENE_CATEGORIES, type SceneCategory } from '../types/visualizer';
+import { categoryOf, findVisualizer, sceneCategories, scenesOf } from '../visualizers/registry';
 
 const RIG_LABELS: Readonly<Record<RigMode, string>> = { preset: 'Preset', hybrid: 'Hybrid', free: 'Free' };
+
+/** The ring of one family of scenes: `scene:<category>`, opened from the Scene ring. */
+const FAMILY = 'scene:';
+export const familyMenu = (category: SceneCategory): string => `${FAMILY}${category}`;
+/** The family a menu key names, or null when it is not a family's ring. */
+export function familyOf(menu: string): SceneCategory | null {
+  if (!menu.startsWith(FAMILY)) return null;
+  const id = menu.slice(FAMILY.length);
+  return SCENE_CATEGORIES.some((c) => c.id === id) ? id as SceneCategory : null;
+}
 
 export function appMenu(key: string, s: Settings, fullscreen: boolean): DialMenu {
   switch (key) {
@@ -33,11 +44,11 @@ export function appMenu(key: string, s: Settings, fullscreen: boolean): DialMenu
       return { caption: 'Mood', items: MOODS.map((m) => ({ id: m.id, label: m.name, icon: 'mood', selected: m.id === s.mood })) };
     case 'experience':
       return { caption: 'Experience', items: EXPERIENCES.map((m) => ({ id: m.id, label: m.name, icon: 'experience', selected: m.id === s.experience })) };
-    case 'scene':
-      return {
-        caption: 'Scene',
-        items: visualizers.map((v) => ({ id: v.id, label: v.name, icon: v.icon, selected: v.id === s.scene })),
-      };
+    case 'scene': {
+      // The families, from the scenes' own metadata; the one holding the scene in use is marked.
+      const current = categoryOf(s.scene);
+      return { caption: 'Scene', layout: 'arc', items: sceneCategories().map((c) => ({ id: c.id, label: c.name, icon: c.icon, selected: c.id === current })) };
+    }
     case 'audio':
       return {
         caption: 'Audio',
@@ -53,7 +64,12 @@ export function appMenu(key: string, s: Settings, fullscreen: boolean): DialMenu
         layout: 'arc',
         items: PALETTES.map((p) => ({ id: p.id, label: p.name, iconHtml: swatch(p), selected: p.id === s.preset })),
       };
-    default:
+    default: {
+      const family = familyOf(key);
+      if (family) {
+        const name = SCENE_CATEGORIES.find((c) => c.id === family)!.name;
+        return { caption: `Scene · ${name}`, items: scenesOf(family).map((v) => ({ id: v.id, label: v.name, icon: v.icon, selected: v.id === s.scene })) };
+      }
       return {
         items: [
           { id: 'scene', label: 'Scene', icon: 'scene' },
@@ -64,12 +80,14 @@ export function appMenu(key: string, s: Settings, fullscreen: boolean): DialMenu
           { id: 'fullscreen', label: 'Fullscreen', icon: fullscreen ? 'exitfull' : 'fullscreen' },
         ],
       };
+    }
   }
 }
 
 /** Where the core's back action leads from a sub-ring. */
 export function parentMenu(menu: string): string {
   if (menu === 'mood' || menu === 'experience' || menu === 'rig') return 'manual';
+  if (familyOf(menu)) return 'scene';
   return menu === 'manual' ? 'direction' : 'root';
 }
 
@@ -104,13 +122,17 @@ export function menuSelection(menu: string, id: string): MenuEffect {
       return { patch: { mood: id as MoodId, autoDirection: false } };
     case 'experience':
       return { patch: { experience: id as ExperienceId, autoDirection: false } };
+    // A family only leads on to its scenes: nothing is applied, the capture is not touched.
     case 'scene':
-      return { patch: { scene: id } };
+      return SCENE_CATEGORIES.some((c) => c.id === id) ? { open: familyMenu(id as SceneCategory) } : {};
     case 'presets':
       return { patch: { preset: id as PaletteId } };
     case 'audio':
       return { source: id as AudioSourceId };
-    default:
-      return {};
+    default: {
+      // A scene of that family: the normal flow of the settings, as the flat list had (never a laboratory's world).
+      const family = familyOf(menu);
+      return family && scenesOf(family).some((v) => v.id === id) ? { patch: { scene: id } } : {};
+    }
   }
 }

@@ -13,7 +13,8 @@ const legacy = import.meta.env.DEV && typeof location !== 'undefined' && (new UR
 
 export default defineVisualizer<ResonantFieldParams>({
   id: 'resonant-field', name: 'Resonant Field', description: 'Resonant modes and reflecting waves excited by live sound.',
-  icon: 'scene', order: 7,
+  icon: 'scene',
+  category: 'particles', order: 7,
   direction: { capabilities: { distortion: true, depth: true } },
   preset: preset satisfies VisualizerPreset<ResonantFieldParams>,
   create: (p) => (legacy ? new ResonantFieldVisualizer(p) : new RecipeVisualizer(p, resonantFieldRecipe)),

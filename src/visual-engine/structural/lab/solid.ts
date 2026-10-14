@@ -67,6 +67,7 @@ export default defineRecipe<SolidLabParams>({
   description: 'Development sandbox of the volumetric bodies: one solid of the structural engine, the field that carries it and the fronts that strike it.',
   order: 1001,
   icon: 'scene',
+  category: 'particles',
   direction: { capabilities: { particles: true, cameraMotion: true, depth: true, distortion: true }, mappings: [{ source: 'intensity', target: 'bloom', amount: 0.4 }] },
   preset: solidLabPreset,
   recipe: solidLabRecipe,

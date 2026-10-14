@@ -1,7 +1,7 @@
 import type { WebGLRenderer } from 'three';
 import type { ModulationState, SceneDirection } from '../director/types';
 import type { AudioFrame, VisualResponseFrame } from '../types/audio';
-import type { PaletteColors, QualityProfile, SceneClock, SceneIcon, VisualizerContext, VisualizerDefinition, VisualizerPreset } from '../types/visualizer';
+import type { PaletteColors, QualityProfile, SceneCategory, SceneClock, SceneIcon, VisualizerContext, VisualizerDefinition, VisualizerPreset } from '../types/visualizer';
 import { BaseVisualizer } from '../visualizers/shared/BaseVisualizer';
 import { VisualWorld } from './VisualWorld';
 import type { WorldRecipe } from './WorldRecipe';
@@ -70,7 +70,7 @@ export class RecipeVisualizer<TVisual> extends BaseVisualizer<TVisual> {
 
 /** A scene that is a recipe: registry entry and factory, like `defineVisualizer`. */
 export function defineRecipe<TVisual>(definition: {
-  id: string; name: string; description: string; icon: SceneIcon; order: number; direction?: SceneDirection;
+  id: string; name: string; description: string; icon: SceneIcon; category: SceneCategory; order: number; direction?: SceneDirection;
   preset: VisualizerPreset<TVisual>; recipe: RecipeBuilder<TVisual>;
 }): VisualizerDefinition {
   const { recipe, ...rest } = definition;

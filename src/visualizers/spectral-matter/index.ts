@@ -10,6 +10,7 @@ export default defineVisualizer<SpectralMatterParams>({
   description: 'Persistent matter shaped by the fields, waves and memory of the world.',
   order: 8,
   icon: 'scene',
+  category: 'particles',
   // Bloom follows the level of the music only: light events belong to the matter (wave fronts), not to the bloom.
   direction: { capabilities: { particles: true, cameraMotion: true, depth: true }, mappings: [{ source: 'intensity', target: 'bloom', amount: 0.4 }] },
   preset: preset satisfies VisualizerPreset<SpectralMatterParams>,

@@ -47,13 +47,13 @@ La UI implementa il **design system Euforia-Audio-Experience** (token, component
 
 ## Interfaccia
 
-Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `audio`, `presets`, `direction`, `manual`, `mood`, `experience`, `rig` oppure nessuno), se il pannello Settings o la calibrazione è aperto e se l'app è in idle.
+Lo stato della UI comprende quale menu è aperto (`root`, `scene`, `scene:<famiglia>`, `audio`, `presets`, `direction`, `manual`, `mood`, `experience`, `rig` oppure nessuno), se il pannello Settings o la calibrazione è aperto e se l'app è in idle.
 
 | # | Fase | Cosa si vede |
 |---|---|---|
 | 01 | Idle | Scena, now playing, core chiuso |
 | 02 | Control active | Il core sale e si apre la ruota: Scene, Audio, Palette, Settings, Direction, Fullscreen |
-| 03 | Scene | Anello delle 11 scene |
+| 03 | Scene | Arco con le tre famiglie: **Particles** (materia, particelle, campi, solidi), **Worlds** (spazi attraversabili: Tunnel, Terrain), **Spectrum** (il segnale come protagonista); ogni famiglia apre il proprio anello di scene. Il core torna indietro di un anello alla volta |
 | 04 | Audio | Arco con System Audio e Microphone |
 | 05 | Presets | Arco con le 4 palette |
 | 06 | Direction | Arco con due scelte: Auto e Manual. Manual apre Mood, Experience e Rig |
@@ -447,13 +447,14 @@ Audit precedente, costanti temporali, matrice delle scene, segnali deterministic
      name: 'My Scene',
      description: 'Una riga di descrizione.',
      icon: 'scene',
+     category: 'particles',
      order: 7,
      preset: preset satisfies VisualizerPreset<MyParams>,
      create: (p) => new MyVisualizer(p),
    });
    ```
 
-Per comparire nel menu non serve registrarla altrove: `registry.ts` trova automaticamente ogni `visualizers/*/index.ts` e la scena compare nell'anello Scene. L'anello principale resta a sei elementi; Mood usa otto posizioni. Verificare spaziatura e leggibilità quando si aggiungono altre voci.
+Per comparire nel menu non serve registrarla altrove: `registry.ts` trova automaticamente ogni `visualizers/*/index.ts` e la scena compare nell'anello della sua famiglia (`category`: `particles`, `worlds` o `spectrum`, per ciò che la scena fa davvero, non per il nome). Le famiglie e il loro ordine sono `SCENE_CATEGORIES` in `src/types/visualizer.ts`; menu, cockpit e strumenti leggono `scenesOf` / `categoryOf` dal registry, mai una lista propria. L'anello principale resta a sei elementi; Mood usa otto posizioni. Verificare spaziatura e leggibilità quando si aggiungono altre voci.
 
 Per partecipare alla scelta automatica Hybrid/Free aggiungere anche costo e affinità in `src/show/fixtures.ts`. Lo shader può stare in un modulo separato (esempio: `liquid/shaders.ts`).
 

@@ -9,6 +9,7 @@ export default defineRecipe<SpectralShellParams>({
   description: 'A resonant disc shaped by the pitches that sound, with its own past standing round it as shells.',
   order: 11,
   icon: 'scene',
+  category: 'particles',
   // Bloom follows the level of the music only: light events belong to the world (wave fronts), not to the bloom.
   direction: { capabilities: { particles: true, cameraMotion: true, depth: true, distortion: true }, mappings: [{ source: 'intensity', target: 'bloom', amount: 0.4 }] },
   preset: preset satisfies VisualizerPreset<SpectralShellParams>,

@@ -158,12 +158,31 @@ export interface Visualizer {
 /** Icons available for scenes in the Scene ring (see ui/icons.ts). */
 export type SceneIcon = 'tunnel' | 'spectrum' | 'particles' | 'galaxy' | 'liquid' | 'scope' | 'scene';
 
+/**
+ * The family a scene belongs to, by what its behaviour is mostly about (not by its name):
+ *
+ *   particles   matter, particles, fields, geometry and the bodies they hold
+ *   worlds      a space to travel through, with depth, motion and an environment of its own
+ *   spectrum    the signal itself and its features as the protagonist
+ *
+ * Metadata of the one registry: the menu, the tools and the diagnostics read it from there, never from a list of their own.
+ */
+export type SceneCategory = 'particles' | 'worlds' | 'spectrum';
+
+/** The families in the order the Scene ring shows them, with their label and icon. */
+export const SCENE_CATEGORIES: readonly { id: SceneCategory; name: string; icon: SceneIcon }[] = [
+  { id: 'particles', name: 'Particles', icon: 'particles' },
+  { id: 'worlds', name: 'Worlds', icon: 'tunnel' },
+  { id: 'spectrum', name: 'Spectrum', icon: 'spectrum' },
+];
+
 /** Registry entry: metadata + factory. Exported as default by each visualizer module. */
 export interface VisualizerDefinition<TVisual = Record<string, unknown>> {
   id: string;
   name: string;
   description: string;
   icon: SceneIcon;
+  category: SceneCategory;
   /** Sort order in the UI. */
   order: number;
   direction?: SceneDirection;
