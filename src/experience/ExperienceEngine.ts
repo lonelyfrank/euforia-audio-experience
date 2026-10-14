@@ -6,6 +6,8 @@ import { WorldEngine, WorldIntegrator } from '../world/WorldEngine';
 import { CHARGE_RATE, copyWorld } from '../world/WorldState';
 import { AdaptiveMusicCalibration, copyCalibration } from './AdaptiveCalibration';
 import { AnticipationLedger, copyAnticipation } from './Anticipation';
+import { MusicalCognition } from './cognition/MusicalCognition';
+import { copyCognition, presentClock } from './cognition/types';
 import { EventStream } from './EventStream';
 import { TemporalMemory } from './TemporalMemory';
 import { ExperiencePlanner } from './ExperiencePlanner';
@@ -42,6 +44,11 @@ export class ExperienceEngine {
    * that confirm them. It reads the world's charge and potential and writes nothing back.
    */
   readonly anticipation = new AnticipationLedger();
+  /**
+   * What the music is understood to be doing and what may come next (docs/musical-cognition.md), per hop from what the DSP
+   * and this engine already know. It reads and writes nothing of the world, the state or the events.
+   */
+  readonly cognition = new MusicalCognition();
   /** Extrapolates the presented world from its snapshot to the heard time (same held forces). */
   private readonly presentation = new WorldIntegrator();
   /** Discrete events (analysis and experience), ordered by capture time. */
@@ -83,15 +90,18 @@ export class ExperienceEngine {
   /** Analysis events, in stream order with the frames (borrowed: read now). */
   onset(o: OnsetEvent): void {
     this.events.push('onset', o.time, o.strength, this.presence, REGION_BAND[o.region] ?? -1, 0);
+    this.cognition.onset(o);
   }
 
   beat(b: BeatEvent): void {
     this.events.push('beat', b.time, b.confidence, b.confidence * this.presence);
     if (b.downbeat) this.events.push('downbeat', b.time, b.confidence, b.downbeatConfidence * this.presence, -1, 0.25);
+    this.cognition.beat(b);
   }
 
   section(e: SectionEvent): void {
     this.events.push('sectionBoundary', e.time, e.novelty, e.confidence, -1, unit(0.5 + e.novelty * 0.5));
+    this.cognition.section(e);
   }
 
   ingest(a: AnalysisFrame): void {
@@ -179,6 +189,7 @@ export class ExperienceEngine {
         this.events.push('drop', a.time, s.release, s.anticipationConfidence, -1, unit(s.releasePotential + structural * 0.5), 0, significance);
         this.world.release(a.time, s.release);
         this.anticipation.release(a.time);
+        this.cognition.experienceDrop(a.time);
         // The release resolves what was anticipated.
         s.releasePotential *= 0.2; s.anticipation *= 0.3; this.lastRelease = a.time; this.memory.drops++;
       }
@@ -188,7 +199,8 @@ export class ExperienceEngine {
     this.trajectory(a.time, quiet);
     this.narrative(a.time, quiet, energy, dt);
     this.predict(a);
-    this.planner.update(s, a, dt);
+    this.cognition.hop(a, s, dt);
+    this.planner.update(s, a, dt, this.cognition.frame);
     this.physics.update(a, s, dt);
     this.resonance.update(a, s, dt);
     this.morphology.update(a, dt);
@@ -201,6 +213,7 @@ export class ExperienceEngine {
       copyPhysics(snapshot.physics, this.physics.frame); copyResonance(snapshot.resonance, this.resonance.frame); copyFrame(snapshot.acoustic, a);
       copyWorld(snapshot.world, this.world.state); copyMorphology(snapshot.morphology, this.morphology.state);
       copyCalibration(snapshot.calibration, this.calibration.frame); copyAnticipation(snapshot.anticipation, this.anticipation.frame);
+      copyCognition(snapshot.cognition, this.cognition.frame);
       this.lastSnapshot = a.time;
     }
   }
@@ -216,6 +229,7 @@ export class ExperienceEngine {
         copySnapshot(this.presented, candidate);
         // A pure function of the snapshot and the heard time: the same at any frame rate.
         this.presentation.integrate(this.presented.world, heardTime - candidate.state.time);
+        presentClock(this.presented.cognition.clock, candidate.state.time, heardTime);
         this.ready = true; return this.presented;
       }
     }
@@ -228,7 +242,7 @@ export class ExperienceEngine {
   }
 
   private restart(session: boolean): void {
-    if (session) this.calibration.reset();
+    if (session) { this.calibration.reset(); this.cognition.reset(); } else this.cognition.interrupt();
     this.memory.reset(); this.planner.reset(); this.physics.reset(); this.resonance.reset(); this.world.reset(); this.events.reset(); this.morphology.reset(); this.anticipation.reset();
     this.dEnergy.reset(); this.dComplexity.reset(); this.dTension.reset(); this.dOpenness.reset();
     this.shares.fill(0); this.scores.fill(0); this.trajectoryScores.fill(0);
@@ -386,5 +400,5 @@ function copySnapshot(to: ExperienceSnapshot, from: ExperienceSnapshot): void {
   for (let i = 0; i < to.intents.length; i++) Object.assign(to.intents[i], from.intents[i]);
   copyPhysics(to.physics, from.physics); copyFrame(to.acoustic, from.acoustic); copyWorld(to.world, from.world);
   copyMorphology(to.morphology, from.morphology); copyResonance(to.resonance, from.resonance); copyCalibration(to.calibration, from.calibration);
-  copyAnticipation(to.anticipation, from.anticipation);
+  copyAnticipation(to.anticipation, from.anticipation); copyCognition(to.cognition, from.cognition);
 }

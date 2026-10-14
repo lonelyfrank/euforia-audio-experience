@@ -1,4 +1,5 @@
 import type { AnalysisFrame } from '../audio/features/decode';
+import type { CognitionFrame } from './cognition/types';
 import { createIntents, createPlan, follow, unit, type ExperienceState } from './types';
 
 /** Narrative → semantic intent. No scene IDs, shader uniforms or genre assumptions. */
@@ -7,7 +8,8 @@ export class ExperiencePlanner {
   readonly intents = createIntents();
   private fatigue = 0;
 
-  update(s: ExperienceState, a: AnalysisFrame, dt: number): void {
+  /** `cognition`: when it leads (a confident phrase grid), the transition window rests on its phrase boundary instead. */
+  update(s: ExperienceState, a: AnalysisFrame, dt: number, cognition?: Readonly<CognitionFrame>): void {
     const p = this.plan;
     const previousIntent = p.currentIntent;
     // This is an intent-side proxy; renderer feedback adds layer/activity cost in the engine.
@@ -18,12 +20,15 @@ export class ExperiencePlanner {
       s.release > 0.3 ? 'expand' : s.anticipation > 0.4 ? 'contract' : s.chaos > 0.65 ? 'fragment' : 'flow';
     p.nextIntent = s.anticipation > 0.35 || s.likelyRelease > 0.4 ? 'expand' : this.fatigue > 0.3 ? 'breathe' : s.order > 0.6 ? 'cohere' : 'flow';
     p.horizon = 2 + 6 * (1 - s.confidence * 0.6 - s.anticipation * 0.4);
-    const ahead = s.nextPhraseTime - s.time;
-    if (s.nextPhraseTime > 0 && s.nextPhraseConfidence > 0.35 && ahead > 0 && ahead <= p.horizon) {
+    // The cognition's phrase boundary when it is the surer forecast; otherwise the DSP's, as before.
+    const led = !!cognition && cognition.leads && cognition.clock.phraseConfidence > s.nextPhraseConfidence;
+    const phraseTime = led ? cognition.clock.nextPhrase : s.nextPhraseTime, phraseConfidence = led ? cognition.clock.phraseConfidence : s.nextPhraseConfidence;
+    const ahead = phraseTime - s.time;
+    if (phraseTime > 0 && phraseConfidence > 0.35 && ahead > 0 && ahead <= p.horizon) {
       // A forecast boundary inside the horizon: prepare for it rather than for an arbitrary moment.
-      p.transitionStart = s.nextPhraseTime - Math.min(0.5, ahead * 0.5);
-      p.transitionEnd = s.nextPhraseTime + 1;
-      p.transitionConfidence = s.nextPhraseConfidence;
+      p.transitionStart = phraseTime - Math.min(0.5, ahead * 0.5);
+      p.transitionEnd = phraseTime + 1;
+      p.transitionConfidence = phraseConfidence;
     } else if (p.currentIntent !== previousIntent || s.time >= p.transitionEnd) {
       p.transitionStart = s.time + p.horizon * 0.35;
       p.transitionEnd = s.time + p.horizon;

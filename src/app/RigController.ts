@@ -5,6 +5,7 @@ import { Dynamics } from '../dynamics/Dynamics';
 import { CueScheduler } from '../dynamics/CueScheduler';
 import { FlashGuard } from '../dynamics/FlashGuard';
 import { ShowDirector } from '../show/ShowDirector';
+import { followCognition } from '../experience/cognition/director';
 import { GpuBudget } from '../show/GpuBudget';
 import type { RigMode, ShowInput, ShowSink, SlotParam } from '../show/types';
 import { SLOTS, type RenderEngine, type SceneSource, type SlotParams } from '../renderer/RenderEngine';
@@ -137,6 +138,8 @@ export class RigController {
     i.meter = f.meter;
     i.meterConfidence = f.meterConfidence;
     i.gridWeight = this.audio.timing.gridWeight;
+    // The cognition's phrase grid when it leads (a confident inference); the DSP's count otherwise, unchanged.
+    followCognition(i, this.rig.experience?.cognition);
     const s = this.settings();
     this.showSettings.mode = this.pinned ? 'preset' : resolveDirection(s).rigMode;
     this.showSettings.scene = this.pinned ?? s.scene;
