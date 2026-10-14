@@ -1,8 +1,11 @@
 import type { OverrideLedger } from '../core/Overrides';
 
-/** The laboratories: each a development world with its own inspector. One runs at a time (each pins the viewport's world). */
-export type Laboratory = 'structural' | 'solid';
-export const LABS: Record<Laboratory, string> = { structural: 'Structural Lab', solid: 'Solid Dynamics' };
+/**
+ * The laboratories, each with its own inspector; one runs at a time. Structural Lab and Solid Dynamics pin the viewport's
+ * world; Musical Cognition runs synthetic feature sequences beside the live engine and touches nothing of it.
+ */
+export type Laboratory = 'structural' | 'solid' | 'cognition';
+export const LABS: Record<Laboratory, string> = { structural: 'Structural Lab', solid: 'Solid Dynamics', cognition: 'Musical Cognition' };
 
 /** What a running laboratory gives the experiment: how many of its own overrides are in force, and how it ends (its pin and overrides go back). */
 export interface RunningLab { readonly overrides: number; dispose(): void }

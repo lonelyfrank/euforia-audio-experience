@@ -31,11 +31,11 @@ export interface CognitionConfig {
   style: boolean;
   /** 'low': reasoning only at beats, style every 2 s (weaker machines). */
   budget: 'full' | 'low';
-  /** Measure the cost per hop (diagnostics; off in the product). */
+  /** Measure the cost of one hop in sixteen (diagnostics: two clock reads per sixteen hops; changes nothing else). */
   profile: boolean;
 }
 
-export const DEFAULT_CONFIG: Readonly<CognitionConfig> = { enabled: true, direct: true, memorySeconds: 90, style: true, budget: 'full', profile: false };
+export const DEFAULT_CONFIG: Readonly<CognitionConfig> = { enabled: true, direct: true, memorySeconds: 90, style: true, budget: 'full', profile: true };
 
 /** What the experience engine already knows that the cognition reuses (its build evidence), so it is not computed twice. */
 export interface CognitionContext {
@@ -215,7 +215,7 @@ export class MusicalCognition {
     const f = this.frame;
     if (!this.config.enabled) { if (!this.disabled) this.disable(); return; }
     if (this.disabled) { this.disabled = false; this.reset(); }
-    const start = this.config.profile ? performance.now() : 0;
+    const timed = this.config.profile && (this.frame.diagnostics.hops & 15) === 0, start = timed ? performance.now() : 0;
     this.last = a; this.now = a.time; f.time = a.time; f.enabled = true;
     const now = a.time, u = f.understanding;
     const low = lowShare(a);
@@ -249,7 +249,7 @@ export class MusicalCognition {
     this.lead(now);
     const d = f.diagnostics;
     d.hops++; d.bars = this.memory.reading.bars; d.beats = this.memory.reading.beats;
-    if (this.config.profile) d.updateMicros += ((performance.now() - start) * 1000 - d.updateMicros) * 0.05;
+    if (timed) d.updateMicros += ((performance.now() - start) * 1000 - d.updateMicros) * (d.updateMicros === 0 ? 1 : 0.1);
   }
 
   // ---- observations --------------------------------------------------------------------------

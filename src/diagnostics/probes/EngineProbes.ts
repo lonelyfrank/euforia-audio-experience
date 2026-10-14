@@ -1,6 +1,7 @@
 import { MAX_UNITS } from '../../show/GpuBudget';
 import { TARGET_FPS } from '../../renderer/quality';
 import type { App } from '../../app/App';
+import { PREDICTION_KINDS } from '../../experience/cognition/types';
 import type { ExperienceSnapshot } from '../../experience/types';
 import type { DiagnosticsStore } from '../core/DiagnosticsStore';
 import type { MetricRegistry } from '../metrics/MetricRegistry';
@@ -27,6 +28,10 @@ const UNITS: Record<string, string> = {
   releaseTime: 's', impulseTime: 's', nextBeatTime: 's', nextDownbeatTime: 's', nextPhraseTime: 's',
   transitionStart: 's', transitionEnd: 's', horizon: 's', predictionHorizon: 's', eventTime: 's', silenceDuration: 's',
   opened: 'count', confirmed: 'count', expired: 'count', unannounced: 'count', since: 's', age: 's', lead: 's', releasedAt: 's', expiredAt: 's',
+  bpm: 'BPM', period: 's', nextBeat: 's', nextDownbeat: 's', nextPhrase: 's', coastAge: 's', relockSeconds: 's', syncErrorMs: 'ms', jitterMs: 'ms',
+  beat: 'beats', bar: 'bars', phraseBars: 'bars', pattern: 'bars', silenceSeconds: 's', surpriseAt: 's', updateMicros: 'µs CPU', memoryBytes: 'bytes',
+  losses: 'count', relocks: 'count', continuations: 'count', missedBeats: 'count', surprises: 'count', stateChanges: 'count', releases: 'count',
+  releasesUnannounced: 'count', experienceDrops: 'count', experienceDropsOff: 'count', experienceDropsUnheard: 'count', dropOffset: 's', hops: 'hop', beats: 'count', bars: 'count',
 };
 export function metric(store: DiagnosticsStore, domain: Domain, id: string, value: number | null, time: number, unit: string, source: string,
   clock: ClockDomain = 'audio', status: MetricStatus = 'valid', method = 'producer value', lowerIsBetter = false): void {
@@ -73,6 +78,7 @@ export function collectSnapshot(store: DiagnosticsStore, snapshot: ExperienceSna
   group(store, 'experience', 'morphology', s.morphology, time, 'SoundMorphology');
   // What is expected and what became of it: opened, confirmed and lapsed anticipations, and the lead of the last one confirmed.
   group(store, 'experience', 'anticipation', s.anticipation, time, 'AnticipationLedger');
+  collectCognition(store, s.cognition);
   for (const intent of s.intents) {
     metric(store, 'experience', `intent.${intent.kind}`, intent.strength * intent.confidence, intent.time, '0..1', 'ExperiencePlanner', 'audio', 'valid', 'strength × confidence');
     metric(store, 'experience', `intentConfidence.${intent.kind}`, intent.confidence, intent.time, '0..1', 'ExperiencePlanner');
@@ -91,6 +97,37 @@ export function collectSnapshot(store: DiagnosticsStore, snapshot: ExperienceSna
   // The model does not expose these as a conserved balance.
   for (const id of ['inputEnergy', 'dissipation', 'angularMomentum']) metric(store, 'world', `world.${id}`, null, s.world.time, 'unavailable', 'WorldState');
 }
+/**
+ * The musical cognition as the registry keeps it: clock, understanding (its strings as labels), outcomes per kind of
+ * prediction and the diagnostics; the next structural expectation as three values. Read from the presented snapshot.
+ */
+function collectCognition(store: DiagnosticsStore, c: ExperienceSnapshot['cognition']): void {
+  const time = c.time, u = c.understanding, s = c.stats;
+  group(store, 'experience', 'cognition.clock', c.clock, time, 'MusicalClock');
+  group(store, 'experience', 'cognition', u, time, 'MusicalCognition');
+  group(store, 'experience', 'cognition.diagnostics', c.diagnostics, time, 'MusicalCognition');
+  const { proposed, confirmed, refuted, expired, brier, error, lead, ...counts } = s;
+  group(store, 'experience', 'cognition.stats', counts, time, 'PredictionLedger');
+  for (let k = 0; k < PREDICTION_KINDS.length; k++) {
+    const kind = PREDICTION_KINDS[k], id = `cognition.${kind}`;
+    metric(store, 'experience', `${id}.proposed`, proposed[k], time, 'count', 'PredictionLedger');
+    metric(store, 'experience', `${id}.confirmed`, confirmed[k], time, 'count', 'PredictionLedger');
+    metric(store, 'experience', `${id}.refuted`, refuted[k], time, 'count', 'PredictionLedger');
+    metric(store, 'experience', `${id}.expired`, expired[k], time, 'count', 'PredictionLedger');
+    const resolved = confirmed[k] + refuted[k] + expired[k];
+    metric(store, 'experience', `${id}.brier`, resolved ? brier[k] : null, time, '0..0.25+', 'PredictionLedger', 'audio', 'valid', 'mean (confidence − outcome)², expired counted as not confirmed', true);
+    metric(store, 'experience', `${id}.error`, confirmed[k] ? error[k] : null, time, 's', 'PredictionLedger', 'audio', 'valid', 'mean |observed − expected| of the confirmed', true);
+    metric(store, 'experience', `${id}.lead`, confirmed[k] ? lead[k] : null, time, 's', 'PredictionLedger', 'audio', 'valid', 'mean time from proposal to confirmation');
+  }
+  // The next structural expectation (beats aside): what, in how long, how sure.
+  let next: (typeof c.predictions)[number] | null = null;
+  for (const p of c.predictions) if (p.id !== 0 && p.kind !== 'beat' && (!next || p.time < next.time)) next = p;
+  store.labels['cognition.next.kind'] = next ? next.kind : 'none';
+  metric(store, 'experience', 'cognition.next.in', next ? Math.max(0, next.time - time) : null, time, 's', 'PredictionLedger');
+  metric(store, 'experience', 'cognition.next.confidence', next ? next.confidence : null, time, '0..1', 'PredictionLedger');
+  store.labels['cognition.leads'] = c.leads ? 'yes' : `no: ${c.diagnostics.fallback}`;
+}
+
 export function visualWorld(app: App) {
   const scene = app.directionDebug.current?.visualizer;
   return scene instanceof RecipeVisualizer ? scene.world : null;

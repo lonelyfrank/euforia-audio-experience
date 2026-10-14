@@ -71,7 +71,7 @@ const settle = () => page.waitForTimeout(350);
 /** Animation frames asked for in one second, and the timers, observers and listeners alive now. */
 const load = async () => { const before = await page.evaluate(() => window.__raf); await page.waitForTimeout(1000); return { raf: await page.evaluate(() => window.__raf) - before, ...await page.evaluate(() => ({ ...window.__resources })) }; };
 /** Which sections of the inspector are on screen, by one witness node each; a section this build does not have is absent. */
-const WITNESS = { health: '.ws-metrics .ws-spark', overview: ':scope > .ws-section > .ws-section-body > .ws-metrics-text', audio: '.ws-audio .ws-bars', charts: '.ws-debug canvas', experiment: '[aria-label="Forma Matter"]', laboratory: '.ws-lab-grid',
+const WITNESS = { health: '.ws-metrics .ws-spark', cognition: '.ws-cog-reason', overview: ':scope > .ws-section > .ws-section-body > .ws-metrics-text', audio: '.ws-audio .ws-bars', charts: '.ws-debug canvas', experiment: '[aria-label="Forma Matter"]', laboratory: '.ws-lab-grid',
   acquisition: '>nav', plot: '>canvas', registry: '>.labels', isolation: '>.experimental', replay: '>[aria-label="Scenario replay"]', reports: '>[aria-label="Carica report baseline JSON"]', timeline: '>footer' };
 const sections = () => page.evaluate(([witness, dashboard]) => {
   const body = document.querySelector('.ws-inspector-body'), shadow = body.querySelector(dashboard).shadowRoot;
@@ -225,7 +225,7 @@ try {
     assert.ok(Math.abs(open.canvas[0] - (open.view.w - 2)) <= 1 && Math.abs(open.canvas[1] - (open.view.h - 2)) <= 1, 'the one canvas fills the viewport');
     assert.equal(await page.evaluate(selector => ['.ws-audio .ws-bars', selector].every(s => document.querySelector(`.ws-inspector-body ${s}`)) && !!window.__originalCanvas.closest('.ws-preview'), DASHBOARD), true, 'audio panels and registry live in the inspector');
     // Shift+D is the audio station and nothing else: no rendering tiles, experiment controls, isolation, acquisition controls, replay or reports.
-    assert.deepEqual(await sections(), ['audio', 'registry'], 'Audio & Analysis holds the audio panels and the audio registry only');
+    assert.deepEqual(await sections(), ['audio', 'cognition', 'registry'], 'Audio & Analysis holds the audio panels, the musical cognition and the audio registry only');
     assert.ok(open.audio.top < open.body.bottom - 200 && open.audio.panels >= 10, 'the audio panels are in view at once');
     assert.ok(open.audio.spectrum > 100 && open.audio.meters === 1, 'the spectrum is drawn from the live frame; level lists in one column');
     assert.equal(await page.evaluate(() => document.querySelector('.ws-deck .ws-wave polyline').getAttribute('points').length > 100 && document.querySelector('.ws-deck .ws-device strong').textContent), 'Beat 124 BPM', 'the deck shows the signal and its device');

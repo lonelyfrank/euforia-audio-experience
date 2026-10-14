@@ -98,7 +98,9 @@ export async function replay(pcm: Pcm, beats: { time: number; position: number }
   const chunk = new Float32Array(batch * channels);
   const beatTimes: number[] = [], downbeatTimes: number[] = [], beatBpm: number[] = [];
   const events: Record<string, number> = {};
-  const anticipations: number[] = [], drops: number[] = [];
+  const anticipations: number[] = [], drops: number[] = [], releases: number[] = [];
+  // The musical cognition's releases (heard, never expected), beside the experience's drops.
+  engine.cognition.onRelease = (t) => { releases.push(t); };
   const silences: { start: number; end: number }[] = [];
   const grid: number[] = [];
   let captured = 0, traced = -Infinity, smooth = 0, previous = NaN, maxEnergy = 0, maxSpeed = 0, saturated = 0, presented = 0;
@@ -173,6 +175,8 @@ export async function replay(pcm: Pcm, beats: { time: number; position: number }
     anticipationsOpened: engine.anticipation.frame.opened, anticipationsConfirmed: engine.anticipation.frame.confirmed,
     anticipationsExpired: engine.anticipation.frame.expired, releasesUnannounced: engine.anticipation.frame.unannounced,
     dropTimes: drops.map((t) => t.toFixed(2)).join(' '),
+    ...cognition(engine, beats),
+    releaseTimes: releases.map((t) => t.toFixed(2)).join(' '),
     impacts: events.impact ?? 0, silences: silences.length,
     worldEnergyMax: round(maxEnergy), worldSpeedMax: round(maxSpeed),
     worldSaturatedShare: round(saturated / Math.max(1, presented)),
@@ -180,6 +184,22 @@ export async function replay(pcm: Pcm, beats: { time: number; position: number }
     ...silenceDecay(trace, silences),
   };
   return { report, trace, grid };
+}
+
+/** The musical cognition's account of the run (experience/cognition): clock, outcomes per kind, releases against the experience's drops. */
+function cognition(engine: ExperienceEngine, truth: { time: number; position: number }[] | null): Record<string, number | string | null> {
+  const c = engine.cognition.frame, s = c.stats, k = c.clock;
+  const share = (i: number) => { const n = s.confirmed[i] + s.refuted[i] + s.expired[i]; return n ? round(s.confirmed[i] / n) : null; };
+  return {
+    cognitionClockLosses: k.losses, cognitionClockRelocks: k.relocks, cognitionClockContinuations: k.continuations, cognitionSyncErrorMs: round(k.syncErrorMs),
+    cognitionMeter: k.meter, cognitionPhraseBars: k.phraseBars, cognitionStyle: c.understanding.style, cognitionStateChanges: s.stateChanges,
+    cognitionBeatConfirmed: share(0), cognitionDownbeatConfirmed: share(1), cognitionPhraseConfirmed: share(2), cognitionTransitionConfirmed: share(3), cognitionReleaseConfirmed: share(4),
+    cognitionReleaseBrier: s.confirmed[4] + s.refuted[4] + s.expired[4] ? round(s.brier[4]) : null,
+    cognitionReleases: s.releases, cognitionReleasesUnannounced: s.releasesUnannounced, cognitionMissedBeats: s.missedBeats, cognitionSurprises: s.surprises,
+    experienceDropsOffRelease: s.experienceDropsOff, experienceDropsUnheard: s.experienceDropsUnheard,
+    // With an annotation, the beats it confirmed are the tracker's; without one this stays the cognition's own account.
+    cognitionAnnotated: truth ? 'yes' : 'no',
+  };
 }
 
 /** Tempo stability: median BPM, interquartile spread relative to it, jumps > 4% between beats (after the lock-in). */

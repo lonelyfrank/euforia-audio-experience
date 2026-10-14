@@ -12,6 +12,8 @@ export type Section =
   | 'overview'
   /** Audio & Analysis panels (DEV). */
   | 'audio'
+  /** Musical Cognition: clock, understanding, predictions, their diagnostics (DEV). */
+  | 'cognition'
   /** The view's canvas of readings (DEV): Experience, World, Matter. */
   | 'charts'
   /** Temporary overrides and the laboratories' entries (DEV). */
@@ -31,8 +33,8 @@ export type Section =
 
 export const VIEW_SECTIONS: Record<WorkspaceView, readonly Section[]> = {
   overview: ['overview', 'health'],
-  audio: ['audio', 'registry'],
-  experience: ['charts', 'registry', 'timeline'],
+  audio: ['audio', 'cognition', 'registry'],
+  experience: ['charts', 'cognition', 'registry', 'timeline'],
   world: ['charts', 'plot', 'registry'],
   matter: ['charts', 'registry'],
   render: ['health', 'plot', 'registry'],
