@@ -1,8 +1,13 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DoubleSide, DynamicDrawUsage, Group, LineSegments, Mesh, Points, ShaderMaterial, Vector3, type Object3D } from 'three';
 import type { AudioEvent, EventCursor } from '../../experience/EventStream';
+import { forEachCue, type Cue } from '../../experience/MusicalCues';
 import type { PaletteColors } from '../../types/visualizer';
 import type { Primitive, PrimitiveContext, WorldFrame } from '../Primitive';
-import { BRACE, BROKEN, DEFAULT_SOLID_BUDGET, INTACT, SOLID_KINDS, solidLab, type SolidBudget, type SolidKind, type SolidView } from '../structural/SolidTypes';
+import { createReadout, type BodyReadout } from '../structural/SolidDynamics';
+import { solidMesh } from '../structural/SolidTopology';
+import {
+  BRACE, BROKEN, createFractureTuning, DEFAULT_SOLID_BUDGET, INTACT, SOLID_KINDS, solidLab, solidProfile, type SolidBudget, type SolidKind, type SolidProfile, type SolidView,
+} from '../structural/SolidTypes';
 import { StructuralSystem } from '../structural/StructuralDynamics';
 import { unit, type StructuralEnvironment } from '../structural/StructuralTypes';
 import { createWorldEnvironment, readWorld } from '../structural/WorldEnvironment';
@@ -35,6 +40,46 @@ export interface SolidParams {
 }
 
 export { resetSolidLab, setSolidProfile, SOLID_VIEWS, solidLab, type SolidCommand, type SolidView } from '../structural/SolidTypes';
+
+/** Where one body of a population is seeded (world units, rad). */
+export interface SolidPlacement { kind: SolidKind; radius: number; x: number; y: number; z: number; turn: number; tilt: number }
+
+/**
+ * Bodies a scene holds among its other matter (an entity of the scene, not the laboratory's subject), and which steps
+ * of the cycle free matter → aggregate → form → solid → fracture → fragments → reorganisation it uses:
+ *
+ *   start      'free': seeded apart, every link remembered and none holding, the body forms when the world lets it;
+ *              'solid': whole from the first frame (the first steps skipped)
+ *   fracture   what may break the bodies: nothing; a release heard (the default: a structural event that is
+ *              reliable); or that and the accents that stand out too (a transient is an observation, not a change of
+ *              form: on a steady groove it breaks bodies the music gives no reason to break). Only the musical cues
+ *              (MusicalCues) are offered to the fracture gate, never the experience's own drop, never a prediction
+ *   profile    the material (rigid: shape retention 0.9, a pulse of at most PULSE_LIMIT)
+ *
+ * Recomposition is the structural engine's own: a broken link forms again only where the physics allows it.
+ */
+export interface SolidPopulation {
+  bodies: readonly SolidPlacement[];
+  start: 'free' | 'solid';
+  fracture: 'none' | 'release' | 'accent';
+  profile: SolidProfile;
+}
+
+/** Where a body is in the cycle, read from its links (SolidSystem.read), for the tools: what the physics made of it. */
+export const SOLID_STAGES = ['free', 'aggregate', 'form', 'solid', 'fragments'] as const;
+export type SolidStage = typeof SOLID_STAGES[number];
+export function stageOf(r: Readonly<BodyReadout>, wasSolid: boolean): SolidStage {
+  if (r.edgesIntact === 0) return 'free';
+  if (wasSolid && r.pieces > 1) return 'fragments';
+  if (r.form === 'volume' && r.sealed && r.pieces === 1) return 'solid';
+  return r.form === 'surface' || r.form === 'shell' || r.form === 'volume' ? 'form' : 'aggregate';
+}
+
+/** Elements a population needs (the vertices of its bodies), and the pools that hold it. */
+export const populationElements = (p: Readonly<SolidPopulation>): number => p.bodies.reduce((n, b) => n + solidMesh(b.kind).vertices.length / 3, 0);
+const populationBudget = (p: Readonly<SolidPopulation>): SolidBudget => ({ ...DEFAULT_SOLID_BUDGET, bodies: Math.max(1, Math.min(DEFAULT_SOLID_BUDGET.bodies, p.bodies.length)) });
+/** How often (frames) the tools' reading of the stages is refreshed: a readout is not a per-frame cost. */
+const STAGE_EVERY = 12;
 
 /** Pools of the laboratory's system: the default budget, and elements for as many bodies of the largest kind. */
 export const SOLID_LAB_BUDGET: Readonly<SolidBudget> = DEFAULT_SOLID_BUDGET;
@@ -132,13 +177,33 @@ export class SolidPrimitive implements Primitive {
   private now = 0;
   private readonly offer = (event: AudioEvent): void => this.system.solids!.gate.offer(event);
   private kind: SolidKind;
+  /** A population's reading of the musical cues (last seq read; −1: not yet in a session) and the event it offers. */
+  private cueCursor = -1;
+  private readonly cued: AudioEvent = { type: 'drop', audioTime: 0, strength: 0, confidence: 0, band: -1, structuralWeight: 0.7, duration: 0, significance: 0, seq: 0 };
+  private readonly take = (cue: Readonly<Cue>): void => this.cue(cue);
+  /** Where each body of a population is in its cycle (the tools' reading), whether it has been whole, and the cues it acted on. */
+  readonly stages = new Uint8Array(DEFAULT_SOLID_BUDGET.bodies);
+  readonly cuesTaken = { releases: 0, accents: 0 };
+  private readonly wasSolid = new Uint8Array(DEFAULT_SOLID_BUDGET.bodies);
+  private readonly readout = createReadout();
+  private frames = 0;
 
-  /** `topology`: the packed topology of the world's vector field, shared with whatever else in the world shows that field. */
-  constructor(context: PrimitiveContext, private readonly params: SolidParams, readonly topology: Float32Array, budget: Readonly<SolidBudget> = SOLID_LAB_BUDGET) {
-    const system = this.system = new StructuralSystem({ capacity: SOLID_LAB_ELEMENTS, seed: context.seed, solids: budget });
+  /**
+   * `topology`: the packed topology of the world's vector field, shared with whatever else in the world shows that field.
+   * `population`: the bodies of a scene (several, a material, the steps of the cycle it uses); without it, the laboratory's one body.
+   */
+  constructor(context: PrimitiveContext, private readonly params: SolidParams, readonly topology: Float32Array, budget: Readonly<SolidBudget> = SOLID_LAB_BUDGET,
+    readonly population: Readonly<SolidPopulation> | null = null) {
+    const capacity = population ? Math.max(4, populationElements(population)) : SOLID_LAB_ELEMENTS;
+    const system = this.system = new StructuralSystem({ capacity, seed: context.seed, solids: population ? populationBudget(population) : budget });
     const n = system.state.capacity, solids = system.solids!.state, links = solids.linkCapacity, triangles = solids.faceCapacity;
     this.environment = createWorldEnvironment(context, topology);
     this.kind = SOLID_KINDS[Math.min(SOLID_KINDS.length - 1, Math.max(0, Math.round(params.solid)))] ?? 'tetrahedron';
+    if (population) {
+      Object.assign(system.solids!.tuning, solidProfile(population.profile));
+      // Only the cues offered break a body; with fracture off nothing is offered, and load alone breaks nothing in this mode.
+      Object.assign(system.solids!.gate.tuning, createFractureTuning(), { mode: 'events' });
+    }
     this.seed(true);
 
     const shared = { uColorA: { value: new Color() }, uColorB: { value: new Color() }, uColorC: { value: new Color() } };
@@ -185,10 +250,15 @@ export class SolidPrimitive implements Primitive {
     let view: SolidView = 'wireframe', lamp = 0;
     if (import.meta.env.DEV) {
       system.profile = true;
-      if (solidLab.active) { view = this.lab(); lamp = LAMP; }
+      if (solidLab.active && !this.population) { view = this.lab(); lamp = LAMP; }
     }
     // The events heard by this frame wait in the gate for the step that reaches their own time: without a clock there are none.
-    const events = frame.timed ? frame.clock?.events : undefined;
+    const events = frame.timed && !this.population ? frame.clock?.events : undefined;
+    const cues = frame.timed && this.population ? frame.snapshot?.cues : undefined;
+    if (cues) {
+      // A population mounted into a session that is already running starts from now; a new session's cues from its first.
+      this.cueCursor = this.cueCursor < 0 ? cues.seq : forEachCue(cues, this.cueCursor, this.take);
+    }
     if (events) {
       // A body mounted into a session that is already running starts from now: what was heard before it was there did not strike it.
       if (this.cursor.epoch === undefined) { this.cursor.time = frame.time; this.cursor.seq = events.seq; this.cursor.epoch = events.epoch; }
@@ -199,6 +269,7 @@ export class SolidPrimitive implements Primitive {
     // What a body shows of itself: the world's light, and the ember it cools down with.
     this.draw(view, Math.max(presence * Math.max(look.emissive, look.ember), lamp), presence * look.wave * g.impulse, look.blend - 0.5, Math.max(look.fill, lamp));
 
+    if (this.population && this.frames++ % STAGE_EVERY === 0) this.readStages();
     if (import.meta.env.DEV) {
       const d = this.debug, stats = solids.stats;
       d.vertices = this.drawn.points; d.links = stats.intact; d.faces = stats.faces; d.cells = stats.cells; d.pieces = solids.state.bodies ? solids.state.bodyPieces[0] : 0;
@@ -211,9 +282,40 @@ export class SolidPrimitive implements Primitive {
     (this.nodes.uniforms.uPoint.value as Vector3).y = ratio;
   }
 
-  /** A new audio session: the bodies stay as they are; only the simulation's clock is forgotten. */
+  /** A new audio session: the bodies stay as they are; only the simulation's clock (and what was read of the last session's cues) is forgotten. */
   reset(): void {
     this.system.reset();
+    this.cueCursor = -1;
+  }
+
+  /**
+   * A musical cue of the session, or one a tool offers (the same path): a release heard or an accent that stands out goes
+   * to the fracture gate as an event at its own time; it passes or not as any other. Anything else is not the gate's.
+   */
+  cue(cue: Readonly<Cue>): void {
+    const breaks = this.population?.fracture ?? 'none', event = this.cued;
+    if (breaks === 'none') return;
+    if (cue.kind === 'release' && cue.status === 'confirmed') { event.type = 'drop'; this.cuesTaken.releases++; }
+    else if (breaks === 'accent' && cue.kind === 'accent' && cue.status === 'observed') { event.type = 'impact'; this.cuesTaken.accents++; }
+    else return;
+    event.audioTime = cue.time; event.strength = cue.strength; event.confidence = cue.confidence; event.significance = cue.strength;
+    this.system.solids!.gate.offer(event);
+  }
+
+  /** The population as it was seeded again, its stages forgotten (a tool's reset). The pools are reused. */
+  reseed(): void {
+    this.wasSolid.fill(0); this.stages.fill(0);
+    this.seed(true);
+  }
+
+  /** Where each body is in the cycle, read from its links. */
+  private readStages(): void {
+    const solids = this.system.solids!;
+    for (let b = 0; b < solids.state.bodies; b++) {
+      const r = solids.read(b, null, this.readout), stage = stageOf(r, this.wasSolid[b] === 1);
+      if (stage === 'solid') this.wasSolid[b] = 1;
+      this.stages[b] = SOLID_STAGES.indexOf(stage);
+    }
   }
 
   dispose(): void {
@@ -225,7 +327,11 @@ export class SolidPrimitive implements Primitive {
   /** The matter of this world: one solid, whole or only seeded. The pools are emptied and reused; nothing is reallocated. */
   private seed(bonded: boolean): void {
     this.system.clear();
-    this.system.seedSolid(this.kind, this.params.solidRadius, { ...POSE, bonded, scatter: bonded ? 0 : SCATTER });
+    const population = this.population;
+    if (!population) { this.system.seedSolid(this.kind, this.params.solidRadius, { ...POSE, bonded, scatter: bonded ? 0 : SCATTER }); return; }
+    const whole = population.start === 'solid';
+    for (const b of population.bodies) this.system.seedSolid(b.kind, b.radius, { x: b.x, y: b.y, z: b.z, turn: b.turn, tilt: b.tilt, bonded: whole, scatter: whole ? 0 : SCATTER });
+    this.readStages();
   }
 
   /** The laboratory: its overrides, its commands, the view it asks for. */

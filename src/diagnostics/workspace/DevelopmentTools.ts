@@ -1,6 +1,7 @@
 import type { App } from '../../app/App';
 import { DebugOverlay, type DebugView } from '../../app/debug/DebugOverlay';
 import { CognitionLab } from '../../app/engine/CognitionLab';
+import { EmergenceLab } from '../../app/engine/EmergenceLab';
 import { EngineCockpit } from '../../app/engine/EngineCockpit';
 import { SolidCockpit } from '../../app/engine/SolidCockpit';
 import { TEST_SIGNALS, type TestSignal } from '../../audio/capture/testSignals';
@@ -41,7 +42,7 @@ export class DevelopmentTools {
   private readonly labHost = h('div');
   private readonly controlsPanel: HTMLElement;
   private debug: DebugOverlay | null = null;
-  private lab: EngineCockpit | SolidCockpit | CognitionLab | null = null;
+  private lab: EngineCockpit | SolidCockpit | CognitionLab | EmergenceLab | null = null;
   /** Which laboratory runs, and when it starts and ends: the view shown has no part in it. */
   private readonly experiment: Experiment;
   private disposed = false;
@@ -95,10 +96,11 @@ export class DevelopmentTools {
     if (only) controller.isolate(only.split(',').filter(Boolean), '?primitives');
     // The laboratory a shortcut, the sidebar or `?engine` opens first: Structural Lab, or the one named by `?engine=solid`.
     this.experiment = new Experiment((lab) => {
-      this.lab = lab === 'solid' ? new SolidCockpit(this.app, this.controller, this.labHost) : lab === 'cognition' ? new CognitionLab(this.labHost) : new EngineCockpit(this.app, this.controller, this.labHost);
+      this.lab = lab === 'solid' ? new SolidCockpit(this.app, this.controller, this.labHost) : lab === 'cognition' ? new CognitionLab(this.labHost)
+        : lab === 'emergence' ? new EmergenceLab(this.app, this.controller, this.labHost) : new EngineCockpit(this.app, this.controller, this.labHost);
       const cockpit = this.lab;
       return { get overrides() { return cockpit.overrides; }, dispose: () => { cockpit.dispose(); if (this.lab === cockpit) this.lab = null; } };
-    }, query.get('engine') === 'solid' ? 'solid' : query.get('engine') === 'cognition' ? 'cognition' : 'structural', overrides);
+    }, (['solid', 'cognition', 'emergence'] as const).find((lab) => lab === query.get('engine')) ?? 'structural', overrides);
   }
   get active(): boolean { return this.experiment.running !== null; }
   /** The laboratory in the viewport, by its name. */
