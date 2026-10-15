@@ -75,6 +75,12 @@ export interface CuesFrame {
   tension: number;
   breakdown: number;
   silent: boolean;
+  /**
+   * 0..1: how much the last bars repeat the bars one pattern back (the cognition's structural memory; 0 while no pattern
+   * is known), and how steady its clock is. Readings, never events: what recurs and how steadily, not when.
+   */
+  repetition: number;
+  stability: number;
   /** The newest cue's seq (0: none yet). */
   seq: number;
   /** The last CUE_SLOTS cues, slot `seq % CUE_SLOTS`. */
@@ -111,7 +117,7 @@ const createCue = (): Cue => ({ seq: 0, kind: 'accent', status: 'observed', time
 const createStats = (): CueStats => ({ accents: 0, restarts: 0, phrases: 0, prepared: 0, withdrawn: 0, releases: 0, dropsMatched: 0, dropsUnconfirmed: 0 });
 
 export const createCues = (): CuesFrame => ({
-  time: 0, live: false, phase: 'unknown', anticipation: 0, expectation: 0, groove: 0, tension: 0, breakdown: 0, silent: true,
+  time: 0, live: false, phase: 'unknown', anticipation: 0, expectation: 0, groove: 0, tension: 0, breakdown: 0, silent: true, repetition: 0, stability: 0,
   seq: 0, cues: Array.from({ length: CUE_SLOTS }, createCue), stats: createStats(),
 });
 
@@ -199,6 +205,7 @@ export class MusicalCues {
     f.silent = u.silence !== 'none';
     f.anticipation = unit(anticipation.level); f.expectation = unit(expectation);
     f.groove = unit(u.groove); f.tension = unit(u.tension); f.breakdown = unit(u.breakdown);
+    f.repetition = cognition.enabled ? unit(u.repetition) : 0; f.stability = cognition.enabled ? unit(cognition.clock.stability) : 0;
   }
 
   /** A new audio session. The counts are the session's: they start over too. */

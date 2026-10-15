@@ -1,0 +1,86 @@
+{
+  "name": "Resonant Forest",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 62,
+    "distance": 0,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.6,
+    "radius": 0.45,
+    "threshold": 0.14
+  },
+  "visual": {
+    "seed": 20261018,
+    "cell": 1.5,
+    "columns": 72,
+    "rows": 110,
+    "height": 3.2,
+    "pitch": 0.08,
+    "relief": 5,
+    "roughness": 0.3,
+    "valley": 6,
+    "stride": 4,
+    "fog": 0.012,
+    "exposure": 0.7,
+    "wave": 0.8,
+    "response": {
+      "lows": 0.8,
+      "mids": 1,
+      "highs": 0.6,
+      "groove": 0.8,
+      "surface": 0.6
+    },
+    "forest": {
+      "enabled": true,
+      "capacity": 40,
+      "growing": 8,
+      "spacing": 3,
+      "density": 0.55,
+      "rate": 1,
+      "response": 1,
+      "corridor": 7,
+      "reach": 18,
+      "low": 6,
+      "high": 13,
+      "grow": 8,
+      "span": 90,
+      "memory": 1,
+      "lean": 0.06
+    },
+    "camera": {
+      "look": 50,
+      "glide": {
+        "lift": 0.3,
+        "widen": 2,
+        "tau": 0.8
+      },
+      "drift": {
+        "amplitude": 1.6,
+        "wavelength": 70,
+        "stride": 4,
+        "turbulence": 0.6,
+        "yaw": 18,
+        "bank": 0.03,
+        "corridor": 2.5
+      },
+      "limits": {
+        "position": 0.18,
+        "target": 0.22,
+        "lens": 0.2,
+        "reach": 6,
+        "fov": [
+          -5,
+          6
+        ],
+        "roll": 0.05
+      }
+    }
+  }
+}

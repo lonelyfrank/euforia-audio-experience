@@ -23,6 +23,20 @@ function bench() {
 }
 
 describe('musical cues: what the scenes\' structural actions may act on', () => {
+  it('carries the cognition\'s readings of recurrence and steadiness as levels, never as cues; nothing without the cognition', () => {
+    const b = bench();
+    b.cognition.understanding.repetition = 0.8; b.cognition.clock.stability = 0.6;
+    b.run(1);
+    expect(b.cues.frame).toMatchObject({ repetition: 0.8, stability: 0.6 });
+    expect(read(b.cues)).toEqual([]);
+    b.cognition.enabled = false;
+    b.run(2);
+    expect(b.cues.frame).toMatchObject({ repetition: 0, stability: 0 });
+    // A copy carries them too.
+    const copy = createCues(); copyCues(copy, b.cues.frame);
+    expect(copy.repetition).toBe(0); expect(copy.stability).toBe(0);
+  });
+
   it('an experience drop is never a cue by itself: unconfirmed without a release heard, matched with one', () => {
     const b = bench();
     b.run(5);
