@@ -355,6 +355,13 @@ Con cattura di sistema, musica vera, a occhio, almeno Low e High:
 
 ## 13bis. Proposta del prossimo intervento
 
+Nota di verifica grafica, 15 ottobre 2026: la legge dei solidi ancorati percorre ora l'anello
+in senso coerente con gli indici di `emergenceTemplate`. Prima le normali delle facce erano
+interne e `FrontSide` scartava le superfici esterne. Il set dei vertici, le celle estruse,
+le età di frattura e l'ancoraggio non cambiano. `SurfaceWinding.test.ts` controlla le
+normali sulle posizioni effettive; `runTerrainParity()` controlla la traduzione CPU/GLSL.
+Evidenze e limiti della precisione: [Visual Fidelity Audit](visual-fidelity-audit.md).
+
 1. Decidere §2.4 di music-response con musica reale: il Tunnel potrebbe leggere lo stesso `release` confermato.
 2. Rendere robusto l'hash del paesaggio (intero, non `fract` di prodotti in f32) — cambia il paesaggio: da
    guardare prima.

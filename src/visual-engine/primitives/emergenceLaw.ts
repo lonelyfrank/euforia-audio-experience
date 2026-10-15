@@ -154,7 +154,8 @@ vec3 emergentPoint(float corner, float top, float piece) {
     floorY = low - BURY_PLACEHOLDER - width * length(up.xz);
     base = vec3(terrainAcross(i, d), floorY, -d);
     float sides = shape.x, taper = shape.y;
-    float angle = 6.2831853 * min(corner, sides - 1.0) / sides + aBreak.w;
+    // Match the outward winding of the extruded cell template. The polygon's set of points is unchanged.
+    float angle = -6.2831853 * min(corner, sides - 1.0) / sides + aBreak.w;
     float r = width * mix(1.0, taper, level) * scale;
     P = base + ex * (cos(angle) * r) + up * (level * height * scale) + ez * (sin(angle) * r);
     emergentDepth = d;
@@ -216,7 +217,7 @@ export function emergentPoint(t: Readonly<TerrainValues>, e: Readonly<Emergent>,
     const width = e.width * cell, scale = 1 + e.pulse, shape = SHAPES[Math.round(e.shape)];
     floorY = low - BURY - width * Math.hypot(up[0], up[2]);
     base = [terrainAcross(t, i, d), floorY, -d];
-    const angle = 2 * Math.PI * Math.min(corner, shape.sides - 1) / shape.sides + e.turn, r = width * (1 + (shape.taper - 1) * level) * scale, lift = level * height * scale;
+    const angle = -2 * Math.PI * Math.min(corner, shape.sides - 1) / shape.sides + e.turn, r = width * (1 + (shape.taper - 1) * level) * scale, lift = level * height * scale;
     P = [0, 1, 2].map((q) => base[q] + ex[q] * Math.cos(angle) * r + up[q] * lift + ez[q] * Math.sin(angle) * r) as [number, number, number];
   }
   if (e.age >= 0 && piece > 0.5) {
