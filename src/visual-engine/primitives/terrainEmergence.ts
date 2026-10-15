@@ -3,7 +3,7 @@ import { REST_WORLD } from '../../world/WorldState';
 import type { WorldView } from '../../world/WorldView';
 import { FractureGate } from '../structural/FractureGate';
 import { PULSE_LIMIT } from '../structural/SolidTypes';
-import { packEmergent, SHAPE, type Emergent } from './emergenceLaw';
+import { packEmergent, SHAPE, SHAPES, type Emergent, type ShapeName } from './emergenceLaw';
 import { PERIOD, terrainHeight, terrainMeander, type TerrainValues } from './terrainLaw';
 
 /*
@@ -55,30 +55,45 @@ export interface EmergenceParams {
   /** Heights as shares of the relief. */
   low: number;
   high: number;
+  /**
+   * Where structures stand: beside the valley, up its walls (the terrain's own); or across its floor, a plain, outside a
+   * corridor of `corridor` units on each side of the line the viewer flies (Monolith Desert).
+   */
+  placement: 'walls' | 'plain';
+  corridor: number;
+  /** The shapes solids standing in the ground take, in the plain (absent: the ground decides, as beside the valley). */
+  forms: readonly ShapeName[] | null;
+  /** How many of the tallest that stand a breakdown leaves standing: the landmarks of the place (0: it retires them all). */
+  keep: number;
 }
 
 export const DEFAULT_EMERGENCE: Readonly<EmergenceParams> = {
   enabled: true, capacity: 28, emerging: 6, fragments: 4, spacing: 6, density: 0.12, rate: 1, response: 1, pulse: PULSE_LIMIT, fracture: true,
-  modes: 'both', low: 0.3, high: 0.7,
+  modes: 'both', low: 0.3, high: 0.7, placement: 'walls', corridor: 6, forms: null, keep: 0,
 };
 /** No pool is larger than this, whatever a preset or a tool asks. */
 export const MAX_STRUCTURES = 64;
 
-/** What a preset may say (plain JSON: `modes` is any string there). */
-export type EmergenceSettings = Partial<Omit<EmergenceParams, 'modes'>> & { modes?: string };
+/** What a preset may say (plain JSON: `modes`, `placement` and the forms are any strings there). */
+export type EmergenceSettings = Partial<Omit<EmergenceParams, 'modes' | 'placement' | 'forms'>> & { modes?: string; placement?: string; forms?: readonly string[] | null };
 const MODES = ['both', 'extrude', 'anchored'] as const;
+const PLACEMENTS = ['walls', 'plain'] as const;
+const SHAPE_NAMES: readonly string[] = SHAPES.map((shape) => shape.name);
 const within = (x: unknown, lo: number, hi: number, fallback: number): number => (typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : fallback);
 
 /** Settings within their bounds; what is missing or wrong is the default's. */
 export function emergenceParams(s: EmergenceSettings = {}): EmergenceParams {
-  const d = DEFAULT_EMERGENCE, low = within(s.low, 0.05, 1.5, d.low);
+  const d = DEFAULT_EMERGENCE, low = within(s.low, 0.05, 3, d.low);
+  const forms = Array.isArray(s.forms) ? s.forms.filter((f): f is ShapeName => SHAPE_NAMES.includes(f)) : [];
   return {
     enabled: s.enabled ?? d.enabled, capacity: Math.round(within(s.capacity, 0, MAX_STRUCTURES, d.capacity)), emerging: Math.round(within(s.emerging, 0, MAX_STRUCTURES, d.emerging)),
     fragments: Math.round(within(s.fragments, 0, MAX_STRUCTURES, d.fragments)), spacing: Math.round(within(s.spacing, 2, 64, d.spacing)),
     density: within(s.density, 0, 1, d.density), rate: within(s.rate, 0, 4, d.rate), response: within(s.response, 0, 4, d.response),
     pulse: within(s.pulse, 0, PULSE_LIMIT, d.pulse), fracture: s.fracture ?? d.fracture,
     modes: (MODES as readonly string[]).includes(s.modes ?? '') ? s.modes as EmergenceParams['modes'] : d.modes,
-    low, high: within(s.high, low, 2, Math.max(low, d.high)),
+    low, high: within(s.high, low, 4, Math.max(low, d.high)),
+    placement: (PLACEMENTS as readonly string[]).includes(s.placement ?? '') ? s.placement as EmergenceParams['placement'] : d.placement,
+    corridor: within(s.corridor, 0, 200, d.corridor), forms: forms.length ? forms : null, keep: Math.round(within(s.keep, 0, MAX_STRUCTURES, d.keep)),
   };
 }
 
@@ -119,6 +134,8 @@ const TERRACED = 0.4;
 
 const unit = (x: number): number => Math.min(1, Math.max(0, x));
 const smooth = (x: number): number => { const t = unit(x); return t * t * (3 - 2 * t); };
+/** How well a structure at `depth` (share of the mesh's rows) can be looked at: not as it passes out of the picture, not lost in the haze. */
+const visible = (depth: number): number => smooth((depth - 0.05) / 0.1) * (1 - smooth((depth - 0.6) / 0.25));
 /** A number 0..1 for two integers and a seed, the same everywhere; no allocation. */
 function hash(a: number, b: number, seed: number): number {
   let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b | 0) + 0x632be59b, 0xc2b2ae35) ^ seed;
@@ -192,6 +209,9 @@ export class EmergenceField {
   private prepared = 0;
   private sinceRetire = 0;
   private now = 0;
+  /** The ground's row at the last step (what `focus` measures depths from), and the structure the viewer watches (−1: none). */
+  private lastRow = 0;
+  private watched = -1;
   private readonly take = (cue: Readonly<Cue>): void => this.cue(cue);
 
   constructor(params: EmergenceSettings = {}, private readonly worldSeed = 0) {
@@ -210,6 +230,7 @@ export class EmergenceField {
   step(dt: number, t: Readonly<TerrainValues>, view: Readonly<WorldView>, position: number, rows: number, columns: number, ring: number, tension: number, cues: Readonly<CuesFrame> | undefined, now: number): void {
     const p = this.params, h = dt > 0 && Number.isFinite(dt) ? Math.min(dt, 0.25) : 0;
     const timed = view.world !== REST_WORLD && !!cues;
+    this.lastRow = t.row;
     // The music's time: nothing lives in silence or without a clock.
     const live = timed && !cues!.silent ? h : 0;
     this.now = now;
@@ -247,6 +268,8 @@ export class EmergenceField {
     // ---- every structure through its life ----
     const retire = phase === 'breakdown' && timed;
     this.sinceRetire = retire ? this.sinceRetire + live : 0;
+    // The landmarks a breakdown leaves standing: the `keep` tallest that stand (none unless asked).
+    const landmark = retire && p.keep > 0 ? this.landmark(p.keep) : Infinity;
     let oldest = -1;
     for (let s = 0; s < MAX_STRUCTURES; s++) {
       const ph = this.phase[s];
@@ -266,7 +289,7 @@ export class EmergenceField {
         const ringing = ph === RESONANCE ? ring > RING_OFF : ring > RING_ON;
         this.phase[s] = ringing ? RESONANCE : ACTIVE;
         this.ring[s] += ((ringing ? 1 : 0) - this.ring[s]) * (1 - Math.exp(-live / RING_TAU));
-        if (oldest < 0 || this.age[s] > this.age[oldest]) oldest = s;
+        if (this.height[s] < landmark && (oldest < 0 || this.age[s] > this.age[oldest])) oldest = s;
       } else if (ph === FRACTURE) {
         if (now - this.brokeAt[s] >= FRACTURE_TIME) { this.recycle(s); this.stats.fractured++; }
       } else if (ph === RETREAT) {
@@ -275,6 +298,35 @@ export class EmergenceField {
     }
     if (retire && this.sinceRetire >= RETIRE_EVERY && oldest >= 0) { this.retreat(oldest); this.sinceRetire = 0; }
     this.pack(view);
+  }
+
+  /**
+   * What the viewer may look at: the structure the place is showing now, as a lattice point, its height above its
+   * anchor and how much it asks to be looked at (0..1), or −1 when nothing does. A structure rising asks the most, then
+   * the tallest that stands in the middle distance; the one looked at keeps the eye until another clearly asks more
+   * (a reframe is a decision, not a flicker). A reading only: nothing in the field changes.
+   */
+  focus(rows: number, out: { J: number; R: number; height: number; weight: number }): number {
+    const t = this.lastRow;
+    let best = -1, most = 0, held = 0;
+    for (let s = 0; s < MAX_STRUCTURES; s++) {
+      const ph = this.phase[s];
+      if (ph !== EMERGENCE && ph !== ACTIVE && ph !== RESONANCE) continue;
+      const k = ((this.R[s] - t) % PERIOD + PERIOD) % PERIOD, depth = k / Math.max(1, rows);
+      // Too close (it passes out of the picture) or too far (lost in the haze) asks for nothing.
+      const seen = visible(depth);
+      const ask = seen * this.height[s] * (ph === EMERGENCE ? 2 : 1) * (1 + this.ring[s] * 0.3);
+      if (s === this.watched) held = ask;
+      if (ask > most) { most = ask; best = s; }
+    }
+    // The eye stays on what it watches unless another asks half as much again.
+    if (this.watched >= 0 && held > 0 && most < 1.5 * held) best = this.watched;
+    this.watched = best;
+    if (best < 0) { out.weight = 0; return -1; }
+    const k = ((this.R[best] - t) % PERIOD + PERIOD) % PERIOD, depth = k / Math.max(1, rows);
+    out.J = this.J[best]; out.R = this.R[best]; out.height = this.height[best] * this.rise(best);
+    out.weight = visible(depth) * (this.phase[best] === EMERGENCE ? 1 : 0.6);
+    return best;
   }
 
   /** A cue of the session, or one a tool offers through the same path. */
@@ -309,7 +361,7 @@ export class EmergenceField {
 
   /** Every structure back to the pool and every count to zero (a tool's reset). */
   clear(): void {
-    this.phase.fill(DORMANT); this.waiting.fill(0); this.accentAt.fill(-Infinity);
+    this.phase.fill(DORMANT); this.waiting.fill(0); this.accentAt.fill(-Infinity); this.watched = -1;
     this.gate.clear(); this.cursor = -1; this.prepared = 0; this.burst = 0; this.density = 0; this.count = 0;
     this.lastPosition = NaN; this.evaluated = -Infinity; this.travelled = 0;
     const s = this.stats;
@@ -332,7 +384,9 @@ export class EmergenceField {
       if (!burst && (pair ? shared : chance) >= this.density) continue;
       if (this.live_() >= capacity || (this.count_(FORMATION) + this.count_(EMERGENCE) >= p.emerging && !burst)) { this.stats.refused++; continue; }
       const out = pair ? 0.35 + 0.1 * shared : hash(row, side + 31, this.worldSeed);
-      const across = terrainMeander(R) + side * (t.valley + CLEAR + out * UP), J = Math.round(across / t.cell);
+      // Beside the valley, up its walls; or across its floor (a plain), outside the corridor the viewer flies along.
+      const off = p.placement === 'plain' ? p.corridor + out * Math.max(0, t.valley + CLEAR - p.corridor) : t.valley + CLEAR + out * UP;
+      const across = terrainMeander(R) + side * off, J = Math.round(across / t.cell);
       const i = J - t.col;
       if (Math.abs(i) > columns / 2 - SIDE || this.near(J, R)) { this.stats.refused++; continue; }
       this.spawn(J, R, row, side, t, burst, chance);
@@ -349,7 +403,9 @@ export class EmergenceField {
     const slope = Math.abs(terrainHeight(t, i + 1, k) - terrainHeight(t, i - 1, k)) * 0.5 / t.cell;
     const extrude = p.modes === 'extrude' || (p.modes === 'both' && (t.terrace > TERRACED || hash(row, side + 53, this.worldSeed) < 0.3));
     this.mode[s] = extrude ? 0 : 1;
-    this.shape[s] = extrude ? SHAPE.block : slope > STEEP ? SHAPE.crystal : chance < 0.5 * this.density ? SHAPE.prism : SHAPE.pillar;
+    const forms = p.forms;
+    this.shape[s] = extrude ? SHAPE.block : forms ? SHAPE[forms[Math.floor(hash(row, side + 151, this.worldSeed) * forms.length)]]
+      : slope > STEEP ? SHAPE.crystal : chance < 0.5 * this.density ? SHAPE.prism : SHAPE.pillar;
     const tall = p.low + (p.high - p.low) * hash(row, side + 97, this.worldSeed);
     this.height[s] = Math.abs(t.relief) * tall * (burst ? BURST_HEIGHT : 1) * (this.shape[s] === SHAPE.crystal ? 1.3 : 1);
     this.width[s] = WIDTH[0] + (WIDTH[1] - WIDTH[0]) * hash(row, side + 71, this.worldSeed);
@@ -393,6 +449,21 @@ export class EmergenceField {
 
   private recycle(s: number): void {
     this.phase[s] = DORMANT; this.waiting[s] = 0; this.stats.recycled++;
+  }
+
+  /** The height of the `n`-th tallest that stands: what reaches it is a landmark. */
+  private landmark(n: number): number {
+    let bar = Infinity;
+    for (let m = 0; m < n; m++) {
+      let next = -Infinity;
+      for (let s = 0; s < MAX_STRUCTURES; s++) {
+        const ph = this.phase[s];
+        if ((ph === ACTIVE || ph === RESONANCE) && this.height[s] < bar && this.height[s] > next) next = this.height[s];
+      }
+      if (next === -Infinity) return -Infinity;
+      bar = next;
+    }
+    return bar;
   }
 
   private near(J: number, R: number): boolean {

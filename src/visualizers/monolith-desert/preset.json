@@ -1,0 +1,92 @@
+{
+  "name": "Monolith Desert",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 58,
+    "distance": 0,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.55,
+    "radius": 0.4,
+    "threshold": 0.18
+  },
+  "visual": {
+    "seed": 20261015,
+    "cell": 3,
+    "columns": 64,
+    "rows": 100,
+    "height": 7,
+    "pitch": 0.12,
+    "relief": 9,
+    "roughness": 0.35,
+    "valley": 50,
+    "stride": 4,
+    "fog": 0.006,
+    "exposure": 0.75,
+    "wave": 0.8,
+    "response": {
+      "lows": 0.8,
+      "mids": 1,
+      "highs": 0.6,
+      "groove": 0.8,
+      "surface": 0.6
+    },
+    "emergence": {
+      "enabled": true,
+      "capacity": 24,
+      "emerging": 4,
+      "fragments": 3,
+      "spacing": 7,
+      "density": 0.16,
+      "rate": 1,
+      "response": 0.8,
+      "pulse": 0.04,
+      "fracture": false,
+      "modes": "anchored",
+      "low": 1.0,
+      "high": 2.4,
+      "placement": "plain",
+      "corridor": 7,
+      "forms": [
+        "block",
+        "block",
+        "pillar",
+        "prism"
+      ],
+      "keep": 3
+    },
+    "camera": {
+      "look": 60,
+      "glide": {
+        "lift": 0.4,
+        "widen": 3
+      },
+      "hover": {
+        "lift": 0.8,
+        "rise": 1.2,
+        "sway": 0.8,
+        "reframe": 0.25,
+        "tense": 3,
+        "hold": 0.45,
+        "calm": 0.4
+      },
+      "limits": {
+        "position": 0.2,
+        "target": 0.22,
+        "lens": 0.2,
+        "reach": 18,
+        "fov": [
+          -6,
+          8
+        ],
+        "roll": 0.08
+      }
+    }
+  }
+}

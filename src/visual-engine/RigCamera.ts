@@ -15,7 +15,11 @@ export class RigCamera implements WorldCamera {
   readonly debug: Record<string, number> = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, roll: 0, motion: 0, advance: 0, focus: 0 };
   private readonly kinds: Locomotion[];
 
-  constructor(readonly rig: CameraRig, private readonly aim?: (frame: Readonly<WorldFrame>, focus: MotionFocus) => void) {
+  /**
+   * `aim` writes what the scene offers to look at before the rig steps; `after` hands the rig's result to the scene
+   * (what its ground travels by) once it has.
+   */
+  constructor(readonly rig: CameraRig, private readonly aim?: (frame: Readonly<WorldFrame>, focus: MotionFocus) => void, private readonly after?: (rig: CameraRig) => void) {
     this.kinds = rig.locomotion;
     for (const kind of LOCOMOTIONS) if (this.kinds.includes(kind)) this.debug[kind] = 0;
   }
@@ -28,6 +32,7 @@ export class RigCamera implements WorldCamera {
     input.focus.weight = 0;
     this.aim?.(frame, input.focus);
     this.rig.step(input);
+    this.after?.(this.rig);
     const d = this.debug, p = this.rig.pose;
     d.x = p.x; d.y = p.y; d.z = p.z; d.tx = p.tx; d.ty = p.ty; d.tz = p.tz; d.fov = p.fov; d.roll = p.roll;
     d.motion = this.rig.motion; d.advance = this.rig.speed; d.focus = input.focus.weight;

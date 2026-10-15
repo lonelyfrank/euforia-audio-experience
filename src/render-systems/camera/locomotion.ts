@@ -292,8 +292,8 @@ export interface RigLimits {
   lens: number;
   /** The most the observer and the target may be from their rest (units, per axis): what bounds the acceleration. */
   reach: number;
-  /** Bounds of the lens (degrees added to the scene's) and of the roll (rad). */
-  fov: readonly [number, number];
+  /** Bounds of the lens (lower, upper: degrees added to the scene's) and of the roll (rad). */
+  fov: readonly number[];
   roll: number;
 }
 export const RIG_LIMITS: Readonly<RigLimits> = { position: 0.25, target: 0.3, lens: 0.2, reach: 6, fov: [-8, 10], roll: 0.12 };
@@ -313,6 +313,8 @@ export class CameraRig {
   readonly pose = createPose();
   advance = 0;
   speed = 0;
+  /** Share of the forward motion the hovering profiles let through this frame (1: all of it): a scene whose ground travels by itself takes it. */
+  hold = 1;
   /** Weight of each entry this frame (its weight × its presence). */
   readonly weights: Float32Array;
   private readonly bodies: DampedOscillator[];
@@ -347,6 +349,7 @@ export class CameraRig {
     t.x = clamp(finite(t.x), r.x - l.reach, r.x + l.reach); t.y = clamp(finite(t.y), r.y - l.reach, r.y + l.reach); t.z = clamp(finite(t.z), r.z - l.reach, r.z + l.reach);
     t.tx = clamp(finite(t.tx), r.tx - l.reach, r.tx + l.reach); t.ty = clamp(finite(t.ty), r.ty - l.reach, r.ty + l.reach); t.tz = clamp(finite(t.tz), r.tz - l.reach, r.tz + l.reach);
     t.fov = clamp(finite(t.fov), l.fov[0], l.fov[1]); t.roll = clamp(finite(t.roll), -l.roll, l.roll);
+    this.hold = hold;
     this.advance = finite(advance) * hold;
     this.speed = h > 0 ? this.advance / h : 0;
     const b = this.bodies, p = this.pose;

@@ -71,12 +71,15 @@ describe('wheel state machine', () => {
 
 /** The ids every scene had before the families: saved settings name them, so none may change. */
 const IDS = ['tunnel', 'spectrum', 'particle-field', 'galaxy', 'liquid', 'oscilloscope', 'resonant-field', 'spectral-matter', 'matter-field', 'vector-field', 'spectral-shell', 'terrain'];
+/** The worlds added since (docs/generative-worlds.md), in the order the Worlds ring shows them after the two that were there. */
+const NEW_WORLDS = ['monolith-desert'];
+const ALL = [...IDS, ...NEW_WORLDS];
 
 describe('scene families', () => {
   it('every scene of the registry is in exactly one family; ids, order and the count are as they were', () => {
-    expect(visualizers.map((v) => v.id).sort()).toEqual([...IDS].sort());
+    expect(visualizers.map((v) => v.id).sort()).toEqual([...ALL].sort());
     const listed = SCENE_CATEGORIES.flatMap((c) => scenesOf(c.id).map((v) => v.id));
-    expect(listed.sort()).toEqual([...IDS].sort());
+    expect(listed.sort()).toEqual([...ALL].sort());
     expect(new Set(listed).size).toBe(listed.length);
     for (const v of visualizers) expect(categoryOf(v.id)).toBe(v.category);
     // Within a family the registry's own order holds.
@@ -86,7 +89,9 @@ describe('scene families', () => {
   it('classifies by behaviour: matter and fields, spaces to travel, the signal itself', () => {
     const of = (category: string) => scenesOf(category as never).map((v) => v.id).sort();
     expect(of('particles')).toEqual(['matter-field', 'particle-field', 'resonant-field', 'spectral-matter', 'spectral-shell', 'vector-field']);
-    expect(of('worlds')).toEqual(['terrain', 'tunnel']);
+    expect(of('worlds')).toEqual([...NEW_WORLDS, 'terrain', 'tunnel'].sort());
+    // The ring: the tunnel, the terrain, then the new worlds in their order.
+    expect(scenesOf('worlds').map((v) => v.id)).toEqual(['tunnel', 'terrain', ...NEW_WORLDS]);
     // Galaxy draws the spectrum along its radius and the voices along its arms: a signal scene made of stars.
     expect(of('spectrum')).toEqual(['galaxy', 'liquid', 'oscilloscope', 'spectrum']);
     expect(sceneCategories().map((c) => c.id)).toEqual(['particles', 'worlds', 'spectrum']);

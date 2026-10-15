@@ -148,6 +148,11 @@ export class TerrainMotion {
   stir = 0;
   /** How the registers and the scales reach the ground; the tools may change it while it plays (DEV). */
   readonly response: TerrainResponse;
+  /**
+   * Share of the world's travel the ground goes by (1: all of it). A scene whose observer hovers holds it back
+   * (Monolith Desert: CameraRig.hold); Generative Terrain leaves it at 1, where its motion is the one it always had.
+   */
+  pace = 1;
   /** Ground travelled, as rows (kept within a period: the landscape repeats there). */
   private position = 0;
   private fresh = true;
@@ -181,7 +186,7 @@ export class TerrainMotion {
     this.lastTime = world === REST_WORLD ? -Infinity : world.time;
     if (events && world !== REST_WORLD) this.events.read(events, now);
     const tension = unit(finite(view.tension)), disorder = unit(finite(view.disorder)), spin = clamp(finite(view.spin), -1, 1), lateral = clamp(finite(view.lateral), -1, 1);
-    const rate = h > 0 ? finite(view.dTravel) * p.stride / h : 0;
+    const rate = h > 0 ? finite(view.dTravel) * p.stride * this.pace / h : 0;
     const sharp = unit(Math.max(finite(geometry.edgeHardness), finite(geometry.angularity)));
     const r = this.response, excitation = unit(finite(view.excitation)), shimmer = unit(finite(view.shimmer));
     if (this.fresh) {
