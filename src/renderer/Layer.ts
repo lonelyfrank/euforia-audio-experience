@@ -48,6 +48,7 @@ export class Layer {
   /** True once the scene's programs are compiled: drawing it will not stall the frame. */
   ready = false;
   private disposed = false;
+  private prepareTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     renderer: WebGLRenderer,
@@ -103,16 +104,16 @@ export class Layer {
    * it), for the target a frame draws them into: a program is specific to its output colour space.
    */
   private prepare(renderer: WebGLRenderer): void {
-    const done = () => { this.ready = true; };
+    const done = () => { this.prepareTimeout = null; if (!this.disposed) this.ready = true; };
     if (typeof renderer.compileAsync !== 'function') return done();
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(this.scenePass?.renderTarget ?? this.composer.readBuffer);
     const compiled = renderer.compileAsync(this.visualizer.scene, this.visualizer.camera);
     renderer.setRenderTarget(previous);
-    const timeout = setTimeout(done, PREPARE_TIMEOUT);
+    this.prepareTimeout = setTimeout(done, PREPARE_TIMEOUT);
     void compiled.catch(() => undefined).then(() => {
-      clearTimeout(timeout);
-      if (!this.disposed) done();
+      if (this.prepareTimeout !== null) clearTimeout(this.prepareTimeout);
+      done();
     });
   }
 
@@ -179,6 +180,8 @@ export class Layer {
 
   dispose(): void {
     this.disposed = true;
+    if (this.prepareTimeout !== null) clearTimeout(this.prepareTimeout);
+    this.prepareTimeout = null;
     this.visualizer.dispose();
     for (const pass of this.passes) pass.dispose();
     this.composer.dispose();
