@@ -72,7 +72,7 @@ describe('wheel state machine', () => {
 /** The ids every scene had before the families: saved settings name them, so none may change. */
 const IDS = ['tunnel', 'spectrum', 'particle-field', 'galaxy', 'liquid', 'oscilloscope', 'resonant-field', 'spectral-matter', 'matter-field', 'vector-field', 'spectral-shell', 'terrain'];
 /** The worlds added since (docs/generative-worlds.md), in the order the Worlds ring shows them after the two that were there. */
-const NEW_WORLDS = ['monolith-desert'];
+const NEW_WORLDS = ['monolith-desert', 'fractured-expanse'];
 const ALL = [...IDS, ...NEW_WORLDS];
 
 describe('scene families', () => {

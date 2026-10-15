@@ -77,7 +77,7 @@ export function stageOf(r: Readonly<BodyReadout>, wasSolid: boolean): SolidStage
 
 /** Elements a population needs (the vertices of its bodies), and the pools that hold it. */
 export const populationElements = (p: Readonly<SolidPopulation>): number => p.bodies.reduce((n, b) => n + solidMesh(b.kind).vertices.length / 3, 0);
-const populationBudget = (p: Readonly<SolidPopulation>): SolidBudget => ({ ...DEFAULT_SOLID_BUDGET, bodies: Math.max(1, Math.min(DEFAULT_SOLID_BUDGET.bodies, p.bodies.length)) });
+const populationBudget = (p: Readonly<SolidPopulation>, budget: Readonly<SolidBudget>): SolidBudget => ({ ...budget, bodies: Math.max(1, Math.min(budget.bodies, p.bodies.length)) });
 /** How often (frames) the tools' reading of the stages is refreshed: a readout is not a per-frame cost. */
 const STAGE_EVERY = 12;
 
@@ -182,9 +182,9 @@ export class SolidPrimitive implements Primitive {
   private readonly cued: AudioEvent = { type: 'drop', audioTime: 0, strength: 0, confidence: 0, band: -1, structuralWeight: 0.7, duration: 0, significance: 0, seq: 0 };
   private readonly take = (cue: Readonly<Cue>): void => this.cue(cue);
   /** Where each body of a population is in its cycle (the tools' reading), whether it has been whole, and the cues it acted on. */
-  readonly stages = new Uint8Array(DEFAULT_SOLID_BUDGET.bodies);
+  readonly stages: Uint8Array;
   readonly cuesTaken = { releases: 0, accents: 0 };
-  private readonly wasSolid = new Uint8Array(DEFAULT_SOLID_BUDGET.bodies);
+  private readonly wasSolid: Uint8Array;
   private readonly readout = createReadout();
   private frames = 0;
 
@@ -195,8 +195,9 @@ export class SolidPrimitive implements Primitive {
   constructor(context: PrimitiveContext, private readonly params: SolidParams, readonly topology: Float32Array, budget: Readonly<SolidBudget> = SOLID_LAB_BUDGET,
     readonly population: Readonly<SolidPopulation> | null = null) {
     const capacity = population ? Math.max(4, populationElements(population)) : SOLID_LAB_ELEMENTS;
-    const system = this.system = new StructuralSystem({ capacity, seed: context.seed, solids: population ? populationBudget(population) : budget });
+    const system = this.system = new StructuralSystem({ capacity, seed: context.seed, solids: population ? populationBudget(population, budget) : budget });
     const n = system.state.capacity, solids = system.solids!.state, links = solids.linkCapacity, triangles = solids.faceCapacity;
+    this.stages = new Uint8Array(system.solids!.budget.bodies); this.wasSolid = new Uint8Array(system.solids!.budget.bodies);
     this.environment = createWorldEnvironment(context, topology);
     this.kind = SOLID_KINDS[Math.min(SOLID_KINDS.length - 1, Math.max(0, Math.round(params.solid)))] ?? 'tetrahedron';
     if (population) {

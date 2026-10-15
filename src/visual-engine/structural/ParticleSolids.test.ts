@@ -13,7 +13,7 @@ import type { SceneClock } from '../../types/visualizer';
 import matterField from '../../visualizers/matter-field';
 import { visualizers } from '../../visualizers/registry';
 import { MIXED_POPULATION, solidSlot, SOLIDS_SLOT } from '../primitives/solidSlot';
-import { SOLID_STAGES, type SolidPopulation, type SolidPrimitive, type SolidStage } from '../primitives/SolidPrimitive';
+import { SOLID_STAGES, SolidPrimitive, type SolidPopulation, type SolidStage } from '../primitives/SolidPrimitive';
 import type { RecipeVisualizer } from '../RecipeVisualizer';
 import { PULSE_LIMIT } from './SolidTypes';
 
@@ -57,12 +57,16 @@ describe('solids among the particles: the experiment on Matter Field', () => {
     const m = mount(), world = m.scene.world;
     expect(m.before).toEqual(['matter', 'shockwaves', 'filaments', 'surface', 'graph']);
     expect(world.mounted.map((x) => x.slot.id)).toEqual([...m.before, SOLIDS_SLOT]);
-    // No product recipe holds it: the experiment adds it to a running world.
+    // No product recipe holds it: the experiment adds it to a running world. The one product scene made of solids is a
+    // world of its own (Fractured Expanse, docs/generative-worlds.md), never a Particles scene.
     for (const definition of visualizers) {
       const scene = definition.create(definition.preset);
       if (!('world' in scene)) continue;
       scene.init({ renderer: renderer(), quality: QUALITY_PROFILES.low, width: 320, height: 240, addPass: () => undefined });
-      expect((scene as RecipeVisualizer<unknown>).world.primitive(SOLIDS_SLOT), definition.id).toBeUndefined();
+      const world = (scene as RecipeVisualizer<unknown>).world;
+      expect(world.primitive(SOLIDS_SLOT), definition.id).toBeUndefined();
+      const solids = world.mounted.some((x) => x.primitive instanceof SolidPrimitive);
+      expect(solids, definition.id).toBe(definition.id === 'fractured-expanse');
       scene.dispose();
     }
     const geometry = vi.spyOn(BufferGeometry.prototype, 'dispose'), material = vi.spyOn(Material.prototype, 'dispose');

@@ -1,0 +1,128 @@
+{
+  "name": "Fractured Expanse",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 46,
+    "distance": 5.6,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.6,
+    "radius": 0.45,
+    "threshold": 0.12
+  },
+  "visual": {
+    "seed": 20261016,
+    "bodies": [
+      {
+        "kind": "icosahedron",
+        "radius": 0.3,
+        "x": -0.95,
+        "y": 0.15,
+        "z": 0.1,
+        "turn": 0.3,
+        "tilt": 0.5
+      },
+      {
+        "kind": "tetrahedron",
+        "radius": 0.2,
+        "x": -1.35,
+        "y": -0.35,
+        "z": -0.25,
+        "turn": 1.7,
+        "tilt": 0.2
+      },
+      {
+        "kind": "cube",
+        "radius": 0.26,
+        "x": 0.85,
+        "y": -0.2,
+        "z": 0.45,
+        "turn": 1.1,
+        "tilt": 0.4
+      },
+      {
+        "kind": "tetrahedron",
+        "radius": 0.18,
+        "x": 1.25,
+        "y": 0.3,
+        "z": 0.05,
+        "turn": 2.4,
+        "tilt": 0.9
+      },
+      {
+        "kind": "icosahedron",
+        "radius": 0.24,
+        "x": 0.1,
+        "y": 0.75,
+        "z": -0.65,
+        "turn": 2.0,
+        "tilt": 0.7
+      },
+      {
+        "kind": "cube",
+        "radius": 0.2,
+        "x": -0.25,
+        "y": 0.95,
+        "z": -1.05,
+        "turn": 0.6,
+        "tilt": 0.3
+      },
+      {
+        "kind": "tetrahedron",
+        "radius": 0.16,
+        "x": 0.35,
+        "y": -0.85,
+        "z": -0.4,
+        "turn": 1.3,
+        "tilt": 0.6
+      }
+    ],
+    "start": "free",
+    "fracture": "release",
+    "profile": "rigid",
+    "pointSize": 2.6,
+    "budget": {
+      "links": 360,
+      "faces": 240,
+      "cells": 56,
+      "iterations": 4,
+      "frameMs": 1
+    },
+    "dust": {
+      "tracers": 6000,
+      "streak": 0.35,
+      "pointSize": 1.1,
+      "exposure": 0.3
+    },
+    "reach": 1.6,
+    "camera": {
+      "distance": 5.6,
+      "height": 0.9,
+      "orbit": {
+        "share": 0.25,
+        "carry": 0.02,
+        "elevation": 0.28,
+        "breathe": 0.18,
+        "tense": 0.14,
+        "focus": 0.75
+      },
+      "limits": {
+        "position": 0.18,
+        "target": 0.22,
+        "lens": 0.2,
+        "reach": 12,
+        "fov": [
+          -6,
+          8
+        ],
+        "roll": 0.05
+      }
+    }
+  }
+}

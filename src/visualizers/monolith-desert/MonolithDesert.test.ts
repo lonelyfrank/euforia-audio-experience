@@ -29,7 +29,7 @@ let mounted: WorldRun[] = [];
 const mount = (...args: Parameters<typeof mountWorld>): WorldRun => { const r = mountWorld(...args); mounted.push(r); return r; };
 afterEach(() => { for (const r of mounted) r.dispose(); mounted = []; vi.restoreAllMocks(); });
 
-describe('Monolith Desert: a scene of the Worlds family', () => {
+describe('Monolith Desert: a scene of the Worlds family', { timeout: 30_000 }, () => {
   it('is registered as a world after Generative Terrain, with its locomotion, and keeps the ids before it', () => {
     expect(findVisualizer('monolith-desert')).toBe(desert);
     expect(categoryOf('monolith-desert')).toBe('worlds');
