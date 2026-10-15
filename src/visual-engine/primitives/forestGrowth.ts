@@ -224,7 +224,7 @@ export class ForestField {
     // The first moment the music lives, the whole ground in view is sown (seeds: they grow with what follows); after
     // that only the rows coming into view, a few a frame at most.
     const from = this.sown ? Math.max(this.evaluated + 1, reached - 4 * p.spacing) : Math.floor(this.travelled + NEAR);
-    if (live > 0) {
+    if (live > 0 && (this.sown || target >= LEAST)) {
       this.planting = !this.sown;
       for (let row = from; row <= reached; row++) if (row % p.spacing === 0) this.candidates(row, t, capacity, columns, cues!);
       this.planting = false; this.sown = true;
@@ -301,6 +301,7 @@ export class ForestField {
   /** A new audio session: what was read of the last one is forgotten; the trees stay as they are. */
   reset(): void {
     this.cursor = -1; this.burst = 0; this.budding = false; this.density = 0; this.fresh = true;
+    this.flushAt.fill(-Infinity); this.accentAt.fill(-Infinity);
   }
 
   /** Every tree back to the pool and every count to zero (a tool's reset). */

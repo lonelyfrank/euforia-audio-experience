@@ -108,6 +108,29 @@ function walk(settings: ForestSettings = P.forest, seed = 20261018) {
 const timbre = (g: GeometryState, x: number) => { for (const key of TRAIT_KEYS) g[key] = x; };
 
 describe('forest: the life the music gives the trees', () => {
+  it('keeps the initial sowing until a musical phase actually asks for trees', () => {
+    const f = walk({ ...P.forest, density: 1 });
+    // Acquisition can be audible before cognition has left silence. No row travels in this check.
+    f.run(1, (world, cues) => { world.speed = 0; cues.silent = false; cues.phase = 'silence'; });
+    expect(f.field.stats.spawned).toBe(0);
+    f.run(1, (world, cues) => { world.speed = 0; cues.phase = 'groove'; });
+    expect(f.field.stats.spawned).toBeGreaterThan(3);
+    const count = f.field.stats.spawned;
+    f.run(1, world => { world.speed = 0; });
+    expect(f.field.stats.spawned).toBe(count);
+  });
+
+  it('a new session cannot replay the previous session\'s flowering light', () => {
+    const f = walk({ ...P.forest, grow: 2 });
+    f.run(30, world => { world.speed = 0; });
+    f.push('release', 'confirmed', f.world.time);
+    f.run(0.1, world => { world.speed = 0; });
+    expect(Math.max(...Array.from({ length: 40 }, (_, s) => f.field.treeLean[s * 4 + 3]))).toBeGreaterThan(0.5);
+    f.field.reset(); f.world.time = 0;
+    f.run(0.1, (world, cues) => { world.speed = 0; cues.seq = 0; cues.silent = true; cues.phase = 'silence'; });
+    expect(Math.max(...Array.from({ length: 40 }, (_, s) => f.field.treeLean[s * 4 + 3]))).toBe(0);
+  });
+
   it('without a clock, or in silence, nothing is seeded and nothing grows', () => {
     const f = walk();
     f.run(30, undefined, 60, undefined, false);
