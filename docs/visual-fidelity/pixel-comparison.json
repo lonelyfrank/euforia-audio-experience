@@ -1,0 +1,2162 @@
+[
+  {
+    "scene": "tunnel",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "galaxy",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 3497,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.41655815972222215,
+    "maxRGB": 211
+  },
+  {
+    "scene": "galaxy",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 12612,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 1.9423871527777778,
+    "maxRGB": 215
+  },
+  {
+    "scene": "galaxy",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 5211,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.3301707175925926,
+    "maxRGB": 216
+  },
+  {
+    "scene": "galaxy",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 4000,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.4862803819444444,
+    "maxRGB": 209
+  },
+  {
+    "scene": "galaxy",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 4044,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.5020066550925927,
+    "maxRGB": 211
+  },
+  {
+    "scene": "liquid",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "terrain",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "terrain",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 27,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.007164351851851852,
+    "maxRGB": 94
+  },
+  {
+    "scene": "terrain",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 39,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.010295138888888888,
+    "maxRGB": 104
+  },
+  {
+    "scene": "terrain",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 54,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.010295138888888888,
+    "maxRGB": 91
+  },
+  {
+    "scene": "terrain",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 68,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.014142071759259259,
+    "maxRGB": 116
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 38,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.009521122685185186,
+    "maxRGB": 103
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 47782,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 16.419484953703705,
+    "maxRGB": 249
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 46650,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 14.83216869212963,
+    "maxRGB": 249
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 45678,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 12.799811921296296,
+    "maxRGB": 240
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 46848,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 13.889518229166667,
+    "maxRGB": 239
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "low",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "low",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "low",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "low",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "low",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 230400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "galaxy",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 163812,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.6370781893004115,
+    "maxRGB": 161
+  },
+  {
+    "scene": "galaxy",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 165775,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 2.377766203703704,
+    "maxRGB": 174
+  },
+  {
+    "scene": "galaxy",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 78012,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.2322704475308642,
+    "maxRGB": 121
+  },
+  {
+    "scene": "galaxy",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 89569,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.5750983796296296,
+    "maxRGB": 135
+  },
+  {
+    "scene": "galaxy",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 86869,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.53291216563786,
+    "maxRGB": 144
+  },
+  {
+    "scene": "liquid",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "terrain",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 48,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0007863940329218107,
+    "maxRGB": 31
+  },
+  {
+    "scene": "terrain",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 52845,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.06250450102880659,
+    "maxRGB": 127
+  },
+  {
+    "scene": "terrain",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 65862,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.08447402263374486,
+    "maxRGB": 142
+  },
+  {
+    "scene": "terrain",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 96278,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.13429526748971193,
+    "maxRGB": 117
+  },
+  {
+    "scene": "terrain",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 210762,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.34565586419753086,
+    "maxRGB": 126
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 299466,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 7.6573791152263375,
+    "maxRGB": 204
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 468716,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 15.59199074074074,
+    "maxRGB": 237
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 438196,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 14.386516203703701,
+    "maxRGB": 236
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 441640,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 13.096179269547326,
+    "maxRGB": 218
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 426673,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 14.706889789094651,
+    "maxRGB": 232
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "medium",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "medium",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "medium",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "medium",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "medium",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 518400,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "tunnel",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectrum",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "particle-field",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "galaxy",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 129207,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.5689767795138888,
+    "maxRGB": 144
+  },
+  {
+    "scene": "galaxy",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 441597,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 2.582899667245371,
+    "maxRGB": 164
+  },
+  {
+    "scene": "galaxy",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 180844,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.21245406539351852,
+    "maxRGB": 102
+  },
+  {
+    "scene": "galaxy",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 181355,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.5880425347222222,
+    "maxRGB": 153
+  },
+  {
+    "scene": "galaxy",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 166071,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.5218008535879629,
+    "maxRGB": 135
+  },
+  {
+    "scene": "liquid",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "liquid",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "oscilloscope",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-field",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-matter",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "matter-field",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "vector-field",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "spectral-shell",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "terrain",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 217,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0006177662037037037,
+    "maxRGB": 23
+  },
+  {
+    "scene": "terrain",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 65348,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.044995298032407406,
+    "maxRGB": 117
+  },
+  {
+    "scene": "terrain",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 87888,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.07273763020833333,
+    "maxRGB": 90
+  },
+  {
+    "scene": "terrain",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 149356,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.12397894965277778,
+    "maxRGB": 116
+  },
+  {
+    "scene": "terrain",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 107065,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.07393518518518517,
+    "maxRGB": 102
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 619337,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 12.551118706597222,
+    "maxRGB": 231
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 784128,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 15.367269241898148,
+    "maxRGB": 234
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 769781,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 14.302437065972223,
+    "maxRGB": 233
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 739879,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 12.845182653356481,
+    "maxRGB": 224
+  },
+  {
+    "scene": "monolith-desert",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 777508,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 13.365404730902776,
+    "maxRGB": 229
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "fractured-expanse",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "pulse-ocean",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "high",
+    "time": 8,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "high",
+    "time": 17,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "high",
+    "time": 18.3,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "high",
+    "time": 20,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  },
+  {
+    "scene": "resonant-forest",
+    "quality": "high",
+    "time": 24,
+    "changedPixels": 0,
+    "pixels": 921600,
+    "meanAbsoluteRGB": 0.0,
+    "maxRGB": 0
+  }
+]

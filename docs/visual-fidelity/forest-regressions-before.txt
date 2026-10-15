@@ -1,0 +1,51 @@
+
+ RUN  v5.0.2 /home/frank/euforia-audio-experience
+
+ ❯ src/visualizers/resonant-forest/ResonantForest.test.ts (16 tests | 2 failed) 4165ms
+   ❯ forest: the life the music gives the trees (9)
+     × keeps the initial sowing until a musical phase actually asks for trees 37ms
+     × a new session cannot replay the previous session's flowering light 141ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/visualizers/resonant-forest/ResonantForest.test.ts > forest: the life the music gives the trees > keeps the initial sowing until a musical phase actually asks for trees
+AssertionError: expected 0 to be greater than 3
+ ❯ src/visualizers/resonant-forest/ResonantForest.test.ts:117:35
+    115|     expect(f.field.stats.spawned).toBe(0);
+    116|     f.run(1, (world, cues) => { world.speed = 0; cues.phase = 'groove'…
+    117|     expect(f.field.stats.spawned).toBeGreaterThan(3);
+       |                                   ^
+    118|     const count = f.field.stats.spawned;
+    119|     f.run(1, world => { world.speed = 0; });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/visualizers/resonant-forest/ResonantForest.test.ts > forest: the life the music gives the trees > a new session cannot replay the previous session's flowering light
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ src/visualizers/resonant-forest/ResonantForest.test.ts:131:92
+    129|     f.field.reset(); f.world.time = 0;
+    130|     f.run(0.1, (world, cues) => { world.speed = 0; cues.seq = 0; cues.…
+    131|     expect(Math.max(...Array.from({ length: 40 }, (_, s) => f.field.tr…
+       |                                                                                            ^
+    132|   });
+    133|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 passed (16)
+   Start at  19:19:23
+   Duration  8.35s (tests 54%, transform 37%, import 8%)
+
+  Transform  transforming modules took 2.83s · 37% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

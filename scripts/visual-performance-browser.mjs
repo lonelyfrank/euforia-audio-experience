@@ -6,7 +6,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const output = process.env.FIDELITY_OUTPUT || '/tmp/euforia-visual-performance';
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, args: ['--use-angle=gl-egl', '--enable-gpu', '--ignore-gpu-blocklist'] });
-const report = { head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), viewport: [1280, 720], signal: 'buildDrop', warmup: 16, seconds: 6, date: new Date().toISOString(), runs: [] };
+const report = { head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), viewport: [1280, 720], signal: 'buildDrop', solids: process.env.FIDELITY_SOLIDS === '1', warmup: 16, seconds: 6, date: new Date().toISOString(), runs: [] };
 try {
   const scenes = (process.env.FIDELITY_SCENES || 'spectrum,terrain,monolith-desert,fractured-expanse,pulse-ocean,resonant-forest,matter-field').split(',');
   for (const quality of (process.env.FIDELITY_QUALITIES || 'low,medium,high').split(',')) for (const scene of scenes) {
@@ -21,7 +21,13 @@ try {
       settingsStore.set({ scene, quality, direction: 'manual', rigMode: 'preset', reflection: false, trackInfo: 'hidden' });
       await window.app.playTestSignal('buildDrop');
     }, { scene, quality });
-    await page.waitForFunction(() => window.app.audio.timing.heardTime >= 16, { timeout: 60000 });
+    if (report.solids) await page.evaluate(async () => {
+      const { solidSlot } = await import('/src/visual-engine/primitives/solidSlot.ts');
+      const world = window.app.directionDebug.current.visualizer.world;
+      if (!world) throw new Error('Experimental solids need a recipe');
+      world.add(solidSlot());
+    });
+    await page.waitForFunction(() => window.app.audio.timing.heardTime >= 16, undefined, { timeout: 60000 });
     await page.evaluate(() => {
       const engine = window.app.directionDebug, renderer = engine.renderer, gl = renderer.getContext();
       const timer = gl.getExtension('EXT_disjoint_timer_query_webgl2'), info = gl.getExtension('WEBGL_debug_renderer_info');

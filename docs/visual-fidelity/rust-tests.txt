@@ -1,0 +1,146 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s
+     Running unittests src/lib.rs (target/debug/deps/spectrum_analysis-9944cbdb57a51c85)
+
+running 5 tests
+test context::tests::next_downbeat_counts_the_remaining_beats ... ok
+test fft::tests::separates_two_channels ... ok
+test frame::tests::export_follows_the_layout ... ok
+test meter::tests::distinguishes_groupings_and_abstains_on_equal_accents ... ok
+test structure::tests::realigns_positions_from_an_unpublished_meter ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/acoustic.rs (target/debug/deps/acoustic-929cc62c5d59a999)
+
+running 4 tests
+test reset_and_quality_preserve_clock_and_quiet ... ok
+test physical_perceptual_phase_and_spatial_are_distinct ... ok
+test band_floor_learns_the_room_but_not_a_sustained_tone ... ok
+test loudness_quantiles_order_and_resist_a_single_peak ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.14s
+
+     Running tests/beats.rs (target/debug/deps/beats-1e4d817f04c63a16)
+
+running 9 tests
+test moves_off_the_off_beat ... ok
+test locks_to_a_steady_groove ... ok
+test same_input_same_beats ... ok
+test finds_the_downbeat ... ok
+test no_grid_without_rhythm ... ok
+test keeps_time_through_a_break ... ok
+test follows_a_real_tempo_change_without_flapping ... ok
+test a_fill_does_not_change_the_tempo ... ok
+test the_resonator_bank_can_drive_the_tracker ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.79s
+
+     Running tests/features.rs (target/debug/deps/features-4fef55c635ed0e05)
+
+running 14 tests
+test frames_are_stamped_with_the_capture_clock ... ok
+test band_level_reads_the_mean_square ... ok
+test mono_input_has_no_stereo_confidence ... ok
+test every_value_is_finite ... ok
+test clipping_is_detected_and_held ... ok
+test centroid_and_flatness_describe_the_timbre ... ok
+test same_input_same_frames ... ok
+test stereo_width_correlation_and_pan ... ok
+test flux_rises_on_attacks_not_on_steady_sound ... ok
+test loudness_is_calibrated ... ok
+test loudness_derivatives_follow_a_crescendo ... ok
+test tones_land_in_their_band ... ok
+test silence_and_presence ... ok
+test band_levels_are_relative_to_their_history ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.42s
+
+     Running tests/harmony.rs (target/debug/deps/harmony-e98bf289c3acbae5)
+
+running 8 tests
+test a_single_note_has_its_pitch_class ... ok
+test a_harmonic_tone_reports_its_partials_loudest_first ... ok
+test noise_has_no_harmony ... ok
+test no_key_in_silence ... ok
+test a_major_triad_lights_its_three_classes ... ok
+test partials_carry_where_they_sit_between_the_channels ... ok
+test noise_and_silence_have_no_strong_partials ... ok
+test the_key_of_a_progression ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.29s
+
+     Running tests/hpss.rs (target/debug/deps/hpss-c473e7f8be479df0)
+
+running 3 tests
+test a_held_chord_is_harmonic ... ok
+test hats_are_percussive ... ok
+test a_mix_sits_in_between_and_silence_is_neither ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.89s
+
+     Running tests/rhythm.rs (target/debug/deps/rhythm-c03577b6a9aa38aa)
+
+running 7 tests
+test silence_has_no_rhythm ... ok
+test a_held_chord_has_no_tempo ... ok
+test onsets_land_on_the_clicks ... ok
+test onset_density_counts_attacks ... ok
+test fast_tempo_is_not_halved ... ok
+test slow_tempo_is_not_doubled ... ok
+test tempo_of_steady_grooves ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.58s
+
+     Running tests/scene.rs (target/debug/deps/scene-ff429b4e984c7f4b)
+
+running 7 tests
+test it_draws_the_mono_mix_of_every_channel ... ok
+test about_sixty_frames_per_second_on_hop_boundaries_at_any_rate ... ok
+test silence_is_silent_and_the_picture_falls_with_its_own_smoothing ... ok
+test a_restart_of_the_analysis_keeps_the_picture ... ok
+test it_draws_levels_a_spectrum_the_waveform_and_the_two_voices ... ok
+test the_host_chooses_the_cadence_and_a_loaded_dsp_stretches_it ... ok
+test the_same_audio_gives_the_same_frames_whatever_the_batching ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.29s
+
+     Running tests/structure.rs (target/debug/deps/structure-6b790c38f31f07ef)
+
+running 7 tests
+test without_a_beat_the_structure_is_not_trusted ... ok
+test phrase_horizon_uses_rhythmic_evidence ... ok
+test predicts_phrase_boundaries_and_the_drop ... ok
+test recognises_a_returning_section ... ok
+test short_cycles_after_beatless_ambient ... ok
+test finds_the_sections_of_a_dance_track ... ok
+test same_song_same_sections ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.39s
+
+     Running tests/wire.rs (target/debug/deps/wire-d4949d72885f9450)
+
+running 2 tests
+test typescript_layout_is_up_to_date ... ok
+test records_are_tagged_and_sized ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running unittests src/lib.rs (target/debug/deps/spectrum_analysis_wasm-ff70777b2e1a1c82)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests spectrum_analysis
+
+running 1 test
+test native/analysis/src/lib.rs - (line 12) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+   Doc-tests spectrum_analysis_wasm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

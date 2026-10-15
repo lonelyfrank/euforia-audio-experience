@@ -1,0 +1,27 @@
+
+ RUN  v5.0.2 /home/frank/euforia-audio-experience
+
+ ❯ src/visualizers/terrain/SurfaceWinding.test.ts (2 tests | 1 failed) 57ms
+   ❯ opaque emergence faces seen from outside (2)
+     × mode 1: every nondegenerate face points out of its rigid piece 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/visualizers/terrain/SurfaceWinding.test.ts > opaque emergence faces seen from outside > mode 1: every nondegenerate face points out of its rigid piece
+AssertionError: pillar, face 0: expected -5.549751615168506 to be greater than 0
+ ❯ src/visualizers/terrain/SurfaceWinding.test.ts:23:77
+     21|         for (const axis of ['x', 'y', 'z'] as const) center[axis] = (M…
+     22|         const outward = a.clone().add(b).add(c).multiplyScalar(1 / 3).…
+     23|         expect(normal.dot(outward), `${SHAPES[shape].name}, face ${n /…
+       |                                                                             ^
+     24|         checked++;
+     25|       }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  19:21:07
+   Duration  1.14s (transform 50%, import 34%, tests 13%, worker 3%)
+

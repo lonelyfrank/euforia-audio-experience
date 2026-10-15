@@ -1,0 +1,551 @@
+{
+  "rounds": [
+    [
+      {
+        "id": "tunnel",
+        "switchMs": 624,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 3,
+        "programs": 4,
+        "heap": 34830353,
+        "scene": "Infinite Tunnel"
+      },
+      {
+        "id": "spectrum",
+        "switchMs": 959,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 3,
+        "programs": 3,
+        "heap": 34972848,
+        "scene": "Spectrum"
+      },
+      {
+        "id": "particle-field",
+        "switchMs": 968,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 4,
+        "programs": 3,
+        "heap": 36114624,
+        "scene": "Particle Field"
+      },
+      {
+        "id": "galaxy",
+        "switchMs": 960,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 4,
+        "programs": 3,
+        "heap": 36084153,
+        "scene": "Galaxy"
+      },
+      {
+        "id": "liquid",
+        "switchMs": 961,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 5,
+        "programs": 3,
+        "heap": 35832320,
+        "scene": "Liquid"
+      },
+      {
+        "id": "oscilloscope",
+        "switchMs": 964,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 5,
+        "textures": 4,
+        "programs": 5,
+        "heap": 35852836,
+        "scene": "Oscilloscope"
+      },
+      {
+        "id": "resonant-field",
+        "switchMs": 964,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 1,
+        "programs": 3,
+        "heap": 36042297,
+        "scene": "Resonant Field"
+      },
+      {
+        "id": "spectral-matter",
+        "switchMs": 962,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 10,
+        "programs": 4,
+        "heap": 38404833,
+        "scene": "Spectral Matter"
+      },
+      {
+        "id": "matter-field",
+        "switchMs": 966,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "heap": 38324933,
+        "scene": "Matter Field"
+      },
+      {
+        "id": "vector-field",
+        "switchMs": 965,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 7,
+        "programs": 6,
+        "heap": 37676957,
+        "scene": "Vector Field"
+      },
+      {
+        "id": "spectral-shell",
+        "switchMs": 965,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 1,
+        "programs": 5,
+        "heap": 37176506,
+        "scene": "Spectral Shell"
+      },
+      {
+        "id": "terrain",
+        "switchMs": 1034,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 1,
+        "programs": 5,
+        "heap": 36978561,
+        "scene": "Generative Terrain"
+      },
+      {
+        "id": "monolith-desert",
+        "switchMs": 917,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 1,
+        "programs": 5,
+        "heap": 37078605,
+        "scene": "Monolith Desert"
+      },
+      {
+        "id": "fractured-expanse",
+        "switchMs": 962,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 7,
+        "textures": 7,
+        "programs": 10,
+        "heap": 38504769,
+        "scene": "Fractured Expanse"
+      },
+      {
+        "id": "pulse-ocean",
+        "switchMs": 961,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 1,
+        "programs": 4,
+        "heap": 37998122,
+        "scene": "Pulse Ocean"
+      },
+      {
+        "id": "resonant-forest",
+        "switchMs": 1065,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 5,
+        "textures": 1,
+        "programs": 6,
+        "heap": 38619925,
+        "scene": "Resonant Forest"
+      }
+    ],
+    [
+      {
+        "id": "tunnel",
+        "switchMs": 942,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 3,
+        "programs": 4,
+        "heap": 38559433,
+        "scene": "Infinite Tunnel"
+      },
+      {
+        "id": "spectrum",
+        "switchMs": 955,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 3,
+        "programs": 3,
+        "heap": 38420357,
+        "scene": "Spectrum"
+      },
+      {
+        "id": "particle-field",
+        "switchMs": 927,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 4,
+        "programs": 3,
+        "heap": 39121061,
+        "scene": "Particle Field"
+      },
+      {
+        "id": "galaxy",
+        "switchMs": 930,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 4,
+        "programs": 3,
+        "heap": 39070017,
+        "scene": "Galaxy"
+      },
+      {
+        "id": "liquid",
+        "switchMs": 941,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 5,
+        "programs": 3,
+        "heap": 38694053,
+        "scene": "Liquid"
+      },
+      {
+        "id": "oscilloscope",
+        "switchMs": 943,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 5,
+        "textures": 4,
+        "programs": 5,
+        "heap": 38642517,
+        "scene": "Oscilloscope"
+      },
+      {
+        "id": "resonant-field",
+        "switchMs": 965,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 1,
+        "programs": 3,
+        "heap": 38796305,
+        "scene": "Resonant Field"
+      },
+      {
+        "id": "spectral-matter",
+        "switchMs": 956,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 10,
+        "programs": 4,
+        "heap": 40880684,
+        "scene": "Spectral Matter"
+      },
+      {
+        "id": "matter-field",
+        "switchMs": 993,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "heap": 40751772,
+        "scene": "Matter Field"
+      },
+      {
+        "id": "vector-field",
+        "switchMs": 960,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 7,
+        "programs": 6,
+        "heap": 39967368,
+        "scene": "Vector Field"
+      },
+      {
+        "id": "spectral-shell",
+        "switchMs": 963,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 8,
+        "programs": 6,
+        "heap": 39597493,
+        "scene": "Spectral Shell"
+      },
+      {
+        "id": "terrain",
+        "switchMs": 958,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 1,
+        "programs": 5,
+        "heap": 39323193,
+        "scene": "Generative Terrain"
+      },
+      {
+        "id": "monolith-desert",
+        "switchMs": 920,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 1,
+        "programs": 5,
+        "heap": 39273533,
+        "scene": "Monolith Desert"
+      },
+      {
+        "id": "fractured-expanse",
+        "switchMs": 943,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 7,
+        "textures": 7,
+        "programs": 10,
+        "heap": 40147128,
+        "scene": "Fractured Expanse"
+      },
+      {
+        "id": "pulse-ocean",
+        "switchMs": 950,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 1,
+        "programs": 4,
+        "heap": 39396513,
+        "scene": "Pulse Ocean"
+      },
+      {
+        "id": "resonant-forest",
+        "switchMs": 962,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 5,
+        "textures": 1,
+        "programs": 6,
+        "heap": 39507869,
+        "scene": "Resonant Forest"
+      }
+    ],
+    [
+      {
+        "id": "tunnel",
+        "switchMs": 949,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 3,
+        "programs": 4,
+        "heap": 39217649,
+        "scene": "Infinite Tunnel"
+      },
+      {
+        "id": "spectrum",
+        "switchMs": 939,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 3,
+        "programs": 3,
+        "heap": 38984529,
+        "scene": "Spectrum"
+      },
+      {
+        "id": "particle-field",
+        "switchMs": 944,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 4,
+        "programs": 3,
+        "heap": 39563257,
+        "scene": "Particle Field"
+      },
+      {
+        "id": "galaxy",
+        "switchMs": 947,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 4,
+        "programs": 3,
+        "heap": 39476153,
+        "scene": "Galaxy"
+      },
+      {
+        "id": "liquid",
+        "switchMs": 956,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 5,
+        "programs": 3,
+        "heap": 39083233,
+        "scene": "Liquid"
+      },
+      {
+        "id": "oscilloscope",
+        "switchMs": 942,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 5,
+        "textures": 4,
+        "programs": 5,
+        "heap": 39083861,
+        "scene": "Oscilloscope"
+      },
+      {
+        "id": "resonant-field",
+        "switchMs": 944,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 1,
+        "programs": 3,
+        "heap": 39058773,
+        "scene": "Resonant Field"
+      },
+      {
+        "id": "spectral-matter",
+        "switchMs": 989,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 2,
+        "textures": 10,
+        "programs": 4,
+        "heap": 41199136,
+        "scene": "Spectral Matter"
+      },
+      {
+        "id": "matter-field",
+        "switchMs": 973,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "heap": 41081688,
+        "scene": "Matter Field"
+      },
+      {
+        "id": "vector-field",
+        "switchMs": 955,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 7,
+        "programs": 6,
+        "heap": 40253636,
+        "scene": "Vector Field"
+      },
+      {
+        "id": "spectral-shell",
+        "switchMs": 963,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 1,
+        "programs": 5,
+        "heap": 39841521,
+        "scene": "Spectral Shell"
+      },
+      {
+        "id": "terrain",
+        "switchMs": 955,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 1,
+        "programs": 5,
+        "heap": 39447993,
+        "scene": "Generative Terrain"
+      },
+      {
+        "id": "monolith-desert",
+        "switchMs": 915,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 4,
+        "textures": 1,
+        "programs": 5,
+        "heap": 39434385,
+        "scene": "Monolith Desert"
+      },
+      {
+        "id": "fractured-expanse",
+        "switchMs": 959,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 7,
+        "textures": 7,
+        "programs": 10,
+        "heap": 40326396,
+        "scene": "Fractured Expanse"
+      },
+      {
+        "id": "pulse-ocean",
+        "switchMs": 939,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 3,
+        "textures": 1,
+        "programs": 4,
+        "heap": 39473529,
+        "scene": "Pulse Ocean"
+      },
+      {
+        "id": "resonant-forest",
+        "switchMs": 958,
+        "session": 2,
+        "sameRenderer": true,
+        "geometries": 5,
+        "textures": 1,
+        "programs": 6,
+        "heap": 39654085,
+        "scene": "Resonant Forest"
+      }
+    ]
+  ],
+  "interrupted": [
+    {
+      "session": 2,
+      "sameRenderer": true,
+      "geometries": 5,
+      "textures": 1,
+      "programs": 6,
+      "heap": 40027633,
+      "scene": "Resonant Forest"
+    }
+  ],
+  "errors": [],
+  "outcome": "pass"
+}

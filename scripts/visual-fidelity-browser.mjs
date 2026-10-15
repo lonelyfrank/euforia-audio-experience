@@ -10,6 +10,7 @@ const url = process.env.WORKSPACE_URL || 'http://127.0.0.1:1420';
 const fps = Number(process.env.FIDELITY_FPS || 30);
 const times = (process.env.FIDELITY_TIMES || '8,17,18.3,20,24').split(',').map(Number);
 const signal = process.env.FIDELITY_SIGNAL || 'buildDrop';
+const legacySeed = process.env.FIDELITY_LEGACY_SEED ? Number(process.env.FIDELITY_LEGACY_SEED) : null;
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH,
   args: ['--use-angle=gl-egl', '--enable-gpu', '--ignore-gpu-blocklist'] });
@@ -17,7 +18,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, dev
 const errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-const report = { head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), signal, fps, times, viewport: [1280, 720], reflection: process.env.FIDELITY_REFLECTION === '1', solids: process.env.FIDELITY_SOLIDS === '1', date: new Date().toISOString(), runs: [], errors };
+const report = { head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), signal, fps, times, legacySeed, viewport: [1280, 720], reflection: process.env.FIDELITY_REFLECTION === '1', solids: process.env.FIDELITY_SOLIDS === '1', date: new Date().toISOString(), runs: [], errors };
 try {
   // A test-only document; production modules are imported from the development server.
   await page.route('**/__visual_fidelity', route => route.fulfill({ contentType: 'text/html', body: '<style>html,body{margin:0;background:#000}#stage{width:1280px;height:720px}</style><div id="stage"></div>' }));
@@ -47,7 +48,7 @@ try {
     // RenderEngine.tick itself is used. The harness supplies its RAF timestamps and does not start a second loop.
     window.requestAnimationFrame = () => 1;
     window.cancelAnimationFrame = () => {};
-    window.__mount = async (id, quality, fps, reflection, solids) => {
+    window.__mount = async (id, quality, fps, reflection, solids, legacySeed) => {
       window.__run?.render.dispose();
       const m = window.__modules, decoder = new m.AnalysisDecoder(), experience = new m.ExperienceEngine(), feed = new m.SceneFeed();
       decoder.onFrame = a => experience.ingest(a); decoder.onOnset = o => experience.onset(o);
@@ -74,7 +75,13 @@ try {
       render.setQuality(quality); render.setReflection(reflection);
       render.setPalette(m.paletteColors(m.findPalette('nebula'), [new m.Color(), new m.Color(), new m.Color()]));
       rig = new m.RigController(host, render, () => settings); input.rig = rig.rig;
-      const before = performance.now(); rig.showScene(id);
+      const before = performance.now(), random = Math.random;
+      // Galaxy predates seeded scenes. Scope this optional control to test-only construction; preserve product code.
+      if (id === 'galaxy' && legacySeed !== null) {
+        const { Rng } = await import('/src/show/rng.ts');
+        const rng = new Rng(legacySeed); Math.random = () => rng.next();
+      }
+      try { rig.showScene(id); } finally { Math.random = random; }
       while (!render.current.ready) await new Promise(resolve => setTimeout(resolve, 10));
       if (solids) {
         const { solidSlot } = await import('/src/visual-engine/primitives/solidSlot.ts');
@@ -110,12 +117,14 @@ try {
   const scenes = process.env.FIDELITY_SCENES?.split(',') || await page.evaluate(() => window.__modules.visualizers.map(v => v.id));
   const qualities = (process.env.FIDELITY_QUALITIES || 'low,medium,high').split(',');
   for (const quality of qualities) for (const id of scenes) {
-    const meta = await page.evaluate(args => window.__mount(...args), [id, quality, fps, report.reflection, report.solids]);
+    const meta = await page.evaluate(args => window.__mount(...args), [id, quality, fps, report.reflection, report.solids, legacySeed]);
     const run = { id, quality, ...meta, frames: [] };
     let reached = 0;
     for (const at of times) {
       while (reached < at) { reached = Math.min(at, reached + 0.5); await page.evaluate(([t, capture]) => window.__run.next(t, capture), [reached, reached === at]); }
       const frame = await page.evaluate(() => window.__run.snapshot());
+      if (![...frame.camera.position, ...frame.camera.quaternion, ...(frame.camera.fov === undefined ? [] : [frame.camera.fov]),
+        frame.world?.speed, frame.world?.energy].every(Number.isFinite)) throw new Error(`Non-finite camera/world: ${id}/${quality}/${at}`);
       const name = `${id}-${quality}-${at.toFixed(2)}.png`;
       // Capture the framebuffer immediately; screenshots do not advance the musical clock.
       const png = await page.evaluate(() => window.__run.png);
@@ -135,6 +144,7 @@ try {
       results.runTracerParity = (await import('/src/render-systems/particles/tracerParity.ts')).runTracerParity(1024, 120, true, renderer);
       return results;
     });
+    if (Object.values(report.parity).some(r => r.outcome !== 'pass')) throw new Error('GPU parity failed; see report.parity');
   }
   if (errors.length) throw new Error(errors.join('\n'));
 } finally { await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2)); await browser.close(); }

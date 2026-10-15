@@ -1,0 +1,13 @@
+{
+  "result": "pass",
+  "checks": [
+    "lazy load",
+    "seven views",
+    "sections per view",
+    "no development control",
+    "Shift+D/E inert",
+    "Escape and Shift+G",
+    "one canvas and context"
+  ],
+  "errors": []
+}

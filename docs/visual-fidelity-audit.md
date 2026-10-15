@@ -55,12 +55,34 @@ Filtri: `FIDELITY_SCENES` e `FIDELITY_QUALITIES` (liste separate da virgole),
 `FIDELITY_REFLECTION=1`, `WORKSPACE_URL`. Non eseguire benchmark CPU contemporaneamente
 alle misure GPU live. Conservare entrambi i report e confrontare gli stessi frame.
 
+Ulteriori controlli: `FIDELITY_SOLIDS=1` monta lo slot sperimentale esistente solo nella
+pagina di test; `FIDELITY_PARITY=1` esegue i cinque readback GPU esistenti;
+`FIDELITY_LEGACY_SEED=20261015` controlla la costruzione casuale di Galaxy nel harness.
+La baseline iniziale di Galaxy non aveva questo controllo: i suoi pixel non sono
+confrontabili per uguaglianza. Due replay supplementari seminati sono identici nei
+15 campioni; il codice della scena resta invariato.
+
+La campagna dopo le correzioni ha altre 48 corse e 240 immagini senza errori.
+[Dati dopo](visual-fidelity/after.json.gz), [differenze RGB](visual-fidelity/pixel-comparison.json),
+[tavola Low](visual-fidelity/evidence/after-low-24.png),
+[tavola Medium](visual-fidelity/evidence/after-medium-24.png),
+[tavola High](visual-fidelity/evidence/after-high-24.png).
+Il report prima riporta `2e7024c`; quello dopo riporta `048b98f` ed è stato
+acquisito col working tree delle quattro correzioni, poi registrate nei checkpoint
+elencati nel [rapporto](graphics-refactor-report.md). Non è una seconda esecuzione del codice baseline.
+
 ## Matrice di conformità
 
 La [matrice completa](visual-fidelity/matrix.csv) separa comportamento atteso, modulo,
 segnale, attivazione, risultato visivo, osservazione, evidenza, problema, intervento
 e nuova validazione. **VERIFIED vale solo per il comportamento e le condizioni nominate**,
 mai per l'intera scena o la sua fedeltà musicale in generale.
+`baseline_status` conserva la classificazione iniziale; `status` e `revalidation` sono
+il risultato dopo gli interventi. Un bug corretto solo con test numerico resta PARTIAL
+quando manca ancora la dimostrazione visiva del caso specifico.
+Esito sui 78 comportamenti: 13 VERIFIED, 57 PARTIAL, 3 NOT OBSERVABLE,
+3 NOT TESTED e 2 NOT IMPLEMENTED (studi futuri e collisioni). Non è una percentuale
+di completamento del prodotto: le righe raggruppano proprietà di ampiezza diversa.
 
 | Stato | Significato |
 |---|---|

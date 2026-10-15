@@ -1,0 +1,1145 @@
+{
+  "mode": "soak",
+  "url": "http://127.0.0.1:1420",
+  "minutes": 6,
+  "idle": false,
+  "first": {
+    "heapMB": 21.027931213378906,
+    "nodes": 242,
+    "domListeners": 66,
+    "intervals": 2,
+    "observers": 2,
+    "listeners": 18,
+    "geometries": 5,
+    "textures": 11,
+    "programs": 9,
+    "session": 2,
+    "pinned": null,
+    "form": "auto",
+    "only": null,
+    "scene": "Matter Field"
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "minute": 0.16611666666666666,
+      "segments": 3,
+      "pacing": {
+        "frames": 541,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000189,
+        "p99": 49.99500000000262,
+        "over25": 0.04436229205175601
+      },
+      "closed": {
+        "heapMB": 23.155452728271484,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 2,
+      "minute": 0.32995,
+      "segments": 3,
+      "pacing": {
+        "frames": 555,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 66.65999999999985,
+        "over25": 0.02882882882882883
+      },
+      "closed": {
+        "heapMB": 23.864700317382812,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 3,
+      "minute": 0.4835,
+      "segments": 3,
+      "pacing": {
+        "frames": 533,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 33.330000000001746,
+        "over25": 0.020637898686679174
+      },
+      "closed": {
+        "heapMB": 24.169300079345703,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 4,
+      "minute": 0.6384833333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 540,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 33.33499999999913,
+        "over25": 0.018518518518518517
+      },
+      "closed": {
+        "heapMB": 24.245105743408203,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 5,
+      "minute": 0.7901333333333334,
+      "segments": 3,
+      "pacing": {
+        "frames": 533,
+        "p50": 16.665000000000873,
+        "p95": 16.67000000000553,
+        "p99": 33.330000000001746,
+        "over25": 0.013133208255159476
+      },
+      "closed": {
+        "heapMB": 24.37592315673828,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 6,
+      "minute": 0.9431833333333334,
+      "segments": 3,
+      "pacing": {
+        "frames": 534,
+        "p50": 16.66500000000815,
+        "p95": 16.67000000000553,
+        "p99": 33.33499999999913,
+        "over25": 0.018726591760299626
+      },
+      "closed": {
+        "heapMB": 24.54991912841797,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 7,
+      "minute": 1.0940166666666666,
+      "segments": 3,
+      "pacing": {
+        "frames": 530,
+        "p50": 16.66500000000815,
+        "p95": 16.669999999998254,
+        "p99": 33.330000000001746,
+        "over25": 0.013207547169811321
+      },
+      "closed": {
+        "heapMB": 24.661373138427734,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 8,
+      "minute": 1.2487333333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 540,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.3350000000064,
+        "over25": 0.018518518518518517
+      },
+      "closed": {
+        "heapMB": 24.663471221923828,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 9,
+      "minute": 1.4004,
+      "segments": 3,
+      "pacing": {
+        "frames": 533,
+        "p50": 16.66500000000815,
+        "p95": 16.669999999998254,
+        "p99": 33.330000000001746,
+        "over25": 0.013133208255159476
+      },
+      "closed": {
+        "heapMB": 24.93897247314453,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 10,
+      "minute": 1.5548333333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 536,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.3350000000064,
+        "over25": 0.020522388059701493
+      },
+      "closed": {
+        "heapMB": 24.904571533203125,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 11,
+      "minute": 1.7051,
+      "segments": 3,
+      "pacing": {
+        "frames": 529,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.330000000001746,
+        "over25": 0.015122873345935728
+      },
+      "closed": {
+        "heapMB": 25.04244613647461,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 12,
+      "minute": 1.8578833333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 536,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.330000000001746,
+        "over25": 0.014925373134328358
+      },
+      "closed": {
+        "heapMB": 25.057727813720703,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 13,
+      "minute": 2.0078833333333335,
+      "segments": 3,
+      "pacing": {
+        "frames": 528,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.33499999999185,
+        "over25": 0.013257575757575758
+      },
+      "closed": {
+        "heapMB": 25.150394439697266,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 14,
+      "minute": 2.161216666666667,
+      "segments": 3,
+      "pacing": {
+        "frames": 537,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.33499999999185,
+        "over25": 0.0148975791433892
+      },
+      "closed": {
+        "heapMB": 25.038482666015625,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 15,
+      "minute": 2.312683333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 527,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.33499999999185,
+        "over25": 0.022770398481973434
+      },
+      "closed": {
+        "heapMB": 25.129467010498047,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 16,
+      "minute": 2.4673,
+      "segments": 3,
+      "pacing": {
+        "frames": 540,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.335000000020955,
+        "over25": 0.014814814814814815
+      },
+      "closed": {
+        "heapMB": 25.14432144165039,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 17,
+      "minute": 2.621166666666667,
+      "segments": 3,
+      "pacing": {
+        "frames": 536,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.33499999999185,
+        "over25": 0.022388059701492536
+      },
+      "closed": {
+        "heapMB": 25.270404815673828,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 18,
+      "minute": 2.7742166666666668,
+      "segments": 3,
+      "pacing": {
+        "frames": 535,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.3300000000163,
+        "over25": 0.016822429906542057
+      },
+      "closed": {
+        "heapMB": 25.333003997802734,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 19,
+      "minute": 2.9247833333333335,
+      "segments": 3,
+      "pacing": {
+        "frames": 529,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.3300000000163,
+        "over25": 0.015122873345935728
+      },
+      "closed": {
+        "heapMB": 25.41720199584961,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 20,
+      "minute": 3.0789333333333335,
+      "segments": 3,
+      "pacing": {
+        "frames": 539,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.33499999999185,
+        "over25": 0.016697588126159554
+      },
+      "closed": {
+        "heapMB": 25.371788024902344,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 21,
+      "minute": 3.2306,
+      "segments": 3,
+      "pacing": {
+        "frames": 523,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 49.99499999999534,
+        "over25": 0.028680688336520075
+      },
+      "closed": {
+        "heapMB": 25.48134994506836,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 22,
+      "minute": 3.3853,
+      "segments": 3,
+      "pacing": {
+        "frames": 538,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.335000000020955,
+        "over25": 0.024163568773234202
+      },
+      "closed": {
+        "heapMB": 25.397666931152344,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 23,
+      "minute": 3.5358833333333335,
+      "segments": 3,
+      "pacing": {
+        "frames": 528,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.335000000020955,
+        "over25": 0.013257575757575758
+      },
+      "closed": {
+        "heapMB": 25.456844329833984,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 24,
+      "minute": 3.6892,
+      "segments": 3,
+      "pacing": {
+        "frames": 536,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.33499999999185,
+        "over25": 0.016791044776119403
+      },
+      "closed": {
+        "heapMB": 25.474998474121094,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 25,
+      "minute": 3.8414,
+      "segments": 3,
+      "pacing": {
+        "frames": 532,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.33499999999185,
+        "over25": 0.015037593984962405
+      },
+      "closed": {
+        "heapMB": 25.614273071289062,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 26,
+      "minute": 3.9947333333333335,
+      "segments": 3,
+      "pacing": {
+        "frames": 535,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.335000000020955,
+        "over25": 0.016822429906542057
+      },
+      "closed": {
+        "heapMB": 25.540348052978516,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 27,
+      "minute": 4.14475,
+      "segments": 3,
+      "pacing": {
+        "frames": 527,
+        "p50": 16.66500000000815,
+        "p95": 16.670000000012806,
+        "p99": 33.3300000000163,
+        "over25": 0.015180265654648957
+      },
+      "closed": {
+        "heapMB": 25.62494659423828,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 28,
+      "minute": 4.2986,
+      "segments": 3,
+      "pacing": {
+        "frames": 538,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.33499999996275,
+        "over25": 0.01858736059479554
+      },
+      "closed": {
+        "heapMB": 25.573894500732422,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 29,
+      "minute": 4.448616666666667,
+      "segments": 3,
+      "pacing": {
+        "frames": 527,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.335000000020955,
+        "over25": 0.013282732447817837
+      },
+      "closed": {
+        "heapMB": 25.669342041015625,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 30,
+      "minute": 4.604733333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 541,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.335000000020955,
+        "over25": 0.02033271719038817
+      },
+      "closed": {
+        "heapMB": 25.630924224853516,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 31,
+      "minute": 4.755816666666667,
+      "segments": 3,
+      "pacing": {
+        "frames": 531,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.33499999996275,
+        "over25": 0.015065913370998116
+      },
+      "closed": {
+        "heapMB": 25.710208892822266,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 32,
+      "minute": 4.909416666666667,
+      "segments": 3,
+      "pacing": {
+        "frames": 537,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.3300000000163,
+        "over25": 0.0186219739292365
+      },
+      "closed": {
+        "heapMB": 25.675418853759766,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 33,
+      "minute": 5.05885,
+      "segments": 3,
+      "pacing": {
+        "frames": 526,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.32999999995809,
+        "over25": 0.013307984790874524
+      },
+      "closed": {
+        "heapMB": 25.770870208740234,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 34,
+      "minute": 5.212183333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 534,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 49.99499999999534,
+        "over25": 0.018726591760299626
+      },
+      "closed": {
+        "heapMB": 25.70669937133789,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 35,
+      "minute": 5.362716666666667,
+      "segments": 3,
+      "pacing": {
+        "frames": 530,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.3300000000163,
+        "over25": 0.013207547169811321
+      },
+      "closed": {
+        "heapMB": 25.766666412353516,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 36,
+      "minute": 5.5155,
+      "segments": 3,
+      "pacing": {
+        "frames": 536,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.335000000020955,
+        "over25": 0.014925373134328358
+      },
+      "closed": {
+        "heapMB": 25.719696044921875,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 37,
+      "minute": 5.6658,
+      "segments": 3,
+      "pacing": {
+        "frames": 529,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.33499999996275,
+        "over25": 0.013232514177693762
+      },
+      "closed": {
+        "heapMB": 25.84705352783203,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 38,
+      "minute": 5.819933333333333,
+      "segments": 3,
+      "pacing": {
+        "frames": 539,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.33499999996275,
+        "over25": 0.014842300556586271
+      },
+      "closed": {
+        "heapMB": 25.936153411865234,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 39,
+      "minute": 5.96965,
+      "segments": 3,
+      "pacing": {
+        "frames": 529,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 16.67000000004191,
+        "over25": 0.00945179584120983
+      },
+      "closed": {
+        "heapMB": 25.99618911743164,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    },
+    {
+      "round": 40,
+      "minute": 6.122416666666667,
+      "segments": 3,
+      "pacing": {
+        "frames": 535,
+        "p50": 16.665000000037253,
+        "p95": 16.67000000004191,
+        "p99": 33.335000000020955,
+        "over25": 0.016822429906542057
+      },
+      "closed": {
+        "heapMB": 25.971446990966797,
+        "nodes": 298,
+        "domListeners": 81,
+        "intervals": 2,
+        "observers": 2,
+        "listeners": 18,
+        "geometries": 4,
+        "textures": 11,
+        "programs": 9,
+        "session": 2,
+        "pinned": null,
+        "form": "auto",
+        "only": null,
+        "scene": "Matter Field"
+      }
+    }
+  ],
+  "errors": []
+}
