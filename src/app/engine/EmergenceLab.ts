@@ -27,6 +27,10 @@ import { LAB_WORLDS, WorldsExperiment, type LabWorld } from './worlds';
 const HOSTS = ['matter-field', 'vector-field', 'spectral-shell', 'resonant-field'];
 type Subject = 'terrain' | 'particles' | 'worlds';
 
+/** What the six tiles say, for the Terrain and Particles subjects and for the new worlds. */
+const TILES = ['Structures', 'Phases', 'Life', 'Fracture gate', 'Cues', 'Cost'];
+const WORLD_TILES = ['Locomotion', 'Observer', 'Speed · lens', 'Subject', 'Cues', 'Cost'];
+
 /** A button that steps through values; its label shows the value in force. */
 type Cycle = HTMLButtonElement & { read: () => string };
 
@@ -47,7 +51,7 @@ export class EmergenceLab {
   private readonly worldChoices = h('div', { class: 'ws-actions' });
   private readonly terrainControls = h('div', { class: 'ws-actions' });
   private readonly solidControls = h('div', { class: 'ws-actions' });
-  private readonly tiles = ['Structures', 'Phases', 'Life', 'Fracture gate', 'Cues', 'Cost'].map((label) => tile(label));
+  private readonly tiles = TILES.map((label) => tile(label));
   private readonly note = h('p', { class: 'ws-note' });
   private readonly cost = h('div', { class: 'ws-table' });
 
@@ -126,6 +130,8 @@ export class EmergenceLab {
     this.worldChoices.hidden = this.subject !== 'worlds';
     for (const item of this.element.querySelectorAll<Cycle>('button[data-cycle]')) writeText(item, item.read());
     const [structures, phases, life, gate, cues, cost] = this.tiles;
+    const labels = this.subject === 'worlds' ? WORLD_TILES : TILES;
+    this.tiles.forEach((x, i) => writeText(x.element.firstElementChild as HTMLElement, labels[i]));
     if (this.subject === 'worlds') {
       const lines = this.worlds.read(world?.recipe.id === this.world ? world : null);
       if (!lines.length) {
@@ -136,10 +142,10 @@ export class EmergenceLab {
       }
       writeText(this.note, 'I mondi nuovi: il loro osservatore (profili di locomozione) e il loro soggetto. Reset e cue sintetici passano dallo stesso percorso dei cue della sessione; il mare non ne prende (legge il rilascio del mondo).');
       const read = (label: string): string => lines.find(([l]) => l === label)?.[1] ?? '—';
-      writeTile(structures, read('locomotion'), `subject ${read('subject')}`);
+      writeTile(structures, read('locomotion'), this.world);
       writeTile(phases, read('observer'), `target ${read('target')}`);
       writeTile(life, read('speed · forward'), read('lens · roll'));
-      writeTile(gate, '—', 'per world: see the table');
+      writeTile(gate, read('subject'), 'eye on it');
       writeTile(cues, `${this.worlds.offered}`, 'synthetic cues taken');
       writeTile(cost, read('cost'), 'CPU per frame');
       const drawn = this.diagnostics.renderer?.drawn;

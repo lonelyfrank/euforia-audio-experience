@@ -24,6 +24,7 @@ Contratti e algoritmi: [acustica](acoustic-model.md), [planner](experience-plann
 [Solid Dynamics](solid-dynamics.md), [Rigid Resonant Body](rigid-resonant-body.md),
 [Adaptive Music Calibration](adaptive-calibration.md), [Tunnel Motion Coordinator](tunnel-motion.md),
 [Music Response](music-response.md), [Generative Terrain](generative-terrain.md), [Musical Cognition](musical-cognition.md), [Famiglie di scene, solidi ed emersione](scene-families.md),
+[Generative Worlds](generative-worlds.md), [mondi futuri (progetto)](future-worlds.md),
 [transizioni fra ambienti (studio)](world-transitions.md).
 `meter=0` significa sconosciuto; non quantizzare allora la regia a una falsa
 battuta 4/4. Il budget DSP riduce solo la frequenza delle elaborazioni lente,
@@ -63,6 +64,8 @@ frontend, backend e WASM della stessa revisione.
 | Generative Terrain | `visualizers/terrain/`, `visual-engine/primitives/terrain{Law,Motion}.ts`, `TerrainPrimitive.ts` | Recipe del suolo (più l'emersione): reticolo fisso su cui la mesh scorre, legge dell'altezza in GLSL e TS, lettura del mondo per il suolo su tre scale (`TerrainResponse`). Due draw call, nessun pass. |
 | Emersione dal terreno | `visual-engine/primitives/{emergenceLaw,terrainEmergence,EmergencePrimitive,terrainParity}.ts` | Strutture ancorate alla legge del suolo (GLSL e TS), ciclo di vita a pool fisso sui cue musicali, istanze con gli uniform del suolo; parità GPU ↔ CPU. Due draw call (una a Low). |
 | Famiglie di scene | `types/visualizer.ts` (`SceneCategory`, `SCENE_CATEGORIES`), `visualizers/registry.ts` (`scenesOf`, `categoryOf`), `app/menus.ts` | Particles / Worlds / Spectrum come metadato del registry; Scene → famiglia → scena nel menu. |
+| Locomozione dei mondi | `render-systems/camera/locomotion.ts`, `visual-engine/RigCamera.ts`, `WorldRecipe.camera` | Profili travel / glide / orbit / hover / drift letti da `WorldView` (nessun tempo proprio), sommati e limitati da `CameraRig`; una recipe con `camera` sostituisce l'`Observer`. Tunnel e Terrain non lo usano. |
+| Generative Worlds | `visualizers/{monolith-desert,fractured-expanse,pulse-ocean,resonant-forest}/`, `visual-engine/primitives/{lattice,ocean*,forest*,ConstellationPrimitive}.ts` | Quattro recipe Worlds sul riuso di suolo, emersione, solidi, campo e fronti; leggi nuove del mare e della foresta in GLSL e TS con prova di parità; ciclo di vita e memoria della foresta. |
 | Cue musicali | `experience/MusicalCues.ts` | Adattatore per hop: anticipazione, previsione, osservazione, conferma (rilascio udito) distinte; snapshot `cues`. Il `drop` dell'Experience non è un cue. |
 | Solidi fra le particelle (DEV) | `visual-engine/primitives/solidSlot.ts`, `SolidPrimitive` (`population`), `app/engine/{emergence,EmergenceLab}.ts` | Popolazione di corpi di `SolidSystem` montata a runtime in una recipe Particles dal laboratorio Emergence. |
 | Tunnel Motion Coordinator | `visualizers/tunnel/motion.ts`, `topology.ts` (`architecture`) | Decide quanto di ogni target del Tunnel si vede: viaggio continuo (integrale esatto di un follower), forma e torsione seguite e limitate, apertura della parete con isteresi, accenti solo da eventi che spiccano, cessione progressiva di B mentre C occupa il quadro. `balance: 0` non chiama il coordinatore ([tunnel-motion](tunnel-motion.md)) |

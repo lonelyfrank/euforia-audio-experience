@@ -8,7 +8,8 @@
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
   `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md`, `docs/solid-dynamics.md`,
   `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md`, `docs/tunnel-motion.md`, `docs/music-response.md`,
-  `docs/generative-terrain.md`, `docs/musical-cognition.md` e `docs/scene-families.md` descrivono il nuovo percorso. Gli audit precedenti sono storici.
+  `docs/generative-terrain.md`, `docs/musical-cognition.md`, `docs/scene-families.md` e `docs/generative-worlds.md` descrivono il nuovo
+  percorso (`docs/future-worlds.md` è solo progetto). Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
   La macchina di sviluppo può avviare il browser su porta 1420 anche senza
@@ -93,7 +94,8 @@
   cambiarli insieme (è ciò che tiene fermo un corpo a riposo). Carico, fatica e memoria sono le funzioni di `BondSystem`
   (`loadOf`, `tire`, `fade`): una legge per fili e link. Pool a budget esplicito: ciò che non entra è rifiutato e contato; qualità
   grafica e FPS non toccano topologia né iterazioni. `SolidPrimitive` invia posizioni della simulazione: nessuno shader sposta
-  un vertice. `solidLab`, il laboratorio (fuori dal registry) e `SolidCockpit` sono solo DEV; nessun solido nelle scene del prodotto.
+  un vertice. `solidLab`, il laboratorio (fuori dal registry) e `SolidCockpit` sono solo DEV; nessun solido nelle scene del prodotto
+  tranne **Fractured Expanse** (Worlds, `docs/generative-worlds.md`): nessuna scena Particles ne contiene (test).
 - Rigid Resonant Body (`docs/rigid-resonant-body.md`): è un materiale di `SolidSystem` (`SolidTuning`), non un sistema. Il riferimento
   di forma (`SolidState.rest`, `bodyScale`) si scrive alla semina e mai dopo: un frammento usa la propria parte. La pulsazione è una
   sola e fisica (scala i target di link, cerniere, celle e fit, mai il disegno), entro `PULSE_LIMIT`. Il fit di forma usa una quota unica
@@ -165,6 +167,19 @@
   `diagnostics.segment`) e non azzera: reset solo per nuova sessione audio, avvio REC, cambio dello strumento (Detailed, profiling,
   readback) e `reset()` esplicito. Un solo timer a 5 Hz, nessun RAF o listener dei pannelli; REC e fine esperimento hanno un solo
   controllo, nella toolbar. Ripetere `scripts/workspace-browser.mjs acceptance` (e `release`) dopo ogni modifica.
+- Generative Worlds (`docs/generative-worlds.md`): un mondo è una recipe con un `camera` suo (`WorldRecipe.camera`, `RigCamera`), mai un
+  framework o un registry paralleli. I profili di locomozione (`render-systems/camera/locomotion.ts`: travel, glide, orbit, hover, drift)
+  leggono solo `WorldView` (seguito esattamente su un frame, o somme dello spostamento del mondo) e il soggetto che la scena offre: nessun
+  clock proprio, nessuna lettura di cattura, analisi o cognizione; a riposo fermi, uguali a ogni frame rate, limitati da `RigLimits`. Il
+  Tunnel non usa il rig (il suo coordinatore resta) e il Terrain non ha camera: non migrarli senza prove di equivalenza. Monoliti, alberi e
+  ogni cosa che sta su un suolo leggono `terrainHeight` stessa sugli uniform del suolo (`TerrainPrimitive.shared`). Le estensioni
+  dell'emersione (`placement`, `forms`, `keep`, `focus`) e `TerrainMotion.pace` valgono zero/1 di default: il Terrain resta bit per bit.
+  `oceanLaw` e `forestLaw` sono scritte in GLSL e in TS: cambiarle insieme e ripetere `runOceanParity()` / `runForestParity()`. Il tempo
+  delle onde è l'integrale di quanto il mondo è vivo (fermo in silenzio); un rilascio cambia quanto conta un'onda, mai la sua direzione. La
+  forma di un albero si fissa alla semina (tratti quantizzati) e non cambia; la memoria della foresta è una firma di sei tratti della
+  geometria per albero, che risuona solo con `cues.repetition` (mai l'identità di un brano). Le azioni irreversibili (frattura, emersione
+  importante, fioritura) leggono solo `release` confermati. I mondi nuovi non sono in `show/fixtures.ts` finché manca la prova con musica
+  reale. Il soggetto Worlds del laboratorio Emergence è solo DEV.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente e quella dell'analisi delle
   scene, non hop/beat. Le soglie (`DspBudget.ts` e `src-tauri/src/audio.rs`) sono le stesse nei due
   host: cambiarle insieme. Il wire e il WASM versionato devono corrispondere al backend:
