@@ -380,6 +380,25 @@ Con cattura di sistema, musica vera, a occhio, almeno Low e High:
 
 ## 16. Proposta per la fase successiva
 
+Aggiornamento grafico del 15 ottobre 2026 (non sostituisce la verifica musicale del §15):
+
+- Monolith Desert abilita `emergence.initial`: quando il viaggio rivela la prima nuova riga
+  e la densità musicale ha un target positivo, valuta una volta anche la pianura iniziale.
+  Usa hash, distanze, corridoio, densità e budget di formazione esistenti. Non aumenta la
+  capacità né genera strutture a viaggio fermo. Il default è `false`, quindi il ciclo del
+  Generative Terrain resta quello precedente. Questo evita di dover attraversare tutto il
+  campo prima che i primi landmark raggiungano una profondità leggibile.
+- Resonant Forest consuma la prima semina solo quando la musica ammette una densità positiva:
+  il primo frame udibile può ancora avere fase `silence` durante l'acquisizione. Un reset di
+  sessione cancella le date degli accenti e delle fioriture precedenti, preservando alberi e
+  memoria geometrica. Non produce più una fioritura artificiale quando il clock torna a zero.
+- Le facce ancorate del terreno/deserto hanno winding esterno (leggi TS/GLSL aggiornate
+  insieme). Nessuna modifica a solver, pulse limit, camere, DSP o regia.
+
+La [campagna visiva](visual-fidelity-audit.md) conserva le immagini prima/dopo e distingue
+i comportamenti osservati da quelli ancora non dimostrati, in particolare la selettività
+della memoria della foresta su musica reale.
+
 1. Validazione con musica reale (§15), poi taratura visiva per mondo.
 2. Decidere la riflessione per i mondi sorvolati (spenta per scena? un parametro del layout?).
 3. Mettere i mondi validati nella regia automatica con le affinità di §10 dopo averle confrontate con la musica.

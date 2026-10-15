@@ -74,6 +74,23 @@ describe('Monolith Desert: a scene of the Worlds family', { timeout: 30_000 }, (
     expect(f.gate.stats.offered).toBe(0);
   });
 
+  it('populates the first visible plain only once travel starts, within the formation budget', () => {
+    const r = mount('monolith-desert', { emergence: emergenceParams({ ...preset.visual.emergence, density: 1, response: 0 }) });
+    const { monoliths, ground } = parts(r), f = monoliths.field;
+    r.sound();
+    r.run(2, (w) => { groove(w); w.speed = 0; });
+    expect(f.stats.spawned).toBe(0);
+    r.run(2, (w) => groove(w));
+    expect(f.stats.spawned).toBeGreaterThan(0);
+    expect(f.stats.spawned).toBeLessThanOrEqual(f.params.emerging);
+    // A landmark belongs to the near/middle plain, not solely to newly entering horizon rows.
+    const row = ground.motion.values.row;
+    expect(Array.from({ length: f.count }, (_, i) => (f.anchor[i * 4 + 1] - row + PERIOD) % PERIOD).some(depth => depth < 30)).toBe(true);
+    const spawned = f.stats.spawned;
+    r.run(4, (w) => { groove(w); w.speed = 0; });
+    expect(f.stats.spawned).toBe(spawned);
+  });
+
   it('a breakdown brings the smaller ones down and leaves the tallest standing: the landmarks of the place', () => {
     const settings = emergenceParams({ ...preset.visual.emergence, density: 0.6, keep: 2 });
     const r = mount('monolith-desert', { emergence: settings });

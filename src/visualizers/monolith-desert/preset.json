@@ -39,6 +39,7 @@
     },
     "emergence": {
       "enabled": true,
+      "initial": true,
       "capacity": 24,
       "emerging": 4,
       "fragments": 3,

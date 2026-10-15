@@ -65,11 +65,13 @@ export interface EmergenceParams {
   forms: readonly ShapeName[] | null;
   /** How many of the tallest that stand a breakdown leaves standing: the landmarks of the place (0: it retires them all). */
   keep: number;
+  /** Seed the first revealed plain too, at the ordinary density/budget; only once travel brings a new row. */
+  initial: boolean;
 }
 
 export const DEFAULT_EMERGENCE: Readonly<EmergenceParams> = {
   enabled: true, capacity: 28, emerging: 6, fragments: 4, spacing: 6, density: 0.12, rate: 1, response: 1, pulse: PULSE_LIMIT, fracture: true,
-  modes: 'both', low: 0.3, high: 0.7, placement: 'walls', corridor: 6, forms: null, keep: 0,
+  modes: 'both', low: 0.3, high: 0.7, placement: 'walls', corridor: 6, forms: null, keep: 0, initial: false,
 };
 /** No pool is larger than this, whatever a preset or a tool asks. */
 export const MAX_STRUCTURES = 64;
@@ -94,6 +96,7 @@ export function emergenceParams(s: EmergenceSettings = {}): EmergenceParams {
     low, high: within(s.high, low, 4, Math.max(low, d.high)),
     placement: (PLACEMENTS as readonly string[]).includes(s.placement ?? '') ? s.placement as EmergenceParams['placement'] : d.placement,
     corridor: within(s.corridor, 0, 200, d.corridor), forms: forms.length ? forms : null, keep: Math.round(within(s.keep, 0, MAX_STRUCTURES, d.keep)),
+    initial: s.initial ?? d.initial,
   };
 }
 
@@ -212,6 +215,8 @@ export class EmergenceField {
   /** The ground's row at the last step (what `focus` measures depths from), and the structure the viewer watches (−1: none). */
   private lastRow = 0;
   private watched = -1;
+  private sown = false;
+  private planting = false;
   private readonly take = (cue: Readonly<Cue>): void => this.cue(cue);
 
   constructor(params: EmergenceSettings = {}, private readonly worldSeed = 0) {
@@ -254,9 +259,15 @@ export class EmergenceField {
     if (this.evaluated === -Infinity) this.evaluated = reached;
     // Within a frame at most a few rows come in; more than that (a jump) are not evaluated: they are already near.
     // Nothing rises on the time the music does not live (silence, no clock): those rows pass as they are.
-    if (live > 0) for (let row = Math.max(this.evaluated + 1, reached - 4 * p.spacing); row <= reached; row++) {
-      const spacing = Math.max(1, Math.round(p.spacing));
-      if (row % spacing === 0) this.candidates(row, t, capacity, organised, columns);
+    if (live > 0) {
+      this.planting = p.initial && !this.sown && target >= LEAST && reached > this.evaluated;
+      const from = this.planting ? Math.floor(this.travelled + AHEAD) : Math.max(this.evaluated + 1, reached - 4 * p.spacing);
+      for (let row = from; row <= reached; row++) {
+        const spacing = Math.max(1, Math.round(p.spacing));
+        if (row % spacing === 0) this.candidates(row, t, capacity, organised, columns);
+      }
+      if (this.planting) this.sown = true;
+      this.planting = false;
     }
     this.evaluated = Math.max(this.evaluated, reached);
 
@@ -363,7 +374,7 @@ export class EmergenceField {
   clear(): void {
     this.phase.fill(DORMANT); this.waiting.fill(0); this.accentAt.fill(-Infinity); this.watched = -1;
     this.gate.clear(); this.cursor = -1; this.prepared = 0; this.burst = 0; this.density = 0; this.count = 0;
-    this.lastPosition = NaN; this.evaluated = -Infinity; this.travelled = 0;
+    this.lastPosition = NaN; this.evaluated = -Infinity; this.travelled = 0; this.sown = false;
     const s = this.stats;
     s.phases.fill(0);
     s.spawned = s.recycled = s.passed = s.retreated = s.fractured = s.refused = s.bursts = s.releases = s.prepares = s.withdraws = s.accents = 0;
@@ -376,12 +387,13 @@ export class EmergenceField {
     const p = this.params, R = ((row % PERIOD) + PERIOD) % PERIOD, burst = this.burst > 0;
     if (burst) this.burst--;
     // A breakdown or a silence asks for nothing new at once; the density only says how much while something is asked.
-    if (!burst && (this.density < LEAST || this.stats.target === 0)) return;
+    const density = this.planting ? this.stats.target : this.density;
+    if (!burst && (density < LEAST || this.stats.target === 0)) return;
     // Organised: a pair across the valley at one distance; else each side by its own number.
     const pair = organised > 0.5 || burst, shared = hash(row, 0, this.worldSeed);
     for (let side = -1; side <= 1; side += 2) {
       const chance = hash(row, side + 7, this.worldSeed);
-      if (!burst && (pair ? shared : chance) >= this.density) continue;
+      if (!burst && (pair ? shared : chance) >= density) continue;
       if (this.live_() >= capacity || (this.count_(FORMATION) + this.count_(EMERGENCE) >= p.emerging && !burst)) { this.stats.refused++; continue; }
       const out = pair ? 0.35 + 0.1 * shared : hash(row, side + 31, this.worldSeed);
       // Beside the valley, up its walls; or across its floor (a plain), outside the corridor the viewer flies along.
