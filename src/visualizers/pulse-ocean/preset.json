@@ -1,0 +1,71 @@
+{
+  "name": "Pulse Ocean",
+  "author": "Euforia-Audio-Experience",
+  "version": 1,
+  "audio": {
+    "sensitivity": 1,
+    "smoothing": 1
+  },
+  "camera": {
+    "fov": 64,
+    "distance": 0,
+    "drift": 0
+  },
+  "bloom": {
+    "strength": 0.6,
+    "radius": 0.45,
+    "threshold": 0.15
+  },
+  "visual": {
+    "seed": 20261017,
+    "cell": 1.6,
+    "columns": 100,
+    "rows": 150,
+    "height": 5,
+    "pitch": 0.17,
+    "swell": 2.4,
+    "groove": 1.0,
+    "ripple": 0.22,
+    "wave": 0.9,
+    "fog": 0.006,
+    "exposure": 0.85,
+    "response": {
+      "lows": 1,
+      "mids": 1,
+      "highs": 1,
+      "groove": 0.6,
+      "surface": 0.25
+    },
+    "camera": {
+      "look": 80,
+      "glide": {
+        "stride": 6,
+        "tau": 0.8,
+        "lift": 0.3,
+        "ride": 0.35,
+        "bank": 0.03,
+        "widen": 3
+      },
+      "drift": {
+        "amplitude": 2.5,
+        "wavelength": 140,
+        "stride": 6,
+        "turbulence": 0.6,
+        "yaw": 30,
+        "bank": 0.03,
+        "corridor": 4
+      },
+      "limits": {
+        "position": 0.2,
+        "target": 0.25,
+        "lens": 0.2,
+        "reach": 8,
+        "fov": [
+          -5,
+          7
+        ],
+        "roll": 0.04
+      }
+    }
+  }
+}

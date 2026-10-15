@@ -1,6 +1,7 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Group, LineSegments, Mesh, ShaderMaterial, Vector4, type Object3D } from 'three';
 import type { PaletteColors, QualityProfile } from '../../types/visualizer';
 import type { Primitive, PrimitiveContext, WorldFrame } from '../Primitive';
+import { latticeMesh } from './lattice';
 import { BEHIND, packTerrain, TERRAIN_VALUES, terrainLawGlsl } from './terrainLaw';
 import { TerrainMotion, type TerrainParams } from './terrainMotion';
 
@@ -109,35 +110,16 @@ export class TerrainPrimitive implements Primitive {
   private readonly uTerrain = new Float32Array(TERRAIN_VALUES);
 
   constructor(context: PrimitiveContext, params: TerrainParams) {
-    const p = this.params = params, columns = p.columns, rows = p.rows, across = columns + 1, along = rows + 1;
+    const p = this.params = params, columns = p.columns, rows = p.rows;
     this.motion = new TerrainMotion(p);
-    this.lattice = across * along;
-    const diagonals = columns * rows;
-    // x: column from the middle, y: 1 on the two ends of a diagonal (they fade as the ground organises), z: row from the viewer.
-    const position = new Float32Array((this.lattice + diagonals * 2) * 3);
-    for (let k = 0; k < along; k++) for (let i = 0; i < across; i++) position.set([i - columns / 2, 0, k], (k * across + i) * 3);
-    const total = this.lattice + diagonals * 2, Index = total > 65535 ? Uint32Array : Uint16Array;
-    const lines = new Index((columns * along + rows * across + diagonals) * 2), faces = new Index(diagonals * 6);
-    let l = 0, t = 0, extra = this.lattice;
-    for (let k = 0; k < along; k++) for (let i = 0; i < columns; i++) { lines[l++] = k * across + i; lines[l++] = k * across + i + 1; }
-    for (let k = 0; k < rows; k++) for (let i = 0; i < across; i++) { lines[l++] = k * across + i; lines[l++] = (k + 1) * across + i; }
-    for (let k = 0; k < rows; k++) {
-      for (let i = 0; i < columns; i++) {
-        const a = k * across + i, b = a + 1, c = a + across, d = c + 1;
-        // The diagonal alternates, so the facets do not all lean one way.
-        const flip = (i + k) % 2 === 1, from = flip ? b : a, to = flip ? c : d;
-        position.set([from % across - columns / 2, 1, Math.floor(from / across)], extra * 3); lines[l++] = extra++;
-        position.set([to % across - columns / 2, 1, Math.floor(to / across)], extra * 3); lines[l++] = extra++;
-        if (flip) { faces[t++] = a; faces[t++] = c; faces[t++] = b; faces[t++] = b; faces[t++] = c; faces[t++] = d; }
-        else { faces[t++] = a; faces[t++] = c; faces[t++] = d; faces[t++] = a; faces[t++] = d; faces[t++] = b; }
-      }
-    }
+    const { position, lines, faces, lattice } = latticeMesh(columns, rows);
+    this.lattice = lattice;
     // One vertex buffer for both: the wire and the facets are the same ground.
     const attribute = new BufferAttribute(position, 3);
     this.wireGeometry.setAttribute('position', attribute); this.wireGeometry.setIndex(new BufferAttribute(lines, 1));
     this.fillGeometry.setAttribute('position', attribute); this.fillGeometry.setIndex(new BufferAttribute(faces, 1));
     this.elements = lines.length / 2 + faces.length / 3;
-    this.vertices = total;
+    this.vertices = position.length / 3;
 
     const shared = this.shared = {
       uTerrain: { value: this.uTerrain }, uWaveA: { value: context.uWaveA }, uWaveB: { value: context.uWaveB },

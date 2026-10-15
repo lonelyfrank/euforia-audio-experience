@@ -106,14 +106,18 @@ export class Travel implements LocomotionProfile {
 
 /**
  * Over a landscape: the travel followed more softly (`tau`), a steady height that lifts a little with the world's
- * pressure and the lens opening with speed (depth), a slight bank. The horizon stays where it is.
+ * pressure and the lens opening with speed (depth), a slight bank. The horizon stays where it is. Over a surface that
+ * moves (a sea), the observer may ride it: `ride` of the height `surface` gives under it (the scene's own law, its long
+ * waves only), the aim following half of that, so the horizon rocks a little and never jumps.
  */
-export interface GlideParams { stride: number; tau: number; lift: number; bank: number; widen: number }
-export const GLIDE: Readonly<GlideParams> = { stride: 1, tau: 0.6, lift: 0.5, bank: 0.05, widen: 4 };
+export interface GlideParams { stride: number; tau: number; lift: number; bank: number; widen: number; ride: number }
+export const GLIDE: Readonly<GlideParams> = { stride: 1, tau: 0.6, lift: 0.5, bank: 0.05, widen: 4, ride: 0 };
 
 export class Glide implements LocomotionProfile {
   readonly kind: Locomotion = 'glide';
   readonly params: GlideParams;
+  /** The height of the surface under the observer at (x, z) in the scene's units, when it rides one. */
+  surface: ((x: number, z: number) => number) | null = null;
   private readonly rate = new RateFollower();
   private pressure = 0;
   private spin = 0;
@@ -133,6 +137,10 @@ export class Glide implements LocomotionProfile {
     this.speed = follow(this.speed, speed, k(h, 1));
     out.y += weight * p.lift * this.pressure;
     out.ty += weight * p.lift * this.pressure;
+    if (p.ride && this.surface) {
+      const under = finite(this.surface(out.x, out.z));
+      out.y += weight * p.ride * under; out.ty += weight * 0.5 * p.ride * under;
+    }
     out.roll += weight * -p.bank * this.spin;
     out.fov += weight * p.widen * this.speed;
     return weight * distance;
