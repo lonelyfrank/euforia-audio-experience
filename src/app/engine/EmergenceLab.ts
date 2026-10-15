@@ -4,10 +4,12 @@ import { h } from '../../ui/dom';
 import { SOLID_DRAW_CALLS, SOLID_STAGES } from '../../visual-engine/primitives/SolidPrimitive';
 import { PHASES } from '../../visual-engine/primitives/terrainEmergence';
 import { RecipeVisualizer } from '../../visual-engine/RecipeVisualizer';
+import type { VisualWorld } from '../../visual-engine/VisualWorld';
 import { PULSE_LIMIT, SOLID_PROFILES } from '../../visual-engine/structural/SolidTypes';
 import { scenesOf } from '../../visualizers/registry';
 import type { App } from '../App';
 import { ParticleSolidsExperiment, TerrainEmergenceExperiment, type SyntheticCue } from './emergence';
+import { LAB_WORLDS, WorldsExperiment, type LabWorld } from './worlds';
 
 /**
  * The Emergence laboratory in the Engine Workspace inspector (DEV): new geometry in the product's own scenes, tried
@@ -17,11 +19,13 @@ import { ParticleSolidsExperiment, TerrainEmergenceExperiment, type SyntheticCue
  *
  *   Terrain     the structures that rise out of Generative Terrain (emergence field: budgets, modes, response, fracture)
  *   Particles   a few bodies of the structural engine among a Particles scene's matter
+ *   Worlds      the new worlds (docs/generative-worlds.md): their observer and their own subject, a reset of it, the same
+ *               synthetic cues (the sea takes none: it reads the world's release)
  */
 
 /** The Particles scenes that are recipes: a world the population can be mounted in. */
 const HOSTS = ['matter-field', 'vector-field', 'spectral-shell', 'resonant-field'];
-type Subject = 'terrain' | 'particles';
+type Subject = 'terrain' | 'particles' | 'worlds';
 
 /** A button that steps through values; its label shows the value in force. */
 type Cycle = HTMLButtonElement & { read: () => string };
@@ -32,12 +36,15 @@ export class EmergenceLab {
   visible = true;
   readonly solids = new ParticleSolidsExperiment();
   readonly terrain = new TerrainEmergenceExperiment();
+  readonly worlds = new WorldsExperiment();
   private subject: Subject = 'terrain';
   private host = 'matter-field';
+  private world: LabWorld = 'monolith-desert';
   private readonly previousPin: string | null;
   private readonly releaseDiagnostics: () => void;
   private readonly subjects = h('div', { class: 'ws-actions' });
   private readonly hosts = h('div', { class: 'ws-actions' });
+  private readonly worldChoices = h('div', { class: 'ws-actions' });
   private readonly terrainControls = h('div', { class: 'ws-actions' });
   private readonly solidControls = h('div', { class: 'ws-actions' });
   private readonly tiles = ['Structures', 'Phases', 'Life', 'Fracture gate', 'Cues', 'Cost'].map((label) => tile(label));
@@ -46,8 +53,9 @@ export class EmergenceLab {
 
   constructor(private readonly app: App, private readonly diagnostics: DiagnosticsController, parent: HTMLElement) {
     this.previousPin = app.pinnedScene;
-    for (const [id, label] of [['terrain', 'Terrain'], ['particles', 'Particles']] as const) this.subjects.append(this.choice(this.subjects, 'subject', id, label, () => this.study(id)));
+    for (const [id, label] of [['terrain', 'Terrain'], ['particles', 'Particles'], ['worlds', 'Worlds']] as const) this.subjects.append(this.choice(this.subjects, 'subject', id, label, () => this.study(id)));
     for (const v of scenesOf('particles').filter((v) => HOSTS.includes(v.id))) this.hosts.append(this.choice(this.hosts, 'host', v.id, v.name, () => { this.host = v.id; this.pin(); }));
+    for (const v of scenesOf('worlds').filter((v) => (LAB_WORLDS as readonly string[]).includes(v.id))) this.worldChoices.append(this.choice(this.worldChoices, 'world', v.id, v.name, () => { this.world = v.id as LabWorld; this.pin(); }));
     const t = (): NonNullable<TerrainEmergenceExperiment['settings']> | null => this.terrain.settings;
     const set = <K extends keyof NonNullable<TerrainEmergenceExperiment['settings']>>(key: K, value: NonNullable<TerrainEmergenceExperiment['settings']>[K]): void => { const s = t(); if (s) s[key] = value; };
     const number = (key: 'capacity' | 'emerging' | 'fragments' | 'density' | 'rate' | 'response' | 'pulse', label: string, values: number[], show = (x: number) => String(x)) =>
@@ -76,12 +84,12 @@ export class EmergenceLab {
     this.element.append(
       panel({ title: 'Emergence', icon: 'hex', sub: 'laboratorio · temporaneo, non salvato' },
         h('div', { class: 'ws-caption' }, h('b', {}, 'Subject')), this.subjects,
-        h('div', { class: 'ws-caption' }, h('b', {}, 'Scene')), this.hosts,
+        h('div', { class: 'ws-caption' }, h('b', {}, 'Scene')), this.hosts, this.worldChoices,
         h('div', { class: 'ws-caption' }, h('b', {}, 'Settings')), this.terrainControls, this.solidControls, this.note),
       panel({ title: 'Life', icon: 'pulse', sub: 'measured on the state · five times a second' }, h('div', { class: 'ws-metrics ws-metrics-text' }, ...this.tiles.map((x) => x.element))),
       panel({ title: 'Experiment', icon: 'flask', sub: 'eventi sintetici · lo stesso percorso dei cue della sessione' },
         h('div', { class: 'ws-actions' },
-          button('Reset', () => (this.subject === 'terrain' ? this.terrain.reset() : this.solids.reset()), 'Start over: the structures back to the pool, or the bodies seeded again'),
+          button('Reset', () => this.reset(), 'Start over: the structures, bodies or trees back to where they begin'),
           synthetic('Release heard', 'release', 'A confirmed release: what waits emerges, a burst, the fracture gate may break'),
           synthetic('Prediction', 'prediction', 'A predicted release: structures wait in formation; it never breaks or bursts anything'),
           synthetic('Withdraw', 'withdraw', 'The prediction given up: what waited goes back'),
@@ -113,10 +121,31 @@ export class EmergenceLab {
     const terrain = this.terrain.apply(this.subject === 'terrain' && world?.recipe.id === 'terrain' ? world : null);
     const solid = this.solids.apply(this.subject === 'particles' && world?.recipe.id === this.host ? world : null);
     if (!this.visible) return;
-    this.mark(this.subjects, 'subject', this.subject); this.mark(this.hosts, 'host', this.host);
+    this.mark(this.subjects, 'subject', this.subject); this.mark(this.hosts, 'host', this.host); this.mark(this.worldChoices, 'world', this.world);
     this.hosts.hidden = this.subject !== 'particles'; this.solidControls.hidden = this.subject !== 'particles'; this.terrainControls.hidden = this.subject !== 'terrain';
+    this.worldChoices.hidden = this.subject !== 'worlds';
     for (const item of this.element.querySelectorAll<Cycle>('button[data-cycle]')) writeText(item, item.read());
     const [structures, phases, life, gate, cues, cost] = this.tiles;
+    if (this.subject === 'worlds') {
+      const lines = this.worlds.read(world?.recipe.id === this.world ? world : null);
+      if (!lines.length) {
+        writeText(this.note, 'In attesa del mondo nel viewport…');
+        for (const x of this.tiles) writeTile(x, '—');
+        this.table([]);
+        return;
+      }
+      writeText(this.note, 'I mondi nuovi: il loro osservatore (profili di locomozione) e il loro soggetto. Reset e cue sintetici passano dallo stesso percorso dei cue della sessione; il mare non ne prende (legge il rilascio del mondo).');
+      const read = (label: string): string => lines.find(([l]) => l === label)?.[1] ?? '—';
+      writeTile(structures, read('locomotion'), `subject ${read('subject')}`);
+      writeTile(phases, read('observer'), `target ${read('target')}`);
+      writeTile(life, read('speed · forward'), read('lens · roll'));
+      writeTile(gate, '—', 'per world: see the table');
+      writeTile(cues, `${this.worlds.offered}`, 'synthetic cues taken');
+      writeTile(cost, read('cost'), 'CPU per frame');
+      const drawn = this.diagnostics.renderer?.drawn;
+      this.table([...lines.slice(6), ['frame draw calls', drawn ? String(drawn.calls) : '—']]);
+      return;
+    }
     if (this.subject === 'terrain') {
       if (!terrain) {
         writeText(this.note, world?.recipe.id === 'terrain' ? 'Emergenza spenta: la scena è il suolo da solo.' : 'In attesa di Generative Terrain nel viewport…');
@@ -163,12 +192,25 @@ export class EmergenceLab {
   }
 
   private pin(): void {
-    this.app.pinScene(this.subject === 'terrain' ? 'terrain' : this.host);
+    this.app.pinScene(this.subject === 'terrain' ? 'terrain' : this.subject === 'worlds' ? this.world : this.host);
+  }
+
+  /** The world in view, when it is a recipe. */
+  private viewed(): VisualWorld | null {
+    const scene = this.app.directionDebug.current?.visualizer;
+    return scene instanceof RecipeVisualizer ? scene.world : null;
+  }
+
+  private reset(): void {
+    if (this.subject === 'terrain') this.terrain.reset();
+    else if (this.subject === 'worlds') this.worlds.reset(this.viewed());
+    else this.solids.reset();
   }
 
   private offer(kind: SyntheticCue | 'withdraw'): void {
     const experience = this.app.audio.experience, time = experience.ready ? experience.presented.state.time : 0;
     if (this.subject === 'terrain') this.terrain.offer(kind, time);
+    else if (this.subject === 'worlds') this.worlds.offer(this.viewed(), kind, time);
     else if (kind !== 'withdraw') this.solids.offer(kind, time);
   }
 
