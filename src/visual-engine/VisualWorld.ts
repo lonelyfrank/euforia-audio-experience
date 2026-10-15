@@ -194,6 +194,8 @@ export class VisualWorld {
     const frame = this.frame;
     frame.dt = dt; frame.time = now; frame.timed = !!clock; frame.view = view;
     frame.snapshot = snapshot; frame.audio = audio; frame.response = response; frame.modulation = modulation; frame.clock = clock;
+    // A world with an observer of its own moves it first: what it carries the scene by is this frame's.
+    this.recipe.camera?.step(frame);
 
     // How much structure the moment can carry: the planner's entropy, under the ceiling the show gives this fixture.
     this.ceiling = clock?.structure === undefined ? 1 : unit(clock.structure);
@@ -230,7 +232,7 @@ export class VisualWorld {
       memory.imprint = this.memory.imprint; memory.accumulate = this.memory.accumulate;
     }
 
-    if (this.recipe.observer !== false) {
+    if (this.recipe.observer !== false && !this.recipe.camera) {
       const depth = modulation?.depth ?? 0.5, spatial = this.recipe.spatial ?? 0;
       this.observer.step(dt, view, modulation ? 0.35 + 0.65 * modulation.cameraMotion : 0.35, depth + (geometry.spatialDepth - depth) * spatial);
     }
@@ -243,9 +245,10 @@ export class VisualWorld {
     }
   }
 
-  /** Places `camera` where the observer is (see Observer.apply). Must not allocate. */
+  /** Places `camera` where the observer is (the world's own camera, or the shared Observer: see Observer.apply). Must not allocate. */
   place(camera: PerspectiveCamera, distance: number, fov: number): void {
-    this.observer.apply(camera, distance, fov);
+    if (this.recipe.camera) this.recipe.camera.apply(camera, fov);
+    else this.observer.apply(camera, distance, fov);
   }
 
   /**
@@ -255,7 +258,7 @@ export class VisualWorld {
    * matter relaxes by itself.
    */
   reset(): void {
-    this.mapper.reset(); this.materials.reset(); this.waves.reset(); this.voices.reset(); this.resonance?.reset();
+    this.mapper.reset(); this.materials.reset(); this.waves.reset(); this.voices.reset(); this.resonance?.reset(); this.recipe.camera?.reset();
     this.lastClock = -Infinity;
     for (const m of this.mounted) m.primitive.reset();
   }

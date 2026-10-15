@@ -1,5 +1,6 @@
 import type { WebGLRenderer } from 'three';
 import type { ModulationState, SceneDirection } from '../director/types';
+import type { Locomotion } from '../render-systems/camera/locomotion';
 import type { AudioFrame, VisualResponseFrame } from '../types/audio';
 import type { PaletteColors, QualityProfile, SceneCategory, SceneClock, SceneIcon, VisualizerContext, VisualizerDefinition, VisualizerPreset } from '../types/visualizer';
 import { BaseVisualizer } from '../visualizers/shared/BaseVisualizer';
@@ -70,7 +71,7 @@ export class RecipeVisualizer<TVisual> extends BaseVisualizer<TVisual> {
 
 /** A scene that is a recipe: registry entry and factory, like `defineVisualizer`. */
 export function defineRecipe<TVisual>(definition: {
-  id: string; name: string; description: string; icon: SceneIcon; category: SceneCategory; order: number; direction?: SceneDirection;
+  id: string; name: string; description: string; icon: SceneIcon; category: SceneCategory; order: number; locomotion?: readonly Locomotion[]; direction?: SceneDirection;
   preset: VisualizerPreset<TVisual>; recipe: RecipeBuilder<TVisual>;
 }): VisualizerDefinition {
   const { recipe, ...rest } = definition;

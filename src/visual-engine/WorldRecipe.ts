@@ -1,6 +1,8 @@
+import type { PerspectiveCamera } from 'three';
+import type { Locomotion } from '../render-systems/camera/locomotion';
 import type { SpatialFields } from '../render-systems/fields/SpatialFields';
 import type { GeometryState } from './geometry/GeometryState';
-import type { Primitive, PrimitiveContext } from './Primitive';
+import type { Primitive, PrimitiveContext, WorldFrame } from './Primitive';
 
 /** One primitive system a world can show, and what it takes to be there. */
 export interface PrimitiveSlot {
@@ -50,10 +52,33 @@ export interface WorldRecipe {
   /** Whether the observer moves the camera (default true): a world may keep a fixed view. */
   observer?: boolean;
   /**
+   * How this world's observer moves, when it has a way of its own (render-systems/camera/locomotion.ts,
+   * docs/generative-worlds.md): it then places the camera instead of the shared Observer. Created with the recipe, so
+   * every mount has its own.
+   */
+  camera?: WorldCamera;
+  /**
    * Whether this world's matter answers the multiscale resonance by its own natural frequency (default false): the
    * world then keeps a ResonanceField of what is heard (`frame.resonance`) for its primitives to look up.
    */
   resonance?: boolean;
+}
+
+/**
+ * The observer of one world: locomotion profiles read from the shared world (never a clock of its own), and what the
+ * scene offers it to look at. Stepped once a frame before the primitives (what it moves the scene by is this frame's;
+ * the subject it looks at is read from what the primitives showed last).
+ */
+export interface WorldCamera {
+  readonly locomotion: readonly Locomotion[];
+  /** Must not allocate. */
+  step(frame: Readonly<WorldFrame>): void;
+  /** Places `camera`; `fov` is the scene's own field of view (degrees). Must not allocate. */
+  apply(camera: PerspectiveCamera, fov: number): void;
+  /** A new audio session (or a remount): the next frame starts from the world as it is. */
+  reset(): void;
+  /** Numbers for the tools: a stable object, updated in place. */
+  readonly debug: Record<string, number>;
 }
 
 /** Default time constants of a structure's presence (s). */

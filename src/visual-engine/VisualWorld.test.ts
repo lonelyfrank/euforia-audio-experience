@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BufferGeometry, Color, Material, Texture, WebGLRenderTarget, type ShaderMaterial, type Vector4, type WebGLRenderer } from 'three';
+import { BufferGeometry, Color, Material, Texture, WebGLRenderTarget, type PerspectiveCamera, type ShaderMaterial, type Vector4, type WebGLRenderer } from 'three';
 import type { Pass } from 'three/addons/postprocessing/Pass.js';
 import { AudioAnalyzer } from '../audio/analysis/AudioAnalyzer';
 import { newFrame } from '../audio/features/decode';
@@ -8,6 +8,7 @@ import { DEFAULT_DIRECTION } from '../director/profiles';
 import { VisualDirector } from '../director/VisualDirector';
 import { EventStream } from '../experience/EventStream';
 import { createSnapshot } from '../experience/types';
+import { CameraRig, Orbit } from '../render-systems/camera/locomotion';
 import { FeedbackPass } from '../render-systems/feedback/FeedbackPass';
 import { FIELD } from '../render-systems/fields/fieldLaw';
 import { QUALITY_PROFILES } from '../renderer/quality';
@@ -24,6 +25,7 @@ import type { ConnectionGraphPrimitive } from './primitives/ConnectionGraphPrimi
 import type { MatterPrimitive } from './primitives/MatterPrimitive';
 import type { WaveSurfacePrimitive } from './primitives/WaveSurfacePrimitive';
 import { RecipeVisualizer, type RecipeBuilder } from './RecipeVisualizer';
+import { RigCamera } from './RigCamera';
 import { BUDGET_GAIN, worldLab } from './VisualWorld';
 
 const STRUCTURES = ['shockwaves', 'filaments', 'surface', 'graph'];
@@ -398,5 +400,31 @@ describe('Resonant Field as a recipe', () => {
     // By a share: the scene stays the membrane it was.
     expect(surface.shape.terraces).toBeGreaterThan(0.3); expect(surface.shape.terraces).toBeLessThanOrEqual(0.6);
     r.dispose();
+  });
+});
+
+describe('a world with an observer of its own', () => {
+  it('its camera rig places the camera instead of the shared Observer, and starts over with a new session', () => {
+    let camera: RigCamera | null = null;
+    const recipe: RecipeBuilder<MatterFieldParams> = (p, q) => {
+      camera = new RigCamera(new CameraRig([{ profile: new Orbit({ share: 0.5 }), weight: 1 }], { z: 4, tz: 0 }));
+      return { ...matterFieldRecipe(p, q), camera };
+    };
+    const m = mount(matterPreset as VisualizerPreset<MatterFieldParams>, recipe);
+    m.sound(0.4);
+    Object.assign(m.world, { spin: 1.5, speed: 2, radius: 0.4, openness: 0.8 });
+    m.update(3);
+    const rig = camera!.rig, cam = m.scene.camera as PerspectiveCamera;
+    expect(cam.position.x).toBeCloseTo(rig.pose.x, 9); expect(cam.position.z).toBeCloseTo(rig.pose.z, 9);
+    // The world turned: the rig went round with it; the shared Observer was never stepped.
+    expect(Math.abs(rig.pose.x)).toBeGreaterThan(0.3);
+    expect(m.scene.world.observer.motion).toBe(0);
+    expect(camera!.debug.orbit).toBe(1);
+    // A clock that goes back is another session: the next frame takes the pose as it is asked, at once.
+    m.world.time = 0; m.clock.time = 0;
+    const reset = vi.spyOn(rig, 'reset');
+    m.update(1 / 60);
+    expect(reset).toHaveBeenCalled();
+    m.dispose();
   });
 });

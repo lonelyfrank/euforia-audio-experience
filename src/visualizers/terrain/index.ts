@@ -10,6 +10,7 @@ export default defineRecipe<GenerativeTerrainParams>({
   order: 12,
   icon: 'scene',
   category: 'worlds',
+  locomotion: ['glide'],
   // Bloom follows the level of the music only: light events belong to the world (wave fronts), not to the bloom.
   direction: { capabilities: { particles: true, cameraMotion: true, depth: true, distortion: true }, mappings: [{ source: 'intensity', target: 'bloom', amount: 0.4 }] },
   preset: preset satisfies VisualizerPreset<GenerativeTerrainParams>,

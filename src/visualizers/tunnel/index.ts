@@ -10,6 +10,7 @@ export default defineVisualizer<TunnelParams>({
   order: 1,
   icon: 'tunnel',
   category: 'worlds',
+  locomotion: ['travel'],
   direction: { capabilities: { particles: true, cameraMotion: true, distortion: true, depth: true }, mappings: [{ source: 'low', target: 'distortion', amount: 0.55 }, { source: 'tension', target: 'distortion', amount: 0.4 }] },
   preset: preset satisfies VisualizerPreset<TunnelParams>,
   create: (p) => new TunnelVisualizer(p),

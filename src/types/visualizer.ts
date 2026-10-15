@@ -5,6 +5,7 @@ import type { Camera, Color, Scene, WebGLRenderer } from 'three';
 import type { Pass } from 'three/addons/postprocessing/Pass.js';
 import type { HitLog } from '../dynamics/HitLog';
 import type { AudioFrame, MusicState, VisualResponseFrame } from './audio';
+import type { Locomotion } from '../render-systems/camera/locomotion';
 
 export type QualitySetting = 'auto' | 'low' | 'medium' | 'high';
 
@@ -185,6 +186,8 @@ export interface VisualizerDefinition<TVisual = Record<string, unknown>> {
   category: SceneCategory;
   /** Sort order in the UI. */
   order: number;
+  /** How the scene's observer moves (render-systems/camera/locomotion.ts): metadata for the tools; absent for scenes that do not travel. */
+  locomotion?: readonly Locomotion[];
   direction?: SceneDirection;
   preset: VisualizerPreset<TVisual>;
   create(preset: VisualizerPreset<TVisual>): Visualizer;

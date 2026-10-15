@@ -188,6 +188,12 @@ export function collectEngine(app: App, store: DiagnosticsStore, render: Rendere
   if (world) {
     group(store, 'geometry', 'geometry', world.mapper.state, world.frame.time, 'SonicGeometryMapper');
     group(store, 'geometry', 'visualWorld', world.debug, world.frame.time, 'VisualWorld');
+    // A world with an observer of its own (Worlds): its locomotion, pose, target, speed and the weight of each profile.
+    const camera = world.recipe.camera;
+    if (camera) {
+      store.labels['camera.locomotion'] = camera.locomotion.join('+');
+      group(store, 'geometry', 'camera', camera.debug, world.frame.time, 'WorldCamera');
+    }
     group(store, 'physics', 'field', world.fields, world.frame.time, 'SpatialFields');
     for (const m of world.mounted) {
       const prefix = `primitive.${world.recipe.id}.${m.slot.id}`;
