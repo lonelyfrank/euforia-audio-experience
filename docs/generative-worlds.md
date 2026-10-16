@@ -201,7 +201,7 @@ dormant → seed (1,2 s) → growth (profondità dopo profondità, punta per ult
 - **Memoria (Musical Cognition)**: ogni albero conserva la firma della musica in cui è nato (sei tratti lenti della
   geometria: forma tonale, rumorosa, curvatura, durezza, densità, ramificazione). Quando la cognizione sente la musica
   **ripetersi** (`cues.repetition`) e la firma attuale torna vicina a quella, quegli alberi risuonano di nuovo e
-  filamenti li uniscono. Memoria tipizzata di configurazioni: non riconosce una canzone né ne prevede il futuro.
+  i filamenti fra loro brillano di più (la rete si forma alla maturità: [resonant-forest.md](resonant-forest.md) §4). Memoria tipizzata di configurazioni: non riconosce una canzone né ne prevede il futuro.
 - **Cue**: previsione → gemme (i nodi si accendono), ritirata → si spengono; rilascio udito → gli alberi maturi
   fioriscono di luce e aprono tutte le foglie, le righe seguenti si seminano; breakdown → i più deboli decadono uno
   ogni 1,5 s; ogni albero vive `span` secondi di musica e poi decade.

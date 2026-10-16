@@ -1,7 +1,7 @@
 import { BufferAttribute, BufferGeometry, Camera, FloatType, InstancedBufferAttribute, InstancedBufferGeometry, Points, RGBAFormat, Scene, ShaderMaterial, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { packWaves } from '../../render-systems/fields/fieldLaw';
 import { MAX_WAVES, WaveField } from '../../render-systems/waves/WaveField';
-import { barkGlsl, barkPoint, createShape, forestLawGlsl, growTree, leafGlsl, leafPoint, MAX_TREES, TREE_DETAIL, twigPoint, type TreeShape, type TreeState } from './forestLaw';
+import { barkGlsl, barkPoint, createShape, forestLawGlsl, gemPoint, growTree, leafGlsl, leafPoint, linkGlsl, linkPoint, SLOTS, TREE_DETAIL, twigPoint, type TreeShape, type TreeState } from './forestLaw';
 import { createTerrain, packTerrain, PERIOD, TERRAIN_VALUES, terrainLawGlsl, type TerrainValues } from './terrainLaw';
 
 /** What the forest parity check found (units). */
@@ -9,6 +9,8 @@ export interface ForestParityReport {
   /** Bark, twig and leaf vertices compared, GPU against the CPU reference. */
   branches: { points: number; p50: number; p99: number; max: number };
   twigs: { points: number; p50: number; p99: number; max: number };
+  crystals: { points: number; p50: number; p99: number; max: number };
+  filaments: { points: number; p50: number; p99: number; max: number };
   leaves: { points: number; p50: number; p99: number; max: number };
   /** On the GPU: each trunk's root against the ground program's vertex at its lattice point (expected: SINK below, nothing aside). */
   anchoring: { points: number; max: number };
@@ -31,6 +33,7 @@ void main() {
 }
 `;
 const barkShader = out(`${barkGlsl}\n#define VERTICES 0\nvec3 value() { return barkPoint(); }`);
+const linkShader = out(`${linkGlsl}\n#define VERTICES 17\nvec3 value() { return linkPoint(float(gl_VertexID) / 16.0); }`);
 const leafShader = out(`${leafGlsl}\n#define VERTICES 3\nvec3 value() { return leafPoint(position.x); }`);
 const anchorShader = out(`attribute vec4 aTree;\n#define VERTICES 2\nvec3 value() {\n  float i = aTree.x - T_COL, k = mod(aTree.y - T_ROW, ${PERIOD}.0);\n  return position.x < 0.5 ? forestRoot(aTree.x, aTree.y) : vec3(terrainAcross(i, terrainDepth(k)), terrainHeight(i, k, terrainDepth(k)), -terrainDepth(k));\n}`);
 const fragmentShader = /* glsl */ `
@@ -55,11 +58,11 @@ export function runForestParity(sharedRenderer?: WebGLRenderer): ForestParityRep
   const target = new WebGLRenderTarget(W, W, { type: FloatType, format: RGBAFormat });
   const scene = new Scene(), camera = new Camera(), pixels = new Float32Array(W * W * 4);
   const uTerrain = new Float32Array(TERRAIN_VALUES), uWaveA = new Float32Array(MAX_WAVES * 4), uWaveB = new Float32Array(MAX_WAVES * 4);
-  const uTrees = new Float32Array(MAX_TREES * 4), uTreeLean = new Float32Array(MAX_TREES * 4);
+  const uTrees = new Float32Array(SLOTS * 4), uTreeLean = new Float32Array(SLOTS * 4);
   const uniforms = { uTerrain: { value: uTerrain }, uWaveA: { value: uWaveA }, uWaveB: { value: uWaveB }, uTrees: { value: uTrees }, uTreeLean: { value: uTreeLean } };
-  const materials = [barkShader, leafShader, anchorShader].map((vertexShader) => new ShaderMaterial({ vertexShader, fragmentShader, uniforms }));
-  const report: ForestParityReport = { branches: { points: 0, p50: 0, p99: 0, max: 0 }, twigs: { points: 0, p50: 0, p99: 0, max: 0 }, leaves: { points: 0, p50: 0, p99: 0, max: 0 }, anchoring: { points: 0, max: 0 }, invalid: 0, tolerance: 2e-3, outcome: 'pass' };
-  const branchGaps: number[] = [], twigGaps: number[] = [], leafGaps: number[] = [], disposable: BufferGeometry[] = [];
+  const materials = [barkShader, leafShader, anchorShader, linkShader].map((vertexShader) => new ShaderMaterial({ vertexShader, fragmentShader, uniforms }));
+  const report: ForestParityReport = { branches: { points: 0, p50: 0, p99: 0, max: 0 }, twigs: { points: 0, p50: 0, p99: 0, max: 0 }, crystals: { points: 0, p50: 0, p99: 0, max: 0 }, filaments: { points: 0, p50: 0, p99: 0, max: 0 }, leaves: { points: 0, p50: 0, p99: 0, max: 0 }, anchoring: { points: 0, max: 0 }, invalid: 0, tolerance: 2e-3, outcome: 'pass' };
+  const branchGaps: number[] = [], twigGaps: number[] = [], gemGaps: number[] = [], linkGaps: number[] = [], leafGaps: number[] = [], disposable: BufferGeometry[] = [];
   const waves = new WaveField();
   waves.spawn(5, 1, 0, 1.6, 0.22, 1.4);
   const grounds: { t: TerrainValues; fronts: boolean }[] = [
@@ -80,7 +83,7 @@ export function runForestParity(sharedRenderer?: WebGLRenderer): ForestParityRep
       packTerrain(uTerrain, t);
       if (fronts) packWaves(uWaveA, uWaveB, waves, 5.5); else { uWaveA.fill(0); uWaveB.fill(0); }
       // Six trees: grown, half grown, leaning, decaying, beside the valley on both sides (detail of the six varies with them;
-      // their bark fits the target: 6 × 2 556 < 128²).
+      // their bark fits the target: < 128² vertices).
       const trees: { state: TreeState; shape: TreeShape }[] = [];
       for (let n = 0; n < 6; n++) {
         const detail = [TREE_DETAIL.high, TREE_DETAIL.medium, TREE_DETAIL.low][n % 3];
@@ -90,11 +93,11 @@ export function runForestParity(sharedRenderer?: WebGLRenderer): ForestParityRep
         uTrees.set([state.growth, state.lean, 1, state.decay], n * 4); uTreeLean.set([state.around, 0, state.leaves, 0], n * 4);
       }
       // Bark and twigs: every vertex, as the primitive writes them (one pixel per vertex).
-      const vertices = (count: (x: TreeShape) => number, point: (x: TreeShape) => Float32Array, base: (x: TreeShape) => Float32Array, gaps: number[], cpu: (state: TreeState, shape: TreeShape, v: number) => [number, number, number]): void => {
+      const vertices = (count: (x: TreeShape) => number, point: (x: TreeShape) => Float32Array, base: (x: TreeShape) => Float32Array, gaps: number[], cpu: (state: TreeState, shape: TreeShape, v: number) => [number, number, number], site?: (x: TreeShape) => Float32Array): void => {
         const total = trees.reduce((sum, x) => sum + count(x.shape), 0);
         const position = new Float32Array(total * 3), start = new Float32Array(total * 4), owner = new Float32Array(total * 3);
         let at = 0;
-        trees.forEach(({ state, shape }, slot) => { for (let v = 0; v < count(shape); v++, at++) { position.set(point(shape).subarray(v * 3, v * 3 + 3), at * 3); start.set(base(shape).subarray(v * 4, v * 4 + 4), at * 4); owner.set([state.J, state.R, slot], at * 3); } });
+        trees.forEach(({ state, shape }, slot) => { for (let v = 0; v < count(shape); v++, at++) { position.set(point(shape).subarray(v * 3, v * 3 + 3), at * 3); start.set(base(shape).subarray(v * 4, v * 4 + 4), at * 4); owner.set([state.J + (site ? site(shape)[v * 2] : 0), state.R + (site ? site(shape)[v * 2 + 1] : 0), slot], at * 3); } });
         const g = new BufferGeometry();
         g.setAttribute('position', new BufferAttribute(position, 3)); g.setAttribute('aBase', new BufferAttribute(start, 4)); g.setAttribute('aTree', new BufferAttribute(owner, 3));
         disposable.push(g);
@@ -107,8 +110,34 @@ export function runForestParity(sharedRenderer?: WebGLRenderer): ForestParityRep
           gaps.push(d);
         }
       };
-      vertices((x) => x.bark, (x) => x.point, (x) => x.base, branchGaps, (state, shape, v) => barkPoint(t, state, shape, v));
+      vertices((x) => x.bark, (x) => x.point, (x) => x.base, branchGaps, (state, shape, v) => barkPoint(t, state, shape, v), (x) => x.site);
       vertices((x) => x.twigs, (x) => x.twigPoint, (x) => x.twigBase, twigGaps, (state, shape, v) => twigPoint(t, state, shape, v));
+      vertices((x) => x.crystals.count, (x) => x.crystals.point, (x) => x.crystals.base, gemGaps, (state, shape, v) => gemPoint(t, state, shape.crystals, v));
+      // Filaments: from an anchor of each tree to an anchor of the next (and one inside a crown), seventeen points each.
+      {
+        const pairs: [number, number][] = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [2, 2]];
+        const ends = [new Float32Array(pairs.length * 4), new Float32Array(pairs.length * 4), new Float32Array(pairs.length * 4), new Float32Array(pairs.length * 4)];
+        const anchor = (shape: TreeShape, k: number): [number, number, number] => { const e = (k % Math.max(1, shape.anchors)) * 3; return [shape.anchor[e], shape.anchor[e + 1], shape.anchor[e + 2]]; };
+        pairs.forEach(([a, b], n) => {
+          const A = trees[a], B = trees[b], ea = anchor(A.shape, n), eb = anchor(B.shape, a === b ? A.shape.anchors - 1 : n + 1);
+          ends[0].set([A.state.J, A.state.R, a, 0.05 + 0.015 * n], n * 4); ends[1].set([...ea, 0], n * 4);
+          ends[2].set([B.state.J, B.state.R, b, 1], n * 4); ends[3].set([...eb, 0], n * 4);
+        });
+        const g = new InstancedBufferGeometry();
+        g.setAttribute('position', new BufferAttribute(new Float32Array(17 * 3), 3));
+        ['aLinkA', 'aAnchorA', 'aLinkB', 'aAnchorB'].forEach((name, q) => g.setAttribute(name, new InstancedBufferAttribute(ends[q], 4)));
+        g.instanceCount = pairs.length; disposable.push(g);
+        render(g, materials[3]);
+        pairs.forEach(([a, b], n) => {
+          const A = trees[a], B = trees[b], ea = anchor(A.shape, n), eb = anchor(B.shape, a === b ? A.shape.anchors - 1 : n + 1);
+          for (let k = 0; k <= 16; k++) {
+            const q = (n * 17 + k) * 4, c = linkPoint(t, A.state, ea, B.state, eb, 0.05 + 0.015 * n, k / 16);
+            const d = Math.hypot(pixels[q] - c[0], pixels[q + 1] - c[1], pixels[q + 2] - c[2]);
+            if (!Number.isFinite(d)) { report.invalid++; continue; }
+            linkGaps.push(d);
+          }
+        });
+      }
       let at = 0;
       // Leaves and nodes.
       const count = trees.reduce((sum, x) => sum + x.shape.leaves, 0);
@@ -149,7 +178,7 @@ export function runForestParity(sharedRenderer?: WebGLRenderer): ForestParityRep
     gaps.sort((x, y) => x - y);
     into.points = gaps.length; into.p50 = gaps[Math.floor(0.5 * gaps.length)] ?? 0; into.p99 = gaps[Math.floor(0.99 * gaps.length)] ?? 0; into.max = gaps.at(-1) ?? 0;
   };
-  summary(branchGaps, report.branches); summary(twigGaps, report.twigs); summary(leafGaps, report.leaves);
-  report.outcome = report.invalid === 0 && report.anchoring.max <= 1e-5 && report.branches.p50 < report.tolerance && report.twigs.p50 < report.tolerance && report.leaves.p50 < report.tolerance ? 'pass' : 'fail';
+  summary(branchGaps, report.branches); summary(twigGaps, report.twigs); summary(gemGaps, report.crystals); summary(linkGaps, report.filaments); summary(leafGaps, report.leaves);
+  report.outcome = report.invalid === 0 && report.anchoring.max <= 1e-5 && report.branches.p50 < report.tolerance && report.twigs.p50 < report.tolerance && report.crystals.p50 < report.tolerance && report.filaments.p50 < report.tolerance && report.leaves.p50 < report.tolerance ? 'pass' : 'fail';
   return report;
 }

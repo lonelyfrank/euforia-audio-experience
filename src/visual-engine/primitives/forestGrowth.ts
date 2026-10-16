@@ -1,8 +1,9 @@
+import type { AudioEvent, EventCursor, EventStream } from '../../experience/EventStream';
 import { forEachCue, type Cue, type CuesFrame } from '../../experience/MusicalCues';
 import { REST_WORLD } from '../../world/WorldState';
 import type { WorldView } from '../../world/WorldView';
 import type { GeometryState } from '../geometry/GeometryState';
-import { createShape, forestHash, growTree, MAX_FILAMENTS, MAX_TREES, TREE_DETAIL, type TreeDetail, type TreeShape, type TreeTraits } from './forestLaw';
+import { createShape, forestHash, GROUND_SLOT, growTree, linkShown, MAX_FILAMENTS, MAX_TREES, SLOTS, TREE_DETAIL, type TreeDetail, type TreeShape, type TreeTraits } from './forestLaw';
 import { PERIOD, terrainMeander, type TerrainValues } from './terrainLaw';
 
 /*
@@ -30,6 +31,13 @@ import { PERIOD, terrainMeander, type TerrainValues } from './terrainLaw';
  * from the phase the cognition reads — 0.30 in silence, 0.45 in a breakdown, 0.75 in a steady groove, 0.82 while the
  * tension rises, 1.00 at a release heard — followed over a second and a half, so it settles and then holds still. The
  * base light never depends on it: a silent forest is a dim forest, never an absent one.
+ *
+ * The resonance network: when a tree matures it spans filaments to its nearest mature neighbours (from the ends of its
+ * second-order branches), one inside its own crown, and long chords between monumental trees; they last as long as both
+ * trees stand and never move once formed (a newcomer adds, it does not rewire). Filaments between trees that remember the
+ * same music glow brighter. Pulses run along them on what was heard — a beat, a downbeat, an accent that stands out, a release —
+ * on a share of the filaments that the phase decides (none in silence, most at a release): a node lights, the light
+ * travels the span, the tree at the other end answers. A pulse is a pure function of its event's age.
  *
  * Trees also age: past their span of lived music they decay and their place is recycled. Fixed storage: nothing is
  * allocated after construction (a tree's shape is grown into its slot's arrays).
@@ -118,9 +126,18 @@ const EMISSION_TAU = 1.5;
 const SETTLED = 1e-4;
 /** A release heard holds the emission at its peak and lets it go over this long (s). */
 const RELEASE_TAU = 2.5;
-/** Filaments join trees resonating with the same music within this many lattice cells of each other. */
-const LINK_CELLS = 26;
+/** Filaments: to mature neighbours within this many units, chords between monumental trees within this many. */
+const LINK_RANGE = 24;
+const CHORD_RANGE = 37;
+/** Two trees remember the same music when their signatures are this close (per trait). */
 const LINK_SIGNATURE = 0.12;
+/** Pulses at once, the share of shown filaments one event sends a pulse along by phase, and the answer's envelope (s). */
+export const MAX_PULSES = 48;
+export const PULSE = { silence: 0, breakdown: 0.08, groove: 0.3, rising: 0.18, release: 0.6 } as const;
+const PING_TAU = 0.6;
+/** Events that send pulses: a beat or a downbeat this sure, an accent standing out this far of the track's own. */
+const BEAT_CONFIDENCE = 0.4;
+const IMPACT_SIGNIFICANCE = 0.5;
 
 const unit = (x: number): number => Math.min(1, Math.max(0, x));
 const quantize = (x: number): number => Math.round(unit(x) * 4) / 4;
@@ -141,6 +158,12 @@ export interface ForestStats {
   /** Trees resonating now because their remembered music came back (not only the groove), and the strongest match. */
   remembering: number;
   match: number;
+  /** Filaments formed and refused, filaments joining trees that remember the same music now; pulses sent and refused. */
+  links: number;
+  refusedLinks: number;
+  remembered: number;
+  pulses: number;
+  refusedPulses: number;
   density: number;
   target: number;
 }
@@ -149,18 +172,38 @@ export class ForestField {
   readonly params: ForestParams;
   readonly stats: ForestStats = {
     phases: new Uint16Array(TREE_PHASES.length), spawned: 0, recycled: 0, passed: 0, decayed: 0, aged: 0, refused: 0, bursts: 0,
-    releases: 0, prepares: 0, withdraws: 0, accents: 0, remembering: 0, match: 0, density: 0, target: 0,
+    releases: 0, prepares: 0, withdraws: 0, accents: 0, remembering: 0, match: 0, links: 0, refusedLinks: 0, remembered: 0, pulses: 0, refusedPulses: 0, density: 0, target: 0,
   };
   /** Each slot's shape (grown at seeding) and which slots were reseeded since the drawing last read them. */
   readonly shapes: TreeShape[];
   readonly dirty = new Uint8Array(MAX_TREES);
   /** What the GPU reads per tree: (growth, lean, light, decay) and (lean direction, resonance, leaf share, flush). */
-  readonly trees = new Float32Array(MAX_TREES * 4);
-  readonly treeLean = new Float32Array(MAX_TREES * 4);
-  /** The filaments to draw (the first `links`): two trees each, as their slots. */
-  readonly linkA = new Int16Array(MAX_FILAMENTS);
-  readonly linkB = new Int16Array(MAX_FILAMENTS);
+  readonly trees = new Float32Array(SLOTS * 4);
+  readonly treeLean = new Float32Array(SLOTS * 4);
+  /**
+   * The network: per filament slot its trees (-1: free), the anchor at each end, how far it sags (share of its span), its
+   * colour and strength, and its light now. `links` filament slots are in use; `topology` counts changes (the drawing
+   * rewrites the ends when it moves).
+   */
+  readonly linkA = new Int16Array(MAX_FILAMENTS).fill(-1);
+  readonly linkB = new Int16Array(MAX_FILAMENTS).fill(-1);
+  readonly anchorA = new Uint8Array(MAX_FILAMENTS);
+  readonly anchorB = new Uint8Array(MAX_FILAMENTS);
+  readonly sag = new Float32Array(MAX_FILAMENTS);
+  readonly colour = new Uint8Array(MAX_FILAMENTS);
+  readonly strength = new Float32Array(MAX_FILAMENTS);
+  readonly linkLight = new Float32Array(MAX_FILAMENTS);
   links = 0;
+  topology = 0;
+  /** Pulses: filament (-1: none), start (audio time of its event), duration (s), direction (1: from A), strength; `pulses` counts changes. */
+  readonly pulseLink = new Int16Array(MAX_PULSES).fill(-1);
+  readonly pulseStart = new Float64Array(MAX_PULSES);
+  readonly pulseDuration = new Float32Array(MAX_PULSES);
+  readonly pulseDirection = new Int8Array(MAX_PULSES);
+  readonly pulseStrength = new Float32Array(MAX_PULSES);
+  pulses = 0;
+  /** Each slot's seed (the shape's, and what its filaments are drawn from). */
+  readonly seeds = new Int32Array(MAX_TREES);
   /** The structural emission E (0.30 … 1) and the scale of the nodes, as the drawing reads them. */
   emission: number = EMISSION.silence;
   nodes: number = NODES.silence;
@@ -196,12 +239,29 @@ export class ForestField {
   private now = 0;
   private fresh = true;
   private releaseAt = -Infinity;
+  private readonly linked = new Uint8Array(MAX_TREES);
+  private readonly seen = new Uint8Array(MAX_TREES);
+  private readonly ping = new Float32Array(MAX_TREES);
+  private readonly events: EventCursor = { time: -Infinity, seq: 0 };
+  private cell = 1.5;
+  private phaseNow: CuesFrame['phase'] = 'silence';
+  private grooveNow = 0;
+  private heard = false;
+  private readonly hear = (event: AudioEvent): void => {
+    // A beat carries a quarter of the phase's share, a downbeat (only where bars are evidenced, never a presumed 4/4) the rest.
+    if (event.type === 'beat' && event.confidence >= BEAT_CONFIDENCE) this.launch(0.25 * this.share(), 0.6, event.audioTime, event.seq);
+    else if (event.type === 'downbeat' && event.confidence >= BEAT_CONFIDENCE) this.launch(0.75 * this.share(), 0.8, event.audioTime, event.seq);
+    else if (event.type === 'impact' && event.significance >= IMPACT_SIGNIFICANCE) this.launch(0.6 * this.share(), 1, event.audioTime, event.seq);
+  };
   private readonly take = (cue: Readonly<Cue>): void => this.cue(cue);
 
   constructor(params: ForestSettings = {}, private readonly worldSeed = 0, readonly detail: Readonly<TreeDetail> = TREE_DETAIL.high) {
     this.params = forestParams(params);
     this.shapes = Array.from({ length: MAX_TREES }, () => createShape(detail));
     for (let s = 0; s < MAX_TREES; s++) this.trees[s * 4] = -1;
+    // The ground's slot: always grown, never leaning, at full light.
+    const g = GROUND_SLOT * 4;
+    this.trees[g] = 9; this.trees[g + 2] = 1; this.treeLean[g] = Math.PI / 2; this.treeLean[g + 2] = 1;
   }
 
   in(phase: TreePhase): number { return this.stats.phases[TREE_PHASES.indexOf(phase)]; }
@@ -209,14 +269,21 @@ export class ForestField {
   /**
    * One frame. `t`: the ground's values this frame; `view`: the world; `geometry`: what the sound asks of geometry (the
    * traits a tree is seeded with and the signature it remembers); `position`: the ground travelled (rows); `rows`,
-   * `columns`: the mesh; `cues`: the snapshot's musical cues (none without a clock); `now`: the audio time heard.
+   * `columns`: the mesh; `cues`: the snapshot's musical cues (none without a clock); `now`: the audio time heard;
+   * `events`: the session's dated events (pulses), none without a clock.
    */
-  step(dt: number, t: Readonly<TerrainValues>, view: Readonly<WorldView>, geometry: Readonly<GeometryState>, position: number, rows: number, columns: number, cues: Readonly<CuesFrame> | undefined, now: number): void {
+  step(dt: number, t: Readonly<TerrainValues>, view: Readonly<WorldView>, geometry: Readonly<GeometryState>, position: number, rows: number, columns: number, cues: Readonly<CuesFrame> | undefined, now: number, events?: EventStream): void {
     const p = this.params, h = dt > 0 && Number.isFinite(dt) ? Math.min(dt, 0.25) : 0;
     const timed = view.world !== REST_WORLD && !!cues;
     const live = timed && !cues!.silent ? h : 0;
-    this.now = now;
+    this.now = now; this.cell = t.cell;
+    this.phaseNow = timed && !cues!.silent ? cues!.phase : 'silence'; this.grooveNow = timed ? cues!.groove : 0;
     if (cues) this.cursor = this.cursor < 0 ? cues.seq : forEachCue(cues, this.cursor, this.take);
+    if (events && timed) {
+      // Mounted into a running session (or a new one), it starts from now: what was heard before sends nothing.
+      if (!this.heard) { this.events.time = now; this.events.seq = events.seq; this.events.epoch = events.epoch; this.events.low = undefined; this.heard = true; }
+      events.forEachHeard(this.events, now, this.hear);
+    }
     const capacity = Math.min(MAX_TREES, Math.max(0, p.capacity));
 
     // ---- the present music's signature, followed slowly (what a tree seeded now remembers, and what wakes the others) ----
@@ -299,6 +366,8 @@ export class ForestField {
         if (this.growth[s] <= 0) { this.recycle(s); this.stats.decayed++; }
       }
     }
+    // A tree that has matured spans its filaments (once).
+    for (let s = 0; s < MAX_TREES; s++) if (!this.linked[s] && (this.phase[s] === MATURE || this.phase[s] === RESONANCE)) this.form(s);
     if (retire && this.sinceRetire >= RETIRE_EVERY && weakest >= 0) { this.phase[weakest] = DECAY; this.progress[weakest] = 0; this.sinceRetire = 0; }
     this.stats.remembering = remembering; this.stats.match = strongest;
 
@@ -313,6 +382,7 @@ export class ForestField {
     const s = this.stats;
     if (cue.kind === 'release' && cue.status === 'confirmed') {
       s.releases++; s.bursts++; this.burst = BURST; this.budding = false; this.releaseAt = cue.time;
+      this.launch(PULSE.release, 1.2, cue.time, cue.seq + 0x10000);
       // Every mature tree flushes, dated at the release; its leaves open all at once.
       for (let k = 0; k < MAX_TREES; k++) if (this.phase[k] === MATURE || this.phase[k] === RESONANCE) { this.flushAt[k] = cue.time; this.leaves[k] = 1; }
     } else if (cue.kind === 'prepare' && cue.status === 'predicted') { s.prepares++; this.budding = true; }
@@ -329,16 +399,20 @@ export class ForestField {
   reset(): void {
     this.cursor = -1; this.burst = 0; this.budding = false; this.density = 0; this.fresh = true; this.releaseAt = -Infinity;
     this.flushAt.fill(-Infinity); this.accentAt.fill(-Infinity);
+    // The pulses were dated in the session that ended: none survives it.
+    this.pulseLink.fill(-1); this.pulses++; this.ping.fill(0); this.heard = false;
   }
 
   /** Every tree back to the pool and every count to zero (a tool's reset). */
   clear(): void {
     this.phase.fill(DORMANT); this.growth.fill(0); this.flushAt.fill(-Infinity); this.accentAt.fill(-Infinity);
     for (let s = 0; s < MAX_TREES; s++) this.trees[s * 4] = -1;
-    this.reset(); this.lastPosition = NaN; this.evaluated = -Infinity; this.travelled = 0; this.links = 0; this.sown = false;
+    this.reset(); this.lastPosition = NaN; this.evaluated = -Infinity; this.travelled = 0; this.sown = false;
+    this.linkA.fill(-1); this.linkB.fill(-1); this.linkLight.fill(0); this.linked.fill(0); this.links = 0; this.topology++;
     const st = this.stats;
     st.phases.fill(0);
     st.spawned = st.recycled = st.passed = st.decayed = st.aged = st.refused = st.bursts = st.releases = st.prepares = st.withdraws = st.accents = st.remembering = 0;
+    st.links = st.refusedLinks = st.remembered = st.pulses = st.refusedPulses = 0;
   }
 
   /** Trees in the pool now (any phase but dormant). */
@@ -367,7 +441,7 @@ export class ForestField {
       const seed = Math.floor(forestHash(row, side + 7 + this.worldSeed) * 0x7fffffff), tr = this.traits, sig = this.present;
       tr.branching = quantize(sig[5]); tr.spread = 0.55 + 0.45 * quantize(sig[2]); tr.upright = quantize(cues.tension); tr.foliage = quantize(sig[4]);
       tr.height = p.low + (p.high - p.low) * forestHash(seed, 3);
-      const shape = growTree(seed, tr, this.detail, this.shapes[s]);
+      const shape = growTree(seed, tr, this.detail, this.shapes[s], t.cell);
       const off = p.corridor + shape.reach + forestHash(seed, 4) * p.reach;
       const J = Math.round((terrainMeander(R) + side * off) / t.cell), i = J - t.col;
       if (Math.abs(i) > columns / 2 - SIDE || this.near(J, R, shape.reach / t.cell)) { this.stats.refused++; continue; }
@@ -375,13 +449,98 @@ export class ForestField {
       this.decay[s] = 0; this.resonance[s] = 0; this.match[s] = 0; this.leaves[s] = 0.35 + 0.65 * tr.foliage;
       this.sway[s] = 0.6 + 0.4 * forestHash(seed, 5); this.flushAt[s] = this.accentAt[s] = -Infinity;
       for (let q = 0; q < TRAITS; q++) this.memory[s * TRAITS + q] = sig[q];
+      this.seeds[s] = seed; this.linked[s] = 0;
       this.dirty[s] = 1;
       this.stats.spawned++;
     }
   }
 
   private recycle(s: number): void {
-    this.phase[s] = DORMANT; this.growth[s] = 0; this.trees[s * 4] = -1; this.stats.recycled++;
+    this.phase[s] = DORMANT; this.growth[s] = 0; this.trees[s * 4] = -1; this.stats.recycled++; this.linked[s] = 0; this.ping[s] = 0;
+    // Its filaments go with it (and the pulses on them).
+    for (let n = 0; n < MAX_FILAMENTS; n++) if (this.linkA[n] === s || this.linkB[n] === s) this.unlink(n);
+  }
+
+  // ---- the network ----
+
+  /** The share of filaments an event sends a pulse along, by the phase heard now. */
+  private share(): number {
+    const ph = this.phaseNow;
+    return ph === 'unknown' ? PULSE.groove * this.grooveNow : PULSE[ph];
+  }
+
+  /** Units between two trees on the ground (lattice cells, the rows the short way round the period). */
+  private between(a: number, b: number): number {
+    const dr = ((this.R[b] - this.R[a]) % PERIOD + PERIOD * 1.5) % PERIOD - PERIOD * 0.5;
+    return Math.hypot(this.J[b] - this.J[a], dr) * this.cell;
+  }
+
+  /** A mature tree's filaments: to its nearest mature neighbours, one inside its crown, chords to other monumental trees. */
+  private form(a: number): void {
+    this.linked[a] = 1;
+    const shape = this.shapes[a], seed = this.seeds[a], k = this.detail.links;
+    if (shape.anchors === 0) return;
+    let made = 0;
+    const seen = this.seen;
+    seen.fill(0);
+    for (let m = 0; m < k; m++) {
+      // The nearest formed neighbour not considered yet (no sorting, no allocation).
+      let best = -1, bestD = Infinity;
+      for (let b = 0; b < MAX_TREES; b++) {
+        if (b === a || seen[b] || !this.linked[b] || this.phase[b] === DORMANT || this.shapes[b].anchors === 0) continue;
+        const d = this.between(a, b);
+        if (d <= LINK_RANGE && d < bestD) { best = b; bestD = d; }
+      }
+      if (best < 0) break;
+      seen[best] = 1;
+      // Not every neighbour is joined: the network has gaps.
+      if (!this.joined(a, best) && forestHash(seed ^ this.seeds[best], 11) < 0.85) { this.link(a, best, 1); made++; }
+    }
+    if (shape.anchors > 2 && forestHash(seed, 12) < 0.6) this.link(a, a, 0.8);
+    if (shape.monumental) for (let b = 0; b < MAX_TREES; b++) {
+      if (b === a || !this.linked[b] || !this.shapes[b].monumental || this.between(a, b) > CHORD_RANGE) continue;
+      this.link(a, b, 1.1); this.link(a, b, 1.1);
+    }
+    this.stats.links += made;
+  }
+
+  private joined(a: number, b: number): boolean {
+    for (let n = 0; n < MAX_FILAMENTS; n++) if ((this.linkA[n] === a && this.linkB[n] === b) || (this.linkA[n] === b && this.linkB[n] === a)) return true;
+    return false;
+  }
+
+  /** A filament between trees a and b, its ends, sag and colour drawn from their seeds. */
+  private link(a: number, b: number, strength: number): void {
+    let n = 0;
+    while (n < MAX_FILAMENTS && this.linkA[n] >= 0) n++;
+    if (n === MAX_FILAMENTS) { this.stats.refusedLinks++; return; }
+    const key = (this.seeds[a] ^ Math.imul(this.seeds[b], 31)) + n, sa = this.shapes[a], sb = this.shapes[b];
+    let ea = Math.floor(forestHash(key, 21) * sa.anchors), eb = Math.floor(forestHash(key, 22) * sb.anchors);
+    // Inside one crown: between its first and its last anchor.
+    if (a === b) { ea = 0; eb = sa.anchors - 1; }
+    this.linkA[n] = a; this.linkB[n] = b; this.anchorA[n] = ea; this.anchorB[n] = eb;
+    this.sag[n] = 0.05 + 0.09 * forestHash(key, 23); this.colour[n] = Math.floor(forestHash(key, 24) * 5); this.strength[n] = strength * (0.35 + 0.4 * forestHash(key, 25)) / 0.55;
+    this.links++; this.topology++;
+  }
+
+  private unlink(n: number): void {
+    this.linkA[n] = this.linkB[n] = -1; this.linkLight[n] = 0; this.links--; this.topology++;
+    for (let q = 0; q < MAX_PULSES; q++) if (this.pulseLink[q] === n) { this.pulseLink[q] = -1; this.pulses++; }
+  }
+
+  /** Pulses along a share of the shown filaments, dated at `time` (drawn from the event's own number). */
+  private launch(share: number, strength: number, time: number, salt: number): void {
+    if (share <= 0 || !Number.isFinite(time)) return;
+    for (let n = 0; n < MAX_FILAMENTS; n++) {
+      const a = this.linkA[n], b = this.linkB[n];
+      if (a < 0 || linkShown(this.growth[a], this.growth[b]) < 0.5 || forestHash(salt, n + 101) >= share) continue;
+      let q = 0;
+      while (q < MAX_PULSES && this.pulseLink[q] >= 0) q++;
+      if (q === MAX_PULSES) { this.stats.refusedPulses++; return; }
+      const span = a === b ? this.shapes[a].reach : this.between(a, b);
+      this.pulseLink[q] = n; this.pulseStart[q] = time; this.pulseDuration[q] = 0.45 + span / 28; this.pulseDirection[q] = forestHash(salt, n + 202) < 0.5 ? 1 : -1;
+      this.pulseStrength[q] = strength; this.pulses++; this.stats.pulses++;
+    }
   }
 
   private near(J: number, R: number, cells: number): boolean {
@@ -403,6 +562,18 @@ export class ForestField {
   private pack(): void {
     const p = this.params, phases = this.stats.phases;
     phases.fill(0);
+    // Pulses: the node they leave lights, the tree they reach answers; spent, they free their place.
+    this.ping.fill(0);
+    for (let q = 0; q < MAX_PULSES; q++) {
+      const n = this.pulseLink[q];
+      if (n < 0) continue;
+      const age = this.now - this.pulseStart[q], d = this.pulseDuration[q], strength = this.pulseStrength[q];
+      if (age > d * 1.15 + 0.1 || age < -1) { this.pulseLink[q] = -1; this.pulses++; continue; }
+      if (age < 0) continue;
+      const from = this.pulseDirection[q] > 0 ? this.linkA[n] : this.linkB[n], to = this.pulseDirection[q] > 0 ? this.linkB[n] : this.linkA[n];
+      this.ping[from] = Math.max(this.ping[from], 0.6 * strength * Math.exp(-age / PING_TAU));
+      if (age >= d) this.ping[to] = Math.max(this.ping[to], strength * Math.exp(-(age - d) / PING_TAU));
+    }
     for (let s = 0; s < MAX_TREES; s++) {
       const ph = this.phase[s];
       phases[ph]++;
@@ -412,25 +583,24 @@ export class ForestField {
       const bud = this.budding && (ph === MATURE || ph === RESONANCE) ? 0.5 : 0;
       this.trees[o] = this.growth[s];
       this.trees[o + 1] = -p.lean * this.wind * this.sway[s] * (0.5 + 0.5 * this.resonance[s]);
-      this.trees[o + 2] = (0.45 + 0.35 * Math.min(1, this.growth[s]) + 0.5 * this.resonance[s]) * (1 - 0.6 * this.decay[s]) + 0.8 * flush + 0.5 * accent;
+      this.trees[o + 2] = (0.45 + 0.35 * Math.min(1, this.growth[s]) + 0.5 * this.resonance[s]) * (1 - 0.6 * this.decay[s]) + 0.8 * flush + 0.5 * accent + 0.7 * this.ping[s];
       this.trees[o + 3] = this.decay[s];
       this.treeLean[o] = Math.PI / 2; this.treeLean[o + 1] = Math.max(this.resonance[s], bud); this.treeLean[o + 2] = this.leaves[s] * (1 - this.decay[s] * 0.5); this.treeLean[o + 3] = flush;
     }
-    // Filaments: trees resonating with the same remembered music, near enough to each other.
-    let n = 0;
-    for (let a = 0; a < MAX_TREES && n < this.linkA.length; a++) {
-      if (this.phase[a] !== RESONANCE || this.match[a] < RING_OFF) continue;
-      for (let b = a + 1; b < MAX_TREES && n < this.linkA.length; b++) {
-        if (this.phase[b] !== RESONANCE || this.match[b] < RING_OFF) continue;
-        const dr = Math.abs(((this.R[b] - this.R[a]) % PERIOD + PERIOD * 1.5) % PERIOD - PERIOD * 0.5);
-        if (Math.abs(this.J[b] - this.J[a]) + dr > LINK_CELLS) continue;
+    // Filaments: their light, brighter between trees resonating with the same remembered music.
+    let remembered = 0;
+    for (let n = 0; n < MAX_FILAMENTS; n++) {
+      const a = this.linkA[n], b = this.linkB[n];
+      if (a < 0) continue;
+      let same = 0;
+      if (a !== b && this.phase[a] === RESONANCE && this.phase[b] === RESONANCE && this.match[a] >= RING_OFF && this.match[b] >= RING_OFF) {
         let d2 = 0;
         for (let q = 0; q < TRAITS; q++) { const e = this.memory[a * TRAITS + q] - this.memory[b * TRAITS + q]; d2 += e * e; }
-        if (d2 > LINK_SIGNATURE * LINK_SIGNATURE * TRAITS) continue;
-        this.linkA[n] = a; this.linkB[n] = b; n++;
+        if (d2 <= LINK_SIGNATURE * LINK_SIGNATURE * TRAITS) { same = 1; remembered++; }
       }
+      this.linkLight[n] = this.strength[n] * (1 + 1.5 * same * this.resonance[a] * this.resonance[b]);
     }
-    this.links = n;
+    this.stats.remembered = remembered;
   }
 }
 

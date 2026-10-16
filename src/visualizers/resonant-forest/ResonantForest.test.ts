@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BufferGeometry, Material } from 'three';
+import { EventStream } from '../../experience/EventStream';
 import { createCues, type Cue, type CuesFrame } from '../../experience/MusicalCues';
 import { createGeometry, type GeometryState } from '../../visual-engine/geometry/GeometryState';
-import { barkGlsl, barkPoint, createShape, forestLawGlsl, forestRoot, growTree, leafPoint, SPAN, TREE_DETAIL, twigPoint, type TreeShape, type TreeState } from '../../visual-engine/primitives/forestLaw';
-import { EMISSION, ForestField, forestParams, NODES, TRAIT_KEYS, type ForestSettings } from '../../visual-engine/primitives/forestGrowth';
+import { barkGlsl, barkPoint, createShape, crystalField, forestLawGlsl, forestRoot, gemPoint, growTree, leafPoint, MAX_FILAMENTS, SPAN, TREE_DETAIL, twigPoint, type TreeShape, type TreeState } from '../../visual-engine/primitives/forestLaw';
+import { EMISSION, ForestField, forestParams, MAX_PULSES, NODES, TRAIT_KEYS, type ForestSettings } from '../../visual-engine/primitives/forestGrowth';
 import type { ForestPrimitive } from '../../visual-engine/primitives/ForestPrimitive';
-import { createTerrain, PERIOD, terrainHeight, type TerrainValues } from '../../visual-engine/primitives/terrainLaw';
+import { createTerrain, PERIOD, terrainHeight, terrainMeander, type TerrainValues } from '../../visual-engine/primitives/terrainLaw';
 import { TerrainMotion, type TerrainParams } from '../../visual-engine/primitives/terrainMotion';
 import type { RigCamera } from '../../visual-engine/RigCamera';
 import type { TerrainPrimitive } from '../../visual-engine/primitives/TerrainPrimitive';
@@ -57,12 +58,15 @@ describe('forest law: a crystalline tree stands on the ground\'s own vertex and 
     let low = 0, high = 0, lowFaces = 0, highFaces = 0, veins = 0;
     for (let seed = 1; seed <= 30; seed++) {
       const s = grow(seed);
+      // The trunk: the first segment, born at 0 from the point under the root; heights relative to its own.
+      const trunk = (v: number) => s.base[v * 4 + 3] === 0 && s.base[v * 4] === 0 && s.base[v * 4 + 2] === 0;
+      let height = 0;
+      for (let v = 0; v < s.bark; v++) if (trunk(v)) height = Math.max(height, s.point[v * 3 + 1]);
       for (let v = 0; v < s.bark; v += 3) {
-        // The trunk: the first segment, born at 0 from the point under the root.
-        if (s.base[v * 4 + 3] !== 0 || s.base[v * 4] !== 0 || s.base[v * 4 + 2] !== 0) continue;
+        if (!trunk(v)) continue;
         const y = (s.point[v * 3 + 1] + s.point[v * 3 + 4] + s.point[v * 3 + 7]) / 3, glowing = s.glow[v * 4 + 1] > 0 ? 1 : 0;
         // (A vein's column glows as often anywhere.)
-        if (s.vein[v * 3 + 2] === 0 && y < 0.25 * s.top) { low += glowing; lowFaces++; } else if (s.vein[v * 3 + 2] === 0 && y > 0.4 * s.top) { high += glowing; highFaces++; }
+        if (s.vein[v * 3 + 2] === 0 && y < 0.3 * height) { low += glowing; lowFaces++; } else if (s.vein[v * 3 + 2] === 0 && y > 0.6 * height) { high += glowing; highFaces++; }
         // A vein lights two corners of a triangle (an edge) or none.
         const edge = s.vein[v * 3 + 1] + s.vein[v * 3 + 4] + s.vein[v * 3 + 7];
         expect([0, 2]).toContain(edge);
@@ -106,9 +110,52 @@ describe('forest law: a crystalline tree stands on the ground\'s own vertex and 
     expect(fallen[1]).toBeLessThan(open[1] - 2);
   });
 
+  it('its root crystals each stand on the ground\'s vertex of their own lattice point; its crystals grow out of what holds them', () => {
+    const t = ground({ row: 40, shift: 0.2, col: 1, shiftX: 0.3, relief: 7 });
+    let checked = 0;
+    for (const seed of [11, 47, 77, 1234]) {
+      const shape = grow(seed), T = tree({ R: (t.row + 50) % PERIOD });
+      for (let v = 0; v < shape.bark; v++) {
+        const dJ = shape.site[v * 2], dR = shape.site[v * 2 + 1];
+        if (dJ === 0 && dR === 0) continue;
+        // Unborn, a shard is the point it grows out of: just under its own vertex.
+        const i = T.J + dJ - t.col, k = ((T.R + dR - t.row) % PERIOD + PERIOD) % PERIOD;
+        expect(barkPoint(t, { ...T, growth: 0 }, shape, v)[1]).toBeCloseTo(terrainHeight(t, i, k) - 0.08 - 0.15, 4);
+        checked++;
+      }
+      // A crystal of the tree is its anchor until it is born, and somewhere else once grown.
+      const gems = shape.crystals;
+      expect(gems.count % 3).toBe(0); expect(gems.count).toBeLessThanOrEqual(TREE_DETAIL.high.gem);
+      for (let v = 0; v < gems.count; v++) {
+        const unborn = gemPoint(t, { ...T, growth: 0 }, gems, v), root = forestRoot(t, T.J, T.R);
+        expect(unborn[1] - root[1]).toBeCloseTo(gems.base[v * 4 + 1], 4);
+      }
+    }
+    expect(checked).toBeGreaterThan(12 * 3);
+  });
+
+  it('the crystal field floats over the whole period of the ground, never low over the corridor, the same for the same seed', () => {
+    const cell = 1.5, a = crystalField(7, TREE_DETAIL.high, cell, 45, 7), b = crystalField(7, TREE_DETAIL.high, cell, 45, 7), low = crystalField(7, TREE_DETAIL.low, cell, 45, 7);
+    expect(Array.from(b.point)).toEqual(Array.from(a.point));
+    expect(a.count % 3).toBe(0); expect(low.count).toBeLessThan(a.count * 0.6);
+    // About 1.4 crystals a row: some in every stretch of the ground that can be in view.
+    expect(a.count / 27).toBeGreaterThan(PERIOD); expect(a.count / 27).toBeLessThan(2 * PERIOD);
+    const rows = new Set<number>();
+    for (let v = 0; v < a.count; v++) {
+      const h = a.base[v * 4 + 1], across = a.lattice[v * 2] * cell + a.base[v * 4] - terrainMeander(a.lattice[v * 2 + 1]);
+      expect(h).toBeGreaterThanOrEqual(2.5); expect(h).toBeLessThanOrEqual(15.5);
+      if (Math.abs(across) < 9) expect(h).toBeGreaterThanOrEqual(7);
+      expect(Math.abs(across)).toBeLessThanOrEqual(45 + cell);
+      rows.add(Math.floor(a.lattice[v * 2 + 1] / 32));
+    }
+    expect(rows.size).toBe(PERIOD / 32);
+  });
+
   it('leans rigidly about its root: every distance between its points is kept', () => {
     const t = ground(), shape = grow(5);
-    const points = (lean: number) => Array.from({ length: shape.bark / 9 | 0 }, (_, n) => barkPoint(t, tree({ lean }), shape, n * 9));
+    // (A root crystal turns about its own lattice point: only what stands on the tree's.)
+    const own = Array.from({ length: shape.bark / 9 | 0 }, (_, n) => n * 9).filter((v) => shape.site[v * 2] === 0 && shape.site[v * 2 + 1] === 0);
+    const points = (lean: number) => own.map((v) => barkPoint(t, tree({ lean }), shape, v));
     const straight = points(0), leaning = points(0.06);
     for (let s = 1; s < straight.length; s++) {
       const d0 = Math.hypot(...straight[s].map((x, q) => x - straight[0][q]) as [number, number, number]);
@@ -123,7 +170,7 @@ describe('forest law: a crystalline tree stands on the ground\'s own vertex and 
 /** The ground's motion and the forest over a hand-set world, cues and geometry, at any frame rate. */
 function walk(settings: ForestSettings = P.forest, seed = 20261018) {
   const world = createWorld(), view = new WorldView(), geometry = createGeometry(), motion = new TerrainMotion(P), cues = createCues();
-  const field = new ForestField(settings, seed);
+  const field = new ForestField(settings, seed), events = new EventStream();
   world.time = 10; cues.silent = false; cues.live = true; cues.phase = 'groove'; cues.groove = 0.7; cues.stability = 0.8;
   view.update(world, { motion: 1, expansion: 1, turbulence: 1 });
   const push = (kind: Cue['kind'], status: Cue['status'], time: number): void => {
@@ -139,12 +186,14 @@ function walk(settings: ForestSettings = P.forest, seed = 20261018) {
       world.travel += world.speed / fps;
       view.update(timed ? world : undefined, { motion: 1, expansion: 1, turbulence: 1 });
       const v = motion.step(1 / fps, view, geometry, undefined, world.time);
-      field.step(1 / fps, v, view, geometry, v.row + v.shift, P.rows, P.columns, timed ? cues : undefined, world.time);
+      field.step(1 / fps, v, view, geometry, v.row + v.shift, P.rows, P.columns, timed ? cues : undefined, world.time, timed ? events : undefined);
       each?.();
     }
   };
   const anchors = (): string[] => { const out: string[] = []; for (let s = 0; s < 40; s++) if (field.phase[s]) out.push(`${field.J[s]}:${field.R[s]}`); return out.sort(); };
-  return { world, view, motion, field, cues, geometry, push, run, anchors };
+  /** Downbeats every `every` seconds from now to `until`, dated on the audio clock. */
+  const downbeats = (until: number, every = 2): void => { for (let at = world.time + 0.25; at < until; at += every) events.push('downbeat', at, 0.9, 0.9); };
+  return { world, view, motion, field, cues, geometry, events, push, run, anchors, downbeats };
 }
 const timbre = (g: GeometryState, x: number) => { for (const key of TRAIT_KEYS) g[key] = x; };
 
@@ -283,6 +332,63 @@ describe('forest: the life the music gives the trees', () => {
     expect(g.field.emission).toBeCloseTo(EMISSION.silence, 6);
   });
 
+  it('the network forms as trees mature, never rewires, and goes with the trees it joins', () => {
+    const f = walk({ ...P.forest, grow: 3, span: 1000 });
+    f.run(40);
+    const field = f.field, links = () => {
+      const out = new Map<number, string>();
+      for (let n = 0; n < MAX_FILAMENTS; n++) if (field.linkA[n] >= 0) out.set(n, `${field.linkA[n]}:${field.anchorA[n]}-${field.linkB[n]}:${field.anchorB[n]}`);
+      return out;
+    };
+    expect(field.links).toBeGreaterThan(3);
+    const before = links();
+    for (const [n] of before) {
+      // Between standing trees that have matured.
+      for (const s of [field.linkA[n], field.linkB[n]]) expect(field.phase[s]).toBeGreaterThanOrEqual(3);
+    }
+    f.run(20, (world) => { world.speed = 0; });
+    // A newcomer adds; nothing that was joined is rewired.
+    const after = links();
+    for (const [n, link] of before) if (after.has(n)) expect(after.get(n)).toBe(link);
+    for (const [n] of before) expect(after.has(n)).toBe(true);
+    // A breakdown brings trees down: their filaments go, none points at an empty slot.
+    f.run(60, (world, cues) => { cues.phase = 'breakdown'; world.speed = 0.2; });
+    for (let n = 0; n < MAX_FILAMENTS; n++) if (field.linkA[n] >= 0) { expect(field.phase[field.linkA[n]]).toBeGreaterThan(0); expect(field.phase[field.linkB[n]]).toBeGreaterThan(0); }
+    expect(field.links).toBeLessThan(after.size);
+  });
+
+  it('pulses run on what was heard, on a share of the filaments the phase decides; none in silence; their end lights a tree', () => {
+    const f = walk({ ...P.forest, grow: 3, span: 1000 });
+    f.run(40);
+    expect(f.field.links).toBeGreaterThan(3);
+    const launched = () => f.field.stats.pulses;
+    // Silence: downbeats (there may be some on the stream) send nothing.
+    f.downbeats(f.world.time + 10);
+    f.run(10, (_, cues) => { cues.phase = 'silence'; cues.silent = true; });
+    expect(launched()).toBe(0);
+    // A steady groove: some filaments carry light on every downbeat, never more than the pool.
+    f.downbeats(f.world.time + 10);
+    let busiest = 0, answered = 0;
+    f.run(10, (_, cues) => { cues.phase = 'groove'; cues.silent = false; }, 60, () => {
+      let live = 0;
+      for (let q = 0; q < MAX_PULSES; q++) if (f.field.pulseLink[q] >= 0) live++;
+      busiest = Math.max(busiest, live);
+      for (let s = 0; s < 40; s++) if (f.field.phase[s] >= 3) answered = Math.max(answered, f.field.trees[s * 4 + 2]);
+    });
+    expect(launched()).toBeGreaterThan(0); expect(busiest).toBeLessThanOrEqual(MAX_PULSES);
+    expect(answered).toBeGreaterThan(1.3);
+    // A pulse starts at its event's time, whatever the frame rate.
+    const starts = (fps: number) => {
+      const g = walk({ ...P.forest, grow: 3, span: 1000 });
+      g.run(40, undefined, fps); g.downbeats(g.world.time + 4); g.run(4, undefined, fps);
+      return Array.from(g.field.pulseStart).filter((_, q) => g.field.pulseLink[q] >= 0).sort();
+    };
+    expect(starts(30)).toEqual(starts(60));
+    // A new session: nothing dated in the last one survives.
+    f.field.reset();
+    expect(Array.from(f.field.pulseLink).every((n) => n < 0)).toBe(true);
+  });
+
   it('settings are bounded', () => {
     expect(forestParams({ capacity: 999, lean: 3, low: 50, high: 2 })).toMatchObject({ capacity: 40, lean: 0.15, low: 30, high: 30 });
   });
@@ -330,7 +436,7 @@ describe('Resonant Forest: a scene of the Worlds family', { timeout: 60_000 }, (
     const full = mountWorld('resonant-forest');
     const geometry = vi.spyOn(BufferGeometry.prototype, 'dispose'), material = vi.spyOn(Material.prototype, 'dispose');
     full.dispose();
-    // Ground: two of each; trees at Medium: four of each (bark, twigs, blossoms, filaments).
-    expect(geometry).toHaveBeenCalledTimes(6); expect(material).toHaveBeenCalledTimes(6);
+    // Ground: two of each; trees at Medium: seven of each (bark, twigs, blossoms, crystals, filaments, their crystals, pulses).
+    expect(geometry).toHaveBeenCalledTimes(9); expect(material).toHaveBeenCalledTimes(9);
   });
 });

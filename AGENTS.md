@@ -184,7 +184,11 @@
   runtime. Un albero è geometria scritta una volta alla semina nella parte del suo slot (budget in vertici per qualità, **multipli di un
   triangolo e di una linea**); nessun vertice è mosso dal suono, la crescita scala ogni segmento dal suo inizio. Tre livelli di luce mai
   mescolati: base costante (silhouette in silenzio), emissione strutturale `emission` (E per fase, ferma a riposo), eventi. La foresta
-  ha la sua palette (`forestLook.ts`), non quella dell'app.
+  ha la sua palette (`forestLook.ts`), non quella dell'app. Cristalli e punte di radice sono parte della forma (una punta sta sul vertice del
+  proprio punto del reticolo, `site`); il campo di cristalli sospesi è una funzione pura del seme sullo slot del suolo (`GROUND_SLOT`). La
+  rete si forma quando un albero matura e non si ricollega; `linkGlsl` / `linkPoint` sono scritti in GLSL e in TS (parità). Gli impulsi
+  partono solo da eventi uditi letti con un `EventCursor` (beat e downbeat evidenti, impact significativi, `release` confermato), datati sul
+  loro tempo audio: funzione pura dell'età, cancellati a nuova sessione.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente e quella dell'analisi delle
   scene, non hop/beat. Le soglie (`DspBudget.ts` e `src-tauri/src/audio.rs`) sono le stesse nei due
   host: cambiarle insieme. Il wire e il WASM versionato devono corrispondere al backend:

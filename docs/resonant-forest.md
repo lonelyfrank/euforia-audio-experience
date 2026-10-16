@@ -22,7 +22,7 @@ reale.
 | Cristalli | radice, ramo, sospesi (170), di risonanza | nodi = triangoli piatti alle biforcazioni | totale (Fase C) |
 | Rete | filamenti a catenaria fra ancore di profondità 2, k vicini, corde fra monumentali, impulsi | segmento retto fra le chiome di alberi che ricordano la stessa musica | parziale (Fase C) |
 | Suolo | low-poly scuro illuminato, radura e ruscello bagnati con riflesso stilizzato, crepe emissive, anelli sul drop | wireframe del Terrain additivo + facce quasi nere | totale (Fase D) |
-| Cielo e aria | gradiente zenit → bagliore viola all'orizzonte, nebbia esponenziale colorata in quota, colonne di luce, particelle | sfondo del compositore (vuoto + foschia "navy" + stelle) **additivo sotto ogni scena**; nebbia della foresta verso il nero | totale (Fase D, con una decisione: §5) |
+| Cielo e aria | gradiente zenit → bagliore viola all'orizzonte, nebbia esponenziale colorata in quota, colonne di luce, particelle | sfondo del compositore (vuoto + foschia "navy" + stelle) **additivo sotto ogni scena**; nebbia della foresta verso il nero | totale (Fase D, §6) |
 | Popolazione | ~25 alberi in vista, monumentali (40–54 m), pareti di foresta ai lati del percorso | pool di 40, una pianta per lato ogni 3 righe, 6–13 unità | parziale |
 | Camera | quattro composizioni fisse | Glide + Drift nel corridoio, nessuna composizione | da decidere (Fase D) |
 | Qualità | Low/Medium/High: lati, profondità, LOD, distanza, cristalli, riflessi, bloom | filamenti spenti a Low, suolo più rado | parziale |
@@ -31,7 +31,7 @@ Vincoli scoperti nell'audit:
 
 - **Il compositore è additivo** (`compositeShader.ts`): `backdrop(uv) + scene(uv)`. Ciò che una scena disegna di scuro
   non copre la foschia e le stelle del cielo: un tronco "nero" lascia passare lo sfondo. Le silhouette scure del mockup
-  contro un orizzonte luminoso richiedono che la scena possa coprire lo sfondo (§5).
+  contro un orizzonte luminoso richiedono che la scena possa coprire lo sfondo (§6).
 - `TerrainPrimitive` è condiviso con Generative Terrain (digest bit per bit) e Monolith Desert: ogni cambio d'aspetto del
   suolo per la foresta deve essere opt-in, con default che lasciano il Terrain com'è.
 - Scala: il mockup è in metri, il runtime in unità del reticolo (cella 1,5). Ho adottato **1 unità ≈ 2 m** per altezze,
@@ -46,8 +46,8 @@ Vincoli scoperti nell'audit:
 |---|---|---|
 | A | Audit (questo documento) | fatto |
 | B | Anatomia dell'albero a volumi chiusi, materiale ossidiana e luce di base, facce emissive e venature, scala E e scala nodi dagli stati musicali, dettaglio per qualità, parità | **fatto** (§3) |
-| C | Cristalli (radice, ramo, sospesi, risonanza) e rete di risonanza: ancore di profondità 2, catenarie, vicini, corde fra monumentali, impulsi datati sugli eventi (`EventCursor`, nessun secondo clock) | da fare |
-| D | Ambiente: suolo della foresta (opt-in su `TerrainPrimitive`: facce illuminate, radura/ruscello bagnati, crepe emissive, anelli sul rilascio udito), cielo con bagliore d'orizzonte e nebbia colorata, colonne di luce, particelle; popolazione più densa e monumentali; composizioni della camera | da fare, una decisione aperta (§5) |
+| C | Cristalli (radice, ramo, sospesi, risonanza) e rete di risonanza: ancore di profondità 2, catenarie, vicini, corde fra monumentali, impulsi datati sugli eventi (`EventCursor`, nessun secondo clock) | **fatto** (§4) |
+| D | Ambiente: suolo della foresta (opt-in su `TerrainPrimitive`: facce illuminate, radura/ruscello bagnati, crepe emissive, anelli sul rilascio udito), cielo con bagliore d'orizzonte e nebbia colorata, colonne di luce, particelle; popolazione più densa e monumentali; composizioni della camera | da fare; copertura del cielo: scelta la strada 1 (§6) |
 | E | Profili di qualità completi, budget misurati sulla Intel UHD (Low/Medium/High), prova a occhio con musica reale | da fare |
 
 ## 3. Fase B — l'albero cristallino
@@ -81,8 +81,8 @@ almeno un pixel e mezzo (`fwidth`), intensità 1 alla base → 0,55 in cima.
 | fiori e nodi | triangoli additivi | additiva |
 | filamenti | come prima (Fase C li rifà) | additiva, non a Low |
 
-- Pool fisso: ogni slot ha la sua parte dei buffer (2 556 vertici di corteccia e 512 di rametti a High, 2 046/384 a
-  Medium, 768/192 a Low; **multipli di un triangolo e di una linea**: una parte che non inizia su una primitiva sfasa
+- Pool fisso: ogni slot ha la sua parte dei buffer (dalla Fase C 2 700 vertici di corteccia, 512 di rametti e 432 di
+  cristalli a High, 2 142/384/324 a Medium, 864/192/216 a Low; **multipli di un triangolo e di una linea**: una parte che non inizia su una primitiva sfasa
   tutti i triangoli degli slot seguenti — è stato il primo difetto visto sulla GPU). Scrittura parziale alla semina.
 - Legge del vertice: `radice(J, R) + lean(base + (punto − base) · cresciuto(nascita))`. Un segmento cresce dal suo inizio;
   un vertice non usato nasce dopo la maturità e non cresce mai.
@@ -112,14 +112,61 @@ base non ne dipende. Silenzio: una foresta fioca, non assente.
 
 Non verificato: musica reale, a occhio nel tempo, Windows/Tauri, costo GPU per qualità (Fase E).
 
-## 4. Differenze dal mockup che restano dopo la Fase B
+## 4. Fase C — cristalli e rete di risonanza
+
+**Cristalli dell'albero** (fissati alla semina con il resto della forma, `forestLaw.ts`):
+
+- *Di radice*: piramidi d'ossidiana a quattro facce intorno al piede (3–5, 8 per i monumentali, × quota della qualità),
+  a 1,4–3,8 r0 dal tronco, inclinate verso l'esterno; il 55 % delle facce emissive, una vena sullo spigolo in sei casi su
+  dieci. Stanno nella corteccia (opache) ma **ognuna sul vertice del suolo del proprio punto del reticolo**
+  (`TreeShape.site`: colonne e righe dal punto dell'albero): su un pendio non galleggiano né affondano.
+- *Di biforcazione*: bipiramidi a quattro lati sotto il 12 % delle biforcazioni, nascono quando il ramo è cresciuto.
+- *Appesi*: dal 6 % dei rametti (il doppio sui monumentali), su un filo luminoso; crescono dal punto del rametto.
+- *Di risonanza*: uno accanto a ogni albero monumentale (prisma a sei lati allungato) e al 40 % degli altri.
+- Tutti sulla scala dei nodi (massimi nel build-up), con la luce del loro albero (risonanza, flush, impulso che arriva).
+
+**Campo di cristalli** (`crystalField`): ~1,4 cristalli per riga del reticolo su tutto il periodo del suolo (≈1 430 a
+High, ≈640 a Low), fra 2,5 e 15,5 unità sopra il vertice del suolo, mai sotto le 7 sopra il corridoio dell'osservatore,
+su ±85 % della larghezza. Il 22 % sono prismi esagonali alti (scala nodi), gli altri aquiloni (scala E). Funzione pura del
+seme del mondo: scritti una volta al montaggio, viaggiano e si ripetono col suolo; stanno sullo slot del suolo
+(`GROUND_SLOT`, sempre cresciuto e mai piegato) e usano la stessa legge dei cristalli degli alberi.
+
+**Rete** (`forestGrowth.ts`, legge `linkGlsl` / `linkPoint`):
+
+- Un albero che **matura** tende i suoi filamenti, una volta: verso i vicini maturi più prossimi entro 24 unità (3 a
+  High, 2 a Medium, 1 a Low; l'85 % dei vicini, così la rete ha dei vuoti), uno dentro la propria chioma (60 %), due corde
+  verso ogni altro monumentale entro 37 unità. Le ancore sono le estremità dei rami di secondo ordine.
+- Un nuovo albero aggiunge filamenti, **non ricollega** quelli esistenti; un filamento va via con uno dei suoi alberi.
+  Pool di 128.
+- Catenaria: `mix(A, B, s) − sag · |B − A| · 4s(1 − s)`, freccia 5–14 % della campata, 16 segmenti; appare quando le due
+  chiome hanno passato il secondo ordine (`linkShown`) e sparisce quando si ritirano.
+- Luce: forza del filamento × E; **la memoria resta**: fra due alberi che risuonano con la stessa musica ricordata il
+  filamento brilla fino a 2,5 volte. Il 45 % dei filamenti fra alberi diversi porta un cristallo appeso.
+
+**Impulsi**: partono su ciò che è stato udito, letto con un `EventCursor` dallo stream degli eventi — un `beat` evidente
+(confidenza ≥ 0,4) porta un quarto della quota della fase, un `downbeat` evidente il resto (solo dove le battute hanno
+evidenza: nessun 4/4 presunto), un `impact` che spicca sugli accenti del brano (significance ≥ 0,5) il 60 %, un `release`
+confermato il 60 % dei filamenti. Quota per fase: silenzio 0, breakdown 0,08, groove 0,30, rising 0,18, release 0,60.
+Ogni impulso è datato sul tempo audio del suo evento: testa e scia (7 % della campata) sono una funzione pura dell'età,
+durata 0,45 s + campata/28; il nodo di partenza si accende, l'albero d'arrivo risponde (luce +0,7, τ 0,6 s). Pool di 48,
+eccedenze rifiutate e contate. Una nuova sessione cancella gli impulsi (erano datati nell'altra).
+
+Disegno: sette draw call a Medium e High (corteccia, rametti, fiori e nodi, cristalli, filamenti, cristalli appesi,
+impulsi), quattro a Low (la rete è calcolata ma non disegnata).
+
+Misure (Intel UHD, `buildDrop`): parità GPU ↔ CPU passata su corteccia con punte di radice (12 540 vertici), rametti,
+cristalli, filamenti (238 punti) e fiori: mediane 3,5e-4 unità; massimi 0,017–0,032, ancora la divergenza f32 nota
+dell'hash del terreno su singoli punti del reticolo. Nel tratto catturato la rete ha 6–8 filamenti fra 8–13 alberi:
+la popolazione rada (Fase D) limita la rete più delle sue regole.
+
+## 5. Differenze dal mockup che restano dopo la Fase C
 
 - Suolo wireframe e cielo del compositore: la scena non ha ancora l'orizzonte viola né il suolo scuro (Fase D).
-- Pochi alberi, lontani dal corridoio: la popolazione è quella di prima (Fase D).
-- Nessun cristallo, rete ancora retta fra le chiome (Fase C).
-- Alberi trasparenti alla foschia e alle stelle del cielo (§5).
+- Pochi alberi, lontani dal corridoio: la popolazione è quella di prima, quindi la rete è rada (Fase D).
+- Campi di schegge lungo i margini, colonne di luce, particelle, anelli nella radura, scie a terra: Fase D.
+- Alberi trasparenti alla foschia e alle stelle del cielo (§6).
 
-## 5. Decisione aperta: coprire lo sfondo del compositore
+## 6. Coprire lo sfondo del compositore (decisa: strada 1)
 
 Il mockup vive di silhouette scure contro un cielo che si accende all'orizzonte. Con la composizione additiva una scena
 non può essere più scura dello sfondo che le sta dietro. Strade possibili:
@@ -133,4 +180,4 @@ non può essere più scura dello sfondo che le sta dietro. Strade possibili:
    tronchi e il cielo risulta più chiaro del mockup.
 3. Accettare lo sfondo dell'app come cielo della foresta.
 
-Raccomandazione: 1 (è l'unica che dà le silhouette), con il default che non cambia nessuna scena.
+Scelta (16 ottobre): **1**, con il default che non cambia nessuna scena. Si fa nella Fase D.
