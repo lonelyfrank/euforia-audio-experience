@@ -1,66 +1,120 @@
+import type { QualityProfile } from '../../types/visualizer';
 import { PERIOD, terrainAcross, terrainDepth, terrainHeight, type TerrainValues } from './terrainLaw';
 
 /*
  * The forest law (Resonant Forest): where a vertex of a tree is. Written twice, side by side, and kept identical term
- * by term (as the terrain and emergence laws are): `forestLawGlsl` runs on the GPU for every vertex of every branch,
- * leaf and filament, `branchPoint` / `leafPoint` are the CPU references the tests use.
+ * by term (as the terrain and emergence laws are): `forestLawGlsl` + `barkGlsl` / `leafGlsl` run on the GPU for every
+ * vertex of every trunk, branch, twig, blossom and filament, `barkPoint` / `leafPoint` are the CPU references the tests
+ * and the parity check use.
  *
  * A tree belongs to the ground: it is anchored at a lattice point (column J, row R) and stands on the ground's own
  * vertex there — the terrain law itself, on the same uniforms, never a copy — a little sunk into it, so it travels with
- * the ground and cannot float. Its shape is fixed when it is seeded (`growTree`: deterministic segments from a seed and
- * the music heard then); what changes is how far it has grown (each segment grows from its start in the order of its
- * depth, and retracts tip first as the tree decays), a rigid lean about its root (the wind of the world's stereo side,
- * bounded), and its light. Nothing here has a time of its own.
+ * the ground and cannot float. Its shape is fixed when it is seeded (`growTree`: a crystalline tree of closed, faceted
+ * tubes, deterministic from a seed and the music heard then, docs/resonant-forest.md); what changes is how far it has
+ * grown (each segment grows out of its start in the order of its depth, and retracts tip first as the tree decays), a
+ * rigid lean about its root (the wind of the world's stereo side, bounded), and its light. No vertex is ever moved by
+ * the sound: every variation is decided at seeding.
  *
- *   branch     a segment as a three-sided prism's edges: three lines from its start to where it has grown to
- *   leaf       a flat triangle at the end of a terminal segment, open once the tree is mature; it falls as the tree decays
+ *   bark       trunk, roots, limbs and branches: closed tubes of 3–8 faceted sides, ring after ring, each ring turned
+ *              and of its own radius; a face may glow (structural emission), one or two edge columns are veins
+ *   twig       thin lines at the ends of the last branches (and branches too thin to be tubes)
+ *   blossom    a small triangle at the end of a twig, open once the tree is mature; it falls as the tree decays
  *   node       a small triangle at a junction, lit as the tree resonates
  *   filament   a line between the crowns of two trees that resonate with the same remembered music
  */
 
-/** Trees at most, segments and leaves per tree, filaments in all. */
+/** Trees at most, blossoms and nodes per tree, filaments in all, network anchors per tree. */
 export const MAX_TREES = 40;
-export const MAX_SEGMENTS = 24;
-export const MAX_LEAVES = 24;
+export const MAX_LEAVES = 96;
 export const MAX_FILAMENTS = 48;
-/** Corners of a branch's section, and the vertices of its template (a start and an end per corner). */
-export const SIDES = 3;
-export const BRANCH_VERTICES = SIDES * 2;
-/** How far below the ground's vertex a trunk starts (units): it stands in the ground, never on air. */
+export const MAX_ANCHORS = 8;
+/** How far below the ground's vertex a tree's root point is (units): it stands in the ground, never on air. */
 const SINK = 0.08;
-/** How far a leaf drops as the tree decays (units at full fall), and a leaf's size relative to its branch. */
+/** How far a blossom drops as the tree decays (units at full fall). */
 const LEAF_DROP = 3.5;
+
+/** Emissive colours of the forest, by index (the palette is the recipe's: `forestLook.ts`). */
+export const VIOLET = 0, MAGENTA = 1, BLUE = 2, CYAN = 3, LILAC = 4;
+export const GLOWS = 5;
+/** Colours a vein, a blossom (the first three for scattered ones) and a junction's node are drawn from. */
+const VEIN = [VIOLET, BLUE, MAGENTA, LILAC];
+const BLOSSOM = [VIOLET, LILAC, MAGENTA, BLUE];
+const NODE = [CYAN, BLUE, LILAC];
 
 /** The traits a tree is grown from: read from the music when it is seeded, quantized so a frame's difference does not change a tree. */
 export interface TreeTraits {
-  /** Branches per junction 2..3 (the geometry's branching), spread of the branches (rad), how they reach up (0 spread, 1 upright). */
+  /** Share of junctions that open three branches rather than two, how far branches reach out (0.55..1), how they reach up (0..1). */
   branching: number;
   spread: number;
   upright: number;
-  /** Height of the tree (units), and how many leaves per terminal branch (0..1 share). */
+  /** Height of the tree (units), and how much it blossoms (0..1). */
   height: number;
   foliage: number;
 }
 
-/** One tree's segments and leaves, as its instances carry them (written once at seeding). */
+/**
+ * How finely a tree is made: fixed for the life of the forest (the quality it was mounted at). Sides and rings of the
+ * trunk (a branch has one side less per depth, at least three), the deepest branch order (1: limbs only … 3), shares of
+ * roots, twigs and blossoms, and the vertices of bark and of twigs one tree may use (what does not fit is not made).
+ */
+export interface TreeDetail {
+  sides: number;
+  rings: number;
+  depth: number;
+  roots: number;
+  twigs: number;
+  blossoms: number;
+  flare: number;
+  bark: number;
+  twig: number;
+}
+
+/** (Bark budgets are whole triangles and twig budgets whole lines: a slot's part of the buffers starts on a primitive.) */
+export const TREE_DETAIL: Readonly<Record<'low' | 'medium' | 'high', Readonly<TreeDetail>>> = {
+  low: { sides: 5, rings: 3, depth: 2, roots: 0.6, twigs: 0.5, blossoms: 0.45, flare: 1.35, bark: 768, twig: 192 },
+  medium: { sides: 6, rings: 5, depth: 3, roots: 1, twigs: 0.8, blossoms: 0.8, flare: 1.65, bark: 2046, twig: 384 },
+  high: { sides: 7, rings: 7, depth: 3, roots: 1, twigs: 1, blossoms: 1, flare: 1.65, bark: 2556, twig: 512 },
+};
+
+/** The detail of a quality: Low simplifies geometry and population, it does not switch the forest off. */
+export const treeDetail = (quality: Pick<QualityProfile, 'density'>): Readonly<TreeDetail> => (quality.density >= 0.9 ? TREE_DETAIL.high : quality.density >= 0.5 ? TREE_DETAIL.medium : TREE_DETAIL.low);
+
+/** One tree's geometry, as the GPU receives it (written once at seeding). */
 export interface TreeShape {
-  segments: number;
+  /** Bark vertices (triangles, three by three) and twig vertices (lines, two by two) in use. */
+  bark: number;
+  twigs: number;
+  /** Per bark vertex: where it is when fully grown (xyz, the tree's own frame). */
+  point: Float32Array;
+  /** Per bark vertex: the start of its segment's axis (xyz), which it grows out of, and the segment's birth (share of growth). */
+  base: Float32Array;
+  /** Per bark vertex: emissive colour, emission (0: a dark face), how bright this corner of the face is (0..1), shade of the stone. */
+  glow: Float32Array;
+  /** Per bark vertex: vein colour, 1 on a vein edge (0 elsewhere), the vein's intensity. */
+  vein: Float32Array;
+  /** Per twig vertex: where (xyz), and its start and birth as for bark. */
+  twigPoint: Float32Array;
+  twigBase: Float32Array;
+  /** Blossoms and nodes in use. Per leaf: where (xyz) and the birth of the branch it ends; size, turn, kind (0 blossom, 1 node), colour. */
   leaves: number;
-  /** Per segment: start xyz, depth; end xyz, birth (share of the tree's growth at which it starts growing); radius at the start. */
-  from: Float32Array;
-  to: Float32Array;
-  radius: Float32Array;
-  /** Per leaf: where (xyz) and the birth of the branch it ends; size, turn, kind (0 leaf, 1 node), its own number. */
   leaf: Float32Array;
   leafLook: Float32Array;
+  /** Ends of second-order branches (the resonance network's anchors, xyz), as many as `anchors`. */
+  anchors: number;
+  anchor: Float32Array;
   /** Highest point of the crown (units above the root) and its widest reach (units from the axis). */
   top: number;
   reach: number;
+  /** Radius of the trunk at its base (units), and whether the tree is one of the forest's monumental ones. */
+  radius: number;
+  monumental: boolean;
 }
 
-export const createShape = (): TreeShape => ({
-  segments: 0, leaves: 0, from: new Float32Array(MAX_SEGMENTS * 4), to: new Float32Array(MAX_SEGMENTS * 4), radius: new Float32Array(MAX_SEGMENTS),
-  leaf: new Float32Array(MAX_LEAVES * 4), leafLook: new Float32Array(MAX_LEAVES * 4), top: 0, reach: 0,
+export const createShape = (detail: Readonly<TreeDetail> = TREE_DETAIL.high): TreeShape => ({
+  bark: 0, twigs: 0, point: new Float32Array(detail.bark * 3), base: new Float32Array(detail.bark * 4), glow: new Float32Array(detail.bark * 4),
+  vein: new Float32Array(detail.bark * 3), twigPoint: new Float32Array(detail.twig * 3), twigBase: new Float32Array(detail.twig * 4),
+  leaves: 0, leaf: new Float32Array(MAX_LEAVES * 4), leafLook: new Float32Array(MAX_LEAVES * 4), anchors: 0, anchor: new Float32Array(MAX_ANCHORS * 3),
+  top: 0, reach: 0, radius: 0, monumental: false,
 });
 
 /** A number 0..1 for a seed and a salt, the same everywhere. */
@@ -70,66 +124,225 @@ export function forestHash(seed: number, salt: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-const four = (a: Float32Array, at: number, x: number, y: number, z: number, w: number): void => { a[at * 4] = x; a[at * 4 + 1] = y; a[at * 4 + 2] = z; a[at * 4 + 3] = w; };
-
-/** Depths of a tree: the trunk (0) and three orders of branches. Growth goes through them in order. */
+/** Depths of a tree: the trunk and roots (0) and three orders of branches. Growth goes through them in order; twigs come last. */
 export const DEPTHS = 4;
 /** Share of the tree's growth one depth takes. */
 export const SPAN = 1 / DEPTHS;
+/** Birth of the twigs: they grow while the blossoms open (growth 1 → 1.25). */
+const TWIG_BIRTH = 1;
+/** Share of the forest's trees that are monumental, and how much taller and wider they are. */
+const MONUMENTAL = 0.12;
+const MONUMENTAL_HEIGHT = 1.5;
+/** Rings of a branch by its depth (a limb has three, at Low two). */
+const BRANCH_RINGS = [0, 3, 2, 1];
+
+// Scratch of the grower, sized for the finest detail (rings ≤ 10, sides ≤ 8); nothing is allocated while a tree grows.
+const ringScratch = new Float32Array(11 * 9 * 3);
+const centreScratch = new Float32Array(11 * 3);
+const tip = new Float32Array(6);
+/** Pending branches, breadth first (so growth, and a budget that runs out, reach the tips last): p, dir, length, radius, depth. */
+const QUEUE = 96;
+const queue = new Float32Array(QUEUE * 9);
+/** A quad's two triangles (corners 0..3), split along one diagonal or the other; the edge 0–3 is last in the second of either. */
+const SPLIT_AC = [0, 1, 2, 0, 2, 3];
+const SPLIT_BD = [1, 2, 3, 0, 1, 3];
 
 /**
- * Grows the shape of a tree from its seed and its traits into `out` (its arrays reused; nothing allocated). The trunk
- * leans a little; each junction opens `branching` branches round the parent's axis, each shorter and thinner, tilted by
- * the spread and drawn up by `upright`; leaves at the ends of the last ones, nodes at the junctions.
+ * Grows the shape of a tree from its seed and its traits into `out` (its arrays reused; nothing allocated): a flared,
+ * bent trunk of `detail.sides` faces split at 40–58 % of the height into two or three limbs, a recursive hierarchy of
+ * branches (each ×0.62–0.78 in length, ×0.53–0.61 in radius, pushed up), roots spreading from the flare, twigs and
+ * blossoms at the ends. Emissive faces are more likely low on the trunk (magenta and violet there, violet, lilac, blue
+ * and cyan above); one or two edge columns of the trunk are veins, brightest at the base.
  */
-export function growTree(seed: number, t: Readonly<TreeTraits>, out: TreeShape): TreeShape {
-  let n = 0, leaves = 0, top = 0, reach = 0;
-  const trunk = t.height * 0.38, lean = 0.12 * (forestHash(seed, 1) - 0.5), turn = 2 * Math.PI * forestHash(seed, 2);
-  const put = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, depth: number, radius: number): number => {
-    if (n >= MAX_SEGMENTS) return -1;
-    four(out.from, n, x0, y0, z0, depth); four(out.to, n, x1, y1, z1, depth * SPAN); out.radius[n] = radius;
-    top = Math.max(top, y1); reach = Math.max(reach, Math.hypot(x1, z1));
-    return n++;
+export function growTree(seed: number, t: Readonly<TreeTraits>, detail: Readonly<TreeDetail>, out: TreeShape): TreeShape {
+  let salt = 0;
+  const rnd = (): number => forestHash(seed, 1000 + salt++);
+  let top = 0, reach = 0, bark = 0, twigs = 0, leaves = 0, anchors = 0;
+  const monumental = forestHash(seed, 7) < MONUMENTAL;
+  const H = t.height * (monumental ? MONUMENTAL_HEIGHT : 1);
+  const r0 = H * (0.048 + 0.014 * rnd()) * (monumental ? 1.12 : 1);
+  const thin = 0.004 * H;
+  const spread = t.spread / 0.775, upright = t.upright;
+  const glow = (0.5 + 0.6 * rnd()) * (monumental ? 1.2 : 1);
+  const veinColour = VEIN[Math.floor(rnd() * 4)];
+
+  const extent = (x: number, y: number, z: number): void => { top = Math.max(top, y); reach = Math.max(reach, Math.sqrt(x * x + z * z)); };
+  const pick = (h: number): number => {
+    const r = rnd();
+    if (h < 0.3) return r < 0.55 ? (rnd() < 0.6 ? MAGENTA : VIOLET) : r < 0.85 ? VIOLET : BLUE;
+    return r < 0.45 ? VIOLET : r < 0.7 ? LILAC : r < 0.88 ? BLUE : CYAN;
   };
-  put(0, 0, 0, Math.sin(lean) * Math.cos(turn) * trunk, Math.cos(lean) * trunk, Math.sin(lean) * Math.sin(turn) * trunk, 0, 0.22 + 0.02 * t.height);
-  // Breadth first: every segment of a depth before the next, so growth reaches the tips last.
-  for (let first = 0, depth = 1; depth < DEPTHS; depth++) {
-    const last = n;
-    for (let s = first; s < last; s++) {
-      const o = s * 4, px = out.to[o], py = out.to[o + 1], pz = out.to[o + 2];
-      const dx = px - out.from[o], dy = py - out.from[o + 1], dz = pz - out.from[o + 2], length = Math.hypot(dx, dy, dz) || 1;
-      const ux = dx / length, uy = dy / length, uz = dz / length;
-      const count = depth === 1 ? Math.round(2 + t.branching) : Math.round(2 + t.branching * forestHash(seed, 10 + s));
-      const base = 2 * Math.PI * forestHash(seed, 20 + s);
-      for (let c = 0; c < count; c++) {
-        const around = base + (2 * Math.PI * c) / count + 0.4 * (forestHash(seed, 30 + s * 4 + c) - 0.5);
-        const tilt = t.spread * (0.75 + 0.5 * forestHash(seed, 60 + s * 4 + c)) * (1 - 0.45 * t.upright);
-        // A direction tilted off the parent's axis, round it, then drawn up a little.
-        const ax = Math.abs(uy) < 0.9 ? 0 : 1, ay = Math.abs(uy) < 0.9 ? 1 : 0;
-        let vx = uy * 0 - uz * ay, vy = uz * ax - ux * 0, vz = ux * ay - uy * ax;
-        const vl = Math.hypot(vx, vy, vz) || 1; vx /= vl; vy /= vl; vz /= vl;
-        const wx = uy * vz - uz * vy, wy = uz * vx - ux * vz, wz = ux * vy - uy * vx;
-        const ca = Math.cos(around), sa = Math.sin(around), ct = Math.cos(tilt), st = Math.sin(tilt);
-        let bx = ux * ct + (vx * ca + wx * sa) * st, by = uy * ct + (vy * ca + wy * sa) * st + 0.25 * t.upright, bz = uz * ct + (vz * ca + wz * sa) * st;
-        const bl = Math.hypot(bx, by, bz) || 1; bx /= bl; by /= bl; bz /= bl;
-        const child = length * (0.62 + 0.12 * forestHash(seed, 90 + s * 4 + c)), radius = out.radius[s] * 0.55;
-        if (put(px, py, pz, px + bx * child, py + by * child, pz + bz * child, depth, radius) < 0) break;
+
+  /**
+   * A closed tube from p along d (unit) of `length`, radius r0 → r1, into the bark. The end of its axis and its last
+   * direction go to `tip`. False when the bark budget has no room for it (nothing written).
+   */
+  const tube = (px: number, py: number, pz: number, dx: number, dy: number, dz: number, length: number, ra: number, rb: number, sides: number, rings: number,
+    flare: number, emBase: number, trunk: boolean, veinA: number, veinB: number, birth: number): boolean => {
+    if (bark + sides * rings * 6 > detail.bark) return false;
+    // A frame round the axis: u = d × h (h the world's x for an upright axis, else its up), v = d × u.
+    const hx = Math.abs(dy) > 0.9 ? 1 : 0, hy = 1 - hx;
+    let ux = -dz * hy, uy = dz * hx, uz = dx * hy - dy * hx;
+    const ul = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1; ux /= ul; uy /= ul; uz /= ul;
+    const vx = dy * uz - dz * uy, vy = dz * ux - dx * uz, vz = dx * uy - dy * ux;
+    let bx = rnd() - 0.5, bz = rnd() - 0.5;
+    const bl = Math.sqrt(bx * bx + bz * bz) || 1; bx /= bl; bz /= bl;
+    const bend = length * (0.05 + 0.07 * rnd()), phase = 2 * Math.PI * rnd();
+    for (let k = 0; k <= rings; k++) {
+      const s = k / rings, sway = bend * Math.sin(s * Math.PI * 0.9);
+      const cx = px + dx * length * s + bx * sway, cy = py + dy * length * s, cz = pz + dz * length * s + bz * sway;
+      centreScratch[k * 3] = cx; centreScratch[k * 3 + 1] = cy; centreScratch[k * 3 + 2] = cz;
+      let r = ra + (rb - ra) * Math.pow(s, 0.85);
+      if (k === 0) r *= flare; else if (k === 1) r *= 1 + (flare - 1) * 0.3;
+      const turn = phase + k * (0.35 + 0.3 * rnd());
+      for (let j = 0; j < sides; j++) {
+        const a = turn + (j / sides) * 2 * Math.PI + (rnd() - 0.5) * 0.35, rr = r * (0.85 + 0.3 * rnd());
+        const o = (k * sides + j) * 3, ca = Math.cos(a) * rr, sa = Math.sin(a) * rr;
+        ringScratch[o] = cx + ux * ca + vx * sa; ringScratch[o + 1] = cy + uy * ca + vy * sa; ringScratch[o + 2] = cz + uz * ca + vz * sa;
+        extent(ringScratch[o], ringScratch[o + 1], ringScratch[o + 2]);
       }
-      // A node at the junction: it lights as the tree resonates.
-      if (leaves < MAX_LEAVES) { four(out.leaf, leaves, px, py, pz, depth * SPAN); four(out.leafLook, leaves, 0.35 + 0.15 * (DEPTHS - depth), 0, 1, forestHash(seed, 200 + s)); leaves++; }
     }
-    first = last;
-  }
-  // Leaves at the ends of the last branches, as many as the foliage allows.
-  for (let s = 0; s < n && leaves < MAX_LEAVES; s++) {
-    if (out.from[s * 4 + 3] !== DEPTHS - 1 || forestHash(seed, 300 + s) > 0.35 + 0.65 * t.foliage) continue;
-    four(out.leaf, leaves, out.to[s * 4], out.to[s * 4 + 1], out.to[s * 4 + 2], 1);
-    four(out.leafLook, leaves, 0.9 + 0.9 * forestHash(seed, 400 + s), 2 * Math.PI * forestHash(seed, 500 + s), 0, forestHash(seed, 600 + s));
+    const P = out.point, B = out.base, G = out.glow, V = out.vein;
+    let w = bark;
+    for (let k = 0; k < rings; k++) {
+      const h = (k + 0.5) / rings, veinLight = (0.55 + 0.45 * (1 - h)) * glow;
+      for (let j = 0; j < sides; j++) {
+        // The quad's corners: 0 (k, j), 1 (k, j+1), 2 (k+1, j+1), 3 (k+1, j), split along a random diagonal. A vein runs
+        // along column j (the edge 0–3): it lights the triangle that has that whole edge.
+        const j1 = (j + 1) % sides, tris = rnd() < 0.5 ? SPLIT_AC : SPLIT_BD, isVein = j === veinA || j === veinB;
+        for (let q = 0; q < 2; q++) {
+          // One draw per triangle: whether it glows, how much, and the shade of its stone (independent digits of it).
+          const pe = isVein ? 0.5 : emBase * (trunk ? 0.4 + 1.6 * (1 - h) * (1 - h) : 1), u = rnd();
+          const em = u < pe ? (0.35 + 0.65 * digit(u, 7919)) * glow : 0;
+          const colour = em > 0 ? pick(trunk ? h * 0.7 : 0.6) : 0, shade = 0.75 + 0.5 * digit(u, 104729);
+          const edge = isVein && tris[q * 3] === 0 && tris[q * 3 + 2] === 3;
+          for (let v = 0; v < 3; v++) {
+            const c = tris[q * 3 + v], o = ((k + (c >= 2 ? 1 : 0)) * sides + (c === 1 || c === 2 ? j1 : j)) * 3, w3 = w * 3, w4 = w * 4;
+            P[w3] = ringScratch[o]; P[w3 + 1] = ringScratch[o + 1]; P[w3 + 2] = ringScratch[o + 2];
+            B[w4] = px; B[w4 + 1] = py; B[w4 + 2] = pz; B[w4 + 3] = birth;
+            G[w4] = colour; G[w4 + 1] = em; G[w4 + 2] = v === 0 ? 1 : 0; G[w4 + 3] = shade;
+            V[w3] = veinColour; V[w3 + 1] = edge && (c === 0 || c === 3) ? 1 : 0; V[w3 + 2] = isVein ? veinLight : 0;
+            w++;
+          }
+        }
+      }
+    }
+    bark = w;
+    const e = rings * 3, f = (rings - 1) * 3;
+    let ex = centreScratch[e] - centreScratch[f], ey = centreScratch[e + 1] - centreScratch[f + 1], ez = centreScratch[e + 2] - centreScratch[f + 2];
+    const el = Math.sqrt(ex * ex + ey * ey + ez * ez) || 1; ex /= el; ey /= el; ez /= el;
+    tip[0] = centreScratch[e]; tip[1] = centreScratch[e + 1]; tip[2] = centreScratch[e + 2]; tip[3] = ex; tip[4] = ey; tip[5] = ez;
+    return true;
+  };
+  const line = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, birth: number): boolean => {
+    if (twigs + 2 > detail.twig) return false;
+    for (let v = 0; v < 2; v++) {
+      const w = twigs * 3, w4 = twigs * 4;
+      out.twigPoint[w] = v ? x1 : x0; out.twigPoint[w + 1] = v ? y1 : y0; out.twigPoint[w + 2] = v ? z1 : z0;
+      out.twigBase[w4] = x0; out.twigBase[w4 + 1] = y0; out.twigBase[w4 + 2] = z0; out.twigBase[w4 + 3] = birth;
+      twigs++;
+    }
+    extent(x1, y1, z1);
+    return true;
+  };
+  const leaf = (x: number, y: number, z: number, birth: number, size: number, kind: number, colour: number): void => {
+    if (leaves >= MAX_LEAVES) return;
+    const o = leaves * 4;
+    out.leaf[o] = x; out.leaf[o + 1] = y; out.leaf[o + 2] = z; out.leaf[o + 3] = birth;
+    out.leafLook[o] = size; out.leafLook[o + 1] = 2 * Math.PI * rnd(); out.leafLook[o + 2] = kind; out.leafLook[o + 3] = colour;
     leaves++;
+  };
+  const twigsAt = (ex: number, ey: number, ez: number, dx: number, dy: number, dz: number, length: number): void => {
+    const n = Math.max(1, Math.round(4 * detail.twigs)), sub = detail.twigs >= 0.75 ? 2 : 1, bloom = detail.blossoms * (0.4 + 0.6 * t.foliage);
+    for (let i = 0; i < n; i++) {
+      let ax = dx + (rnd() - 0.5) * 1.5, ay = dy + rnd() * 0.7, az = dz + (rnd() - 0.5) * 1.5;
+      const al = Math.sqrt(ax * ax + ay * ay + az * az) || 1; ax /= al; ay /= al; az /= al;
+      const l1 = length * (0.5 + 0.5 * rnd()), x1 = ex + ax * l1, y1 = ey + ay * l1, z1 = ez + az * l1;
+      if (!line(ex, ey, ez, x1, y1, z1, TWIG_BIRTH)) return;
+      for (let m = 0; m < sub; m++) {
+        let bx = ax + (rnd() - 0.5) * 1.2, by = ay + rnd() * 0.5, bz = az + (rnd() - 0.5) * 1.2;
+        const bl = Math.sqrt(bx * bx + by * by + bz * bz) || 1; bx /= bl; by /= bl; bz /= bl;
+        const l2 = length * 0.45 * (0.5 + rnd()), x2 = x1 + bx * l2, y2 = y1 + by * l2, z2 = z1 + bz * l2;
+        if (!line(x1, y1, z1, x2, y2, z2, TWIG_BIRTH)) return;
+        if (rnd() < 0.8 * bloom) leaf(x2, y2, z2, 1, H * (0.006 + 0.006 * rnd()), 0, BLOSSOM[Math.floor(rnd() * 4)]);
+      }
+    }
+    const scatter = Math.round(3 * bloom);
+    for (let i = 0; i < scatter; i++) leaf(ex + (rnd() - 0.5) * length, ey + (rnd() - 0.3) * length * 0.65, ez + (rnd() - 0.5) * length, 1, H * (0.005 + 0.005 * rnd()), 0, BLOSSOM[Math.floor(rnd() * 3)]);
+  };
+
+  // ---- trunk: from a little under the root point, leaning a little, split at 40–58 % of the height ----
+  const split = 0.4 + 0.18 * rnd();
+  let lx = (rnd() - 0.5) * 0.2, ly = 1, lz = (rnd() - 0.5) * 0.2;
+  const ll = Math.sqrt(lx * lx + ly * ly + lz * lz); lx /= ll; ly /= ll; lz /= ll;
+  const sides = Math.min(8, detail.sides + (monumental ? 1 : 0)), rings = detail.rings + (monumental ? (detail.rings >= 5 ? 2 : 1) : 0);
+  const veinA = Math.floor(rnd() * sides), veinB = rnd() < 0.65 ? (veinA + 2 + Math.floor(rnd() * 2)) % sides : -1;
+  const baseY = -0.5 * r0;
+  tube(0, baseY, 0, lx, ly, lz, H * split + 0.5 * r0, r0, 0.6 * r0, sides, rings, detail.flare, 0.1, true, veinA, veinB, 0);
+  const tx = tip[0], ty = tip[1], tz = tip[2], tdx = tip[3], tdy = tip[4], tdz = tip[5];
+
+  // ---- roots: from the flare, out and down into the ground ----
+  const roots = Math.max(2, Math.round((monumental ? 6 : 3 + Math.floor(rnd() * 2)) * detail.roots)), around = 2 * Math.PI * rnd();
+  for (let i = 0; i < roots; i++) {
+    const a = around + (i / roots) * 2 * Math.PI + (rnd() - 0.5) * 0.5, cx = Math.cos(a), cz = Math.sin(a);
+    let dx = cx, dy = -0.45 - 0.2 * rnd(), dz = cz;
+    const dl = Math.sqrt(dx * dx + dy * dy + dz * dz); dx /= dl; dy /= dl; dz /= dl;
+    tube(cx * 0.7 * r0, r0 * (0.35 + 0.5 * rnd()), cz * 0.7 * r0, dx, dy, dz, r0 * (1.6 + 1.2 * rnd()), 0.42 * r0, 0.06 * r0, 4, 2, 1, 0.14, false, rnd() < 0.5 ? 0 : -1, -1, 0);
   }
-  out.segments = n; out.leaves = leaves; out.top = top; out.reach = reach;
+
+  // ---- limbs: two or three from the top of the trunk, then branches breadth first ----
+  let head = 0, tail = 0;
+  const push = (px: number, py: number, pz: number, dx: number, dy: number, dz: number, length: number, radius: number, depth: number): void => {
+    if (tail >= QUEUE) return;
+    const o = tail * 9;
+    queue[o] = px; queue[o + 1] = py; queue[o + 2] = pz; queue[o + 3] = dx; queue[o + 4] = dy; queue[o + 5] = dz;
+    queue[o + 6] = length; queue[o + 7] = radius; queue[o + 8] = depth;
+    tail++;
+  };
+  const limbs = rnd() < 0.5 ? 2 : 3, turn = 2 * Math.PI * rnd();
+  for (let i = 0; i < limbs; i++) {
+    const a = turn + (i / limbs) * 2 * Math.PI + (rnd() - 0.5) * 0.7, lateral = (0.5 + 0.45 * rnd()) * spread;
+    let dx = tdx * 0.95 + Math.cos(a) * lateral, dy = tdy * 0.95, dz = tdz * 0.95 + Math.sin(a) * lateral;
+    const dl = Math.sqrt(dx * dx + dy * dy + dz * dz); dx /= dl; dy /= dl; dz /= dl;
+    push(tx - tdx * 0.4 * r0, ty - tdy * 0.4 * r0, tz - tdz * 0.4 * r0, dx, dy, dz, H * (1 - split) * (0.58 + 0.2 * rnd()), 0.6 * r0 * (0.72 + 0.12 * rnd()), 1);
+  }
+  const sidesB = Math.min(8, detail.sides + (monumental ? 1 : 0));
+  while (head < tail) {
+    const o = head * 9;
+    const px = queue[o], py = queue[o + 1], pz = queue[o + 2], dx = queue[o + 3], dy = queue[o + 4], dz = queue[o + 5], length = queue[o + 6], r = queue[o + 7], depth = queue[o + 8];
+    head++;
+    const birth = depth * SPAN;
+    let ex: number, ey: number, ez: number, edx: number, edy: number, edz: number;
+    if (r < thin || (detail.depth < 3 && depth >= 2)) {
+      // Too thin to be a tube: a line, as a twig is.
+      let bx = dx + (rnd() - 0.5) * 0.2, by = dy + 0.05, bz = dz + (rnd() - 0.5) * 0.2;
+      const bl = Math.sqrt(bx * bx + by * by + bz * bz) || 1; bx /= bl; by /= bl; bz /= bl;
+      ex = px + bx * length; ey = py + by * length; ez = pz + bz * length; edx = bx; edy = by; edz = bz;
+      if (!line(px, py, pz, ex, ey, ez, birth)) continue;
+    } else {
+      const veined = depth === 1 && rnd() < 0.6 ? 0 : -1;
+      if (!tube(px, py, pz, dx, dy, dz, length, r * 1.04, r * 0.6, Math.max(3, sidesB - depth), Math.max(1, BRANCH_RINGS[depth] - (detail.rings < 5 ? 1 : 0)), 1, 0.06, false, veined, -1, birth)) continue;
+      ex = tip[0]; ey = tip[1]; ez = tip[2]; edx = tip[3]; edy = tip[4]; edz = tip[5];
+    }
+    if ((depth === 2 || (depth === detail.depth && depth < 2)) && anchors < MAX_ANCHORS) { out.anchor[anchors * 3] = ex; out.anchor[anchors * 3 + 1] = ey; out.anchor[anchors * 3 + 2] = ez; anchors++; }
+    if (depth >= detail.depth) { twigsAt(ex, ey, ez, edx, edy, edz, length * 0.55); continue; }
+    // A node at the junction: it lights as the tree resonates.
+    leaf(ex, ey, ez, birth, r * 1.6, 1, NODE[Math.floor(rnd() * 3)]);
+    const n = depth === 1 ? 3 : rnd() < 0.3 + 0.4 * t.branching ? 3 : 2, a0 = 2 * Math.PI * rnd();
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i / n) * 2 * Math.PI + (rnd() - 0.5) * 0.9, lateral = (0.5 + 0.45 * rnd()) * spread * (1 - 0.3 * upright);
+      let cx = edx * 0.6 + Math.cos(a) * lateral, cy = edy * 0.6 + 0.18 + 0.28 * rnd() + 0.15 * upright, cz = edz * 0.6 + Math.sin(a) * lateral;
+      const cl = Math.sqrt(cx * cx + cy * cy + cz * cz) || 1; cx /= cl; cy /= cl; cz /= cl;
+      push(ex, ey, ez, cx, cy, cz, length * (0.62 + 0.16 * rnd()), r * 0.6 * (0.88 + 0.14 * rnd()), depth + 1);
+    }
+  }
+  out.bark = bark; out.twigs = twigs; out.leaves = leaves; out.anchors = anchors;
+  out.top = top; out.reach = reach; out.radius = r0; out.monumental = monumental;
   return out;
 }
+
+/** Another uniform number from the digits of `u` (deterministic; for draws that need not be independent of each other's order). */
+const digit = (u: number, k: number): number => (u * k) % 1;
 
 const glsl = (x: number): string => (Number.isInteger(x) ? `${x}.0` : `${x}`);
 
@@ -138,8 +351,8 @@ const glsl = (x: number): string => (Number.isInteger(x) ? `${x}.0` : `${x}`);
  *   forestRoot(J, R)              where the tree anchored at lattice point (J, R) stands, in the ground's space
  *   forestLean(p, slot)           a point of a tree's frame turned rigidly about its root by the tree's lean
  *   forestGrown(birth, slot)      how much of a segment born at `birth` has grown, 0..1
- * `uTrees[slot]`: growth (0 … 1, past 1 the leaves open), lean (rad), light, decay (0..1: how far its leaves have fallen).
- * `uTreeLean[slot]`: the lean's direction (rad about the vertical), resonance 0..1, leaf share 0..1, the tree's flush 0..1.
+ * `uTrees[slot]`: growth (0 … 1, past 1 the blossoms open), lean (rad), light, decay (0..1: how far its blossoms have fallen).
+ * `uTreeLean[slot]`: the lean's direction (rad about the vertical), resonance 0..1, blossom share 0..1, the tree's flush 0..1.
  */
 export const forestLawGlsl = /* glsl */ `
 uniform vec4 uTrees[${MAX_TREES}];
@@ -182,15 +395,19 @@ export function forestLean(p: readonly [number, number, number], angle: number, 
 
 export const forestGrown = (birth: number, growth: number): number => Math.min(1, Math.max(0, (growth - birth) / SPAN));
 
-/** CPU reference: vertex `corner` (0..2) at `end` (0 start, 1 where it has grown to) of segment `s` of a tree over the ground `t`. */
-export function branchPoint(t: Readonly<TerrainValues>, tree: Readonly<TreeState>, shape: Readonly<TreeShape>, s: number, corner: number, end: number): [number, number, number] {
-  const o = s * 4, grown = forestGrown(shape.to[o + 3], tree.growth), along = end * grown;
-  const x = shape.from[o] + (shape.to[o] - shape.from[o]) * along, y = shape.from[o + 1] + (shape.to[o + 1] - shape.from[o + 1]) * along, z = shape.from[o + 2] + (shape.to[o + 2] - shape.from[o + 2]) * along;
-  // The prism's corner: round the segment's axis at its radius, tapering to two thirds at its end.
-  const r = shape.radius[s] * (1 - 0.33 * along) * grown, angle = (2 * Math.PI * corner) / SIDES;
-  const local = forestLean([x + Math.cos(angle) * r, y, z + Math.sin(angle) * r], tree.lean, tree.around), root = forestRoot(t, tree.J, tree.R);
+/** CPU reference: a vertex grown out of its segment's start (`base`, birth in w) towards `point`, of a tree over the ground `t`. */
+function grownPoint(t: Readonly<TerrainValues>, tree: Readonly<TreeState>, point: Float32Array, base: Float32Array, v: number): [number, number, number] {
+  const o = v * 4, grown = forestGrown(base[o + 3], tree.growth);
+  const p: [number, number, number] = [base[o] + (point[v * 3] - base[o]) * grown, base[o + 1] + (point[v * 3 + 1] - base[o + 1]) * grown, base[o + 2] + (point[v * 3 + 2] - base[o + 2]) * grown];
+  const local = forestLean(p, tree.lean, tree.around), root = forestRoot(t, tree.J, tree.R);
   return [root[0] + local[0], root[1] + local[1], root[2] + local[2]];
 }
+
+/** CPU reference: bark vertex `v` of a tree. */
+export const barkPoint = (t: Readonly<TerrainValues>, tree: Readonly<TreeState>, shape: Readonly<TreeShape>, v: number): [number, number, number] => grownPoint(t, tree, shape.point, shape.base, v);
+
+/** CPU reference: twig vertex `v` of a tree. */
+export const twigPoint = (t: Readonly<TerrainValues>, tree: Readonly<TreeState>, shape: Readonly<TreeShape>, v: number): [number, number, number] => grownPoint(t, tree, shape.twigPoint, shape.twigBase, v);
 
 /** CPU reference: corner `c` (0..2) of leaf `l` of a tree (a node when its kind is 1). */
 export function leafPoint(t: Readonly<TerrainValues>, tree: Readonly<TreeState>, shape: Readonly<TreeShape>, l: number, c: number): [number, number, number] {
@@ -202,31 +419,27 @@ export function leafPoint(t: Readonly<TerrainValues>, tree: Readonly<TreeState>,
   return [root[0] + local[0], root[1] + local[1], root[2] + local[2]];
 }
 
-/** The GLSL of a branch vertex and of a leaf vertex (same terms as the references above). */
-export const branchGlsl = /* glsl */ `
-// x: corner, y: end (0 start, 1 grown tip)
-attribute vec4 aFrom;
-attribute vec4 aTo;
-// x: J, y: R, z: slot, w: radius at the start
-attribute vec4 aTree;
-float branchGrown;
-float branchDepth;
-vec3 branchPoint(float corner, float end) {
+/** The GLSL of a bark or twig vertex (same terms as `barkPoint` / `twigPoint`). */
+export const barkGlsl = /* glsl */ `
+// xyz: the segment's start, w: its birth
+attribute vec4 aBase;
+// x: J, y: R, z: slot
+attribute vec3 aTree;
+float barkGrown;
+vec3 barkPoint() {
   int slot = int(aTree.z + 0.5);
-  float grown = forestGrown(aTo.w, slot), along = end * grown;
-  vec3 p = mix(aFrom.xyz, aTo.xyz, along);
-  float r = aTree.w * (1.0 - 0.33 * along) * grown, angle = 6.2831853 * corner / ${glsl(SIDES)};
-  p += vec3(cos(angle) * r, 0.0, sin(angle) * r);
-  branchGrown = grown;
-  branchDepth = aFrom.w;
+  float grown = forestGrown(aBase.w, slot);
+  barkGrown = grown;
+  vec3 p = aBase.xyz + (position - aBase.xyz) * grown;
   return forestRoot(aTree.x, aTree.y) + forestLean(p, slot);
 }
 `;
 
+/** The GLSL of a blossom or node vertex (same terms as `leafPoint`). */
 export const leafGlsl = /* glsl */ `
 // xyz: where, w: birth of the branch it ends
 attribute vec4 aLeaf;
-// x: size, y: turn, z: kind (0 leaf, 1 node), w: its own number
+// x: size, y: turn, z: kind (0 blossom, 1 node), w: colour
 attribute vec4 aLeafLook;
 // x: J, y: R, z: slot, w: unused
 attribute vec4 aTree;

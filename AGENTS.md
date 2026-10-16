@@ -8,7 +8,7 @@
   `docs/world-engine.md`, `docs/visual-systems.md`, `docs/matter-engine.md`, `docs/visual-engine.md`,
   `docs/visual-grammar.md`, `docs/physical-scenes.md`, `docs/spectral-shell.md`, `docs/structural-dynamics.md`, `docs/solid-dynamics.md`,
   `docs/rigid-resonant-body.md`, `docs/adaptive-calibration.md`, `docs/tunnel-motion.md`, `docs/music-response.md`,
-  `docs/generative-terrain.md`, `docs/musical-cognition.md`, `docs/scene-families.md` e `docs/generative-worlds.md` descrivono il nuovo
+  `docs/generative-terrain.md`, `docs/musical-cognition.md`, `docs/scene-families.md`, `docs/generative-worlds.md` e `docs/resonant-forest.md` descrivono il nuovo
   percorso (`docs/future-worlds.md` è solo progetto). Gli audit precedenti sono storici.
 - Il progetto usa audio live: system, microphone, fake. Non c’è supporto file.
 - Frontend: TypeScript strict, DOM vanilla, Three.js; desktop: Tauri 2 / Rust.
@@ -180,6 +180,11 @@
   geometria per albero, che risuona solo con `cues.repetition` (mai l'identità di un brano). Le azioni irreversibili (frattura, emersione
   importante, fioritura) leggono solo `release` confermati. I mondi nuovi non sono in `show/fixtures.ts` finché manca la prova con musica
   reale. Il soggetto Worlds del laboratorio Emergence è solo DEV.
+- Resonant Forest (`docs/resonant-forest.md`): il refactor verso il mockup procede per fasi (A–E); la tavola è un riferimento, non il
+  runtime. Un albero è geometria scritta una volta alla semina nella parte del suo slot (budget in vertici per qualità, **multipli di un
+  triangolo e di una linea**); nessun vertice è mosso dal suono, la crescita scala ogni segmento dal suo inizio. Tre livelli di luce mai
+  mescolati: base costante (silhouette in silenzio), emissione strutturale `emission` (E per fase, ferma a riposo), eventi. La foresta
+  ha la sua palette (`forestLook.ts`), non quella dell'app.
 - Qualità DSP indipendente dalla GPU: può cambiare le cadenze lente e quella dell'analisi delle
   scene, non hop/beat. Le soglie (`DspBudget.ts` e `src-tauri/src/audio.rs`) sono le stesse nei due
   host: cambiarle insieme. Il wire e il WASM versionato devono corrispondere al backend:

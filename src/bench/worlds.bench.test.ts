@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { createCues } from '../experience/MusicalCues';
 import { CameraRig, createInput, Drift, Glide, Hover, Orbit } from '../render-systems/camera/locomotion';
 import { createGeometry } from '../visual-engine/geometry/GeometryState';
-import { createShape, growTree } from '../visual-engine/primitives/forestLaw';
+import { createShape, growTree, TREE_DETAIL } from '../visual-engine/primitives/forestLaw';
 import { ForestField } from '../visual-engine/primitives/forestGrowth';
 import { OceanMotion, type OceanParams } from '../visual-engine/primitives/oceanMotion';
 import { populationElements, type SolidPopulation } from '../visual-engine/primitives/SolidPrimitive';
@@ -73,8 +73,8 @@ it('measures the camera rigs, the sea, the forest and the expanse\'s bodies (syn
     field.step(1 / 60, v, view, geometry, v.row + v.shift, P.rows, P.columns, cues, clock);
     peak = Math.max(peak, field.live());
   });
-  const shape = createShape();
-  const treeGrowth = measure(20000, 100, (k) => { growTree(k, { branching: (k % 3) / 2, spread: 0.7, upright: 0.25, height: 10, foliage: 0.75 }, shape); });
+  const shape = createShape(TREE_DETAIL.high);
+  const treeGrowth = measure(20000, 100, (k) => { growTree(k, { branching: (k % 3) / 2, spread: 0.7, upright: 0.25, height: 14, foliage: 0.75 }, TREE_DETAIL.high, shape); });
 
   // Fractured Expanse's population: seven bodies, rigid, the engine's own step per frame.
   const population = expanse.visual as unknown as SolidPopulation;
@@ -90,7 +90,10 @@ it('measures the camera rigs, the sea, the forest and the expanse\'s bodies (syn
   expect(peak).toBeGreaterThan(20);
   // Microseconds for the rigs, the sea and the forest; the bodies a fraction of a frame.
   expect(glideHover.p95).toBeLessThan(0.05); expect(orbit.p95).toBeLessThan(0.05); expect(glideDrift.p95).toBeLessThan(0.05);
-  expect(oceanFrame.p95).toBeLessThan(0.05); expect(forestFrame.p95).toBeLessThan(0.3); expect(treeGrowth.p95).toBeLessThan(0.1);
+  expect(oceanFrame.p95).toBeLessThan(0.05); expect(forestFrame.p95).toBeLessThan(0.3);
+  // A crystalline tree (≈1 700 bark vertices) is grown once, when it is seeded (0.2–0.25 ms on the 7 W dev box, alone; ×3–4 while
+  // the whole suite runs): at most `growing` at a time after the first sowing.
+  expect(treeGrowth.p95).toBeLessThan(1.5);
   expect(expanseFrame.p95).toBeLessThan(3);
   const path = (globalThis as unknown as { process?: { env: Record<string, string | undefined> } }).process?.env.EUFORIA_WORLDS_BENCH_REPORT;
   if (path) {

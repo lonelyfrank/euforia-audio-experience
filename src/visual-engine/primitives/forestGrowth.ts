@@ -2,7 +2,7 @@ import { forEachCue, type Cue, type CuesFrame } from '../../experience/MusicalCu
 import { REST_WORLD } from '../../world/WorldState';
 import type { WorldView } from '../../world/WorldView';
 import type { GeometryState } from '../geometry/GeometryState';
-import { createShape, forestHash, growTree, MAX_FILAMENTS, MAX_TREES, type TreeShape, type TreeTraits } from './forestLaw';
+import { createShape, forestHash, growTree, MAX_FILAMENTS, MAX_TREES, TREE_DETAIL, type TreeDetail, type TreeShape, type TreeTraits } from './forestLaw';
 import { PERIOD, terrainMeander, type TerrainValues } from './terrainLaw';
 
 /*
@@ -25,6 +25,11 @@ import { PERIOD, terrainMeander, type TerrainValues } from './terrainLaw';
  *   release       heard (confirmed) only: mature trees flush with light and open all their leaves, seeds fill the next rows
  *   breakdown     nothing new, and the weakest trees decay one by one (leaves fall, branches retract tip first)
  *   silence       nothing grows, nothing moves
+ *
+ * and how brightly the structure glows: the structural emission E and the scale of the nodes (docs/resonant-forest.md),
+ * from the phase the cognition reads — 0.30 in silence, 0.45 in a breakdown, 0.75 in a steady groove, 0.82 while the
+ * tension rises, 1.00 at a release heard — followed over a second and a half, so it settles and then holds still. The
+ * base light never depends on it: a silent forest is a dim forest, never an absent one.
  *
  * Trees also age: past their span of lived music they decay and their place is recycled. Fixed storage: nothing is
  * allocated after construction (a tree's shape is grown into its slot's arrays).
@@ -106,6 +111,13 @@ const RETIRE_EVERY = 1.5;
 /** Light of a flush (a release heard) and of an accent, over these times (s). */
 const FLUSH_TAU = 1.8;
 const ACCENT_TAU = 0.5;
+/** Structural emission and node scale by phase (silence, breakdown, groove, rising, release); followed over this long (s). */
+export const EMISSION = { silence: 0.3, breakdown: 0.45, groove: 0.75, rising: 0.82, release: 1 } as const;
+export const NODES = { silence: 0.35, breakdown: 0.5, groove: 0.7, rising: 1.15, release: 1 } as const;
+const EMISSION_TAU = 1.5;
+const SETTLED = 1e-4;
+/** A release heard holds the emission at its peak and lets it go over this long (s). */
+const RELEASE_TAU = 2.5;
 /** Filaments join trees resonating with the same music within this many lattice cells of each other. */
 const LINK_CELLS = 26;
 const LINK_SIGNATURE = 0.12;
@@ -140,7 +152,7 @@ export class ForestField {
     releases: 0, prepares: 0, withdraws: 0, accents: 0, remembering: 0, match: 0, density: 0, target: 0,
   };
   /** Each slot's shape (grown at seeding) and which slots were reseeded since the drawing last read them. */
-  readonly shapes: TreeShape[] = Array.from({ length: MAX_TREES }, createShape);
+  readonly shapes: TreeShape[];
   readonly dirty = new Uint8Array(MAX_TREES);
   /** What the GPU reads per tree: (growth, lean, light, decay) and (lean direction, resonance, leaf share, flush). */
   readonly trees = new Float32Array(MAX_TREES * 4);
@@ -149,6 +161,9 @@ export class ForestField {
   readonly linkA = new Int16Array(MAX_FILAMENTS);
   readonly linkB = new Int16Array(MAX_FILAMENTS);
   links = 0;
+  /** The structural emission E (0.30 … 1) and the scale of the nodes, as the drawing reads them. */
+  emission: number = EMISSION.silence;
+  nodes: number = NODES.silence;
   readonly J = new Int32Array(MAX_TREES);
   readonly R = new Int32Array(MAX_TREES);
   readonly phase = new Uint8Array(MAX_TREES);
@@ -180,10 +195,12 @@ export class ForestField {
   private wind = 0;
   private now = 0;
   private fresh = true;
+  private releaseAt = -Infinity;
   private readonly take = (cue: Readonly<Cue>): void => this.cue(cue);
 
-  constructor(params: ForestSettings = {}, private readonly worldSeed = 0) {
+  constructor(params: ForestSettings = {}, private readonly worldSeed = 0, readonly detail: Readonly<TreeDetail> = TREE_DETAIL.high) {
     this.params = forestParams(params);
+    this.shapes = Array.from({ length: MAX_TREES }, () => createShape(detail));
     for (let s = 0; s < MAX_TREES; s++) this.trees[s * 4] = -1;
   }
 
@@ -213,6 +230,16 @@ export class ForestField {
       : unit((p.density * (0.4 + 0.6 * groove) + p.response * (0.25 * cues!.tension + 0.15 * cues!.anticipation)) * p.rate);
     this.density += (target - this.density) * (1 - Math.exp(-live / DENSITY_TAU));
     this.stats.target = target; this.stats.density = this.density;
+
+    // ---- how brightly: the phase's emission and node scale, followed on the frame (it settles, then holds) ----
+    const known = timed && phase !== 'unknown';
+    const glowTarget = known ? EMISSION[phase] : EMISSION.silence + (timed ? (EMISSION.groove - EMISSION.silence) * groove : 0);
+    const nodeTarget = known ? NODES[phase] : NODES.silence + (timed ? (NODES.groove - NODES.silence) * groove : 0);
+    const follow = 1 - Math.exp(-h / EMISSION_TAU), released = Math.exp(-Math.max(0, now - this.releaseAt) / RELEASE_TAU);
+    // Within a hair of its target it is there: at rest it holds still.
+    this.emission = Math.abs(glowTarget - this.emission) < SETTLED ? glowTarget : this.emission + (glowTarget - this.emission) * follow;
+    this.nodes = Math.abs(nodeTarget - this.nodes) < SETTLED ? nodeTarget : this.nodes + (nodeTarget - this.nodes) * follow;
+    this.emission = Math.max(this.emission, EMISSION.silence + (EMISSION.release - EMISSION.silence) * released);
 
     // ---- where: rows coming into view beside the corridor ----
     const far = rows - AHEAD;
@@ -285,7 +312,7 @@ export class ForestField {
   cue(cue: Readonly<Cue>): void {
     const s = this.stats;
     if (cue.kind === 'release' && cue.status === 'confirmed') {
-      s.releases++; s.bursts++; this.burst = BURST; this.budding = false;
+      s.releases++; s.bursts++; this.burst = BURST; this.budding = false; this.releaseAt = cue.time;
       // Every mature tree flushes, dated at the release; its leaves open all at once.
       for (let k = 0; k < MAX_TREES; k++) if (this.phase[k] === MATURE || this.phase[k] === RESONANCE) { this.flushAt[k] = cue.time; this.leaves[k] = 1; }
     } else if (cue.kind === 'prepare' && cue.status === 'predicted') { s.prepares++; this.budding = true; }
@@ -300,7 +327,7 @@ export class ForestField {
 
   /** A new audio session: what was read of the last one is forgotten; the trees stay as they are. */
   reset(): void {
-    this.cursor = -1; this.burst = 0; this.budding = false; this.density = 0; this.fresh = true;
+    this.cursor = -1; this.burst = 0; this.budding = false; this.density = 0; this.fresh = true; this.releaseAt = -Infinity;
     this.flushAt.fill(-Infinity); this.accentAt.fill(-Infinity);
   }
 
@@ -340,7 +367,7 @@ export class ForestField {
       const seed = Math.floor(forestHash(row, side + 7 + this.worldSeed) * 0x7fffffff), tr = this.traits, sig = this.present;
       tr.branching = quantize(sig[5]); tr.spread = 0.55 + 0.45 * quantize(sig[2]); tr.upright = quantize(cues.tension); tr.foliage = quantize(sig[4]);
       tr.height = p.low + (p.high - p.low) * forestHash(seed, 3);
-      const shape = growTree(seed, tr, this.shapes[s]);
+      const shape = growTree(seed, tr, this.detail, this.shapes[s]);
       const off = p.corridor + shape.reach + forestHash(seed, 4) * p.reach;
       const J = Math.round((terrainMeander(R) + side * off) / t.cell), i = J - t.col;
       if (Math.abs(i) > columns / 2 - SIDE || this.near(J, R, shape.reach / t.cell)) { this.stats.refused++; continue; }

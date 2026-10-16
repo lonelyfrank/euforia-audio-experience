@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BufferGeometry, Material } from 'three';
 import { createCues, type Cue, type CuesFrame } from '../../experience/MusicalCues';
 import { createGeometry, type GeometryState } from '../../visual-engine/geometry/GeometryState';
-import { branchPoint, createShape, forestLawGlsl, forestRoot, growTree, leafPoint, MAX_SEGMENTS, SPAN, type TreeState } from '../../visual-engine/primitives/forestLaw';
-import { ForestField, forestParams, TRAIT_KEYS, type ForestSettings } from '../../visual-engine/primitives/forestGrowth';
+import { barkGlsl, barkPoint, createShape, forestLawGlsl, forestRoot, growTree, leafPoint, SPAN, TREE_DETAIL, twigPoint, type TreeShape, type TreeState } from '../../visual-engine/primitives/forestLaw';
+import { EMISSION, ForestField, forestParams, NODES, TRAIT_KEYS, type ForestSettings } from '../../visual-engine/primitives/forestGrowth';
 import type { ForestPrimitive } from '../../visual-engine/primitives/ForestPrimitive';
 import { createTerrain, PERIOD, terrainHeight, type TerrainValues } from '../../visual-engine/primitives/terrainLaw';
 import { TerrainMotion, type TerrainParams } from '../../visual-engine/primitives/terrainMotion';
@@ -27,39 +27,79 @@ const ground = (set: Partial<TerrainValues> = {}): TerrainValues => ({ ...create
 const TRAITS = { branching: 0.5, spread: 0.6, upright: 0.25, height: 10, foliage: 0.75 };
 const tree = (set: Partial<TreeState> = {}): TreeState => ({ J: 14, R: 60, growth: 1.25, lean: 0, around: Math.PI / 2, light: 1, decay: 0, resonance: 0, leaves: 1, flush: 0, ...set });
 
-describe('forest law: a tree stands on the ground\'s own vertex and grows in the order of its depth', () => {
+describe('forest law: a crystalline tree stands on the ground\'s own vertex and grows in the order of its depth', () => {
+  const grow = (seed: number, traits = TRAITS, detail = TREE_DETAIL.high) => growTree(seed, traits, detail, createShape(detail));
+  const used = (shape: TreeShape) => Array.from(shape.point.subarray(0, shape.bark * 3));
+
   it('its shape is a function of its seed and its traits: the same twice, another seed another tree, within its budget', () => {
-    const a = growTree(1234, TRAITS, createShape()), b = growTree(1234, TRAITS, createShape()), c = growTree(4321, TRAITS, createShape());
-    expect(Array.from(b.to)).toEqual(Array.from(a.to));
-    expect(Array.from(c.to)).not.toEqual(Array.from(a.to));
-    expect(a.segments).toBeGreaterThan(8); expect(a.segments).toBeLessThanOrEqual(MAX_SEGMENTS);
-    expect(a.leaves).toBeGreaterThan(4);
-    // Growth reaches the tips last: births never go down along the segments.
-    for (let s = 1; s < a.segments; s++) expect(a.to[s * 4 + 3]).toBeGreaterThanOrEqual(a.to[(s - 1) * 4 + 3]);
-    expect(a.top).toBeGreaterThan(TRAITS.height * 0.5); expect(a.top).toBeLessThan(TRAITS.height * 1.6);
+    const a = grow(1234), b = grow(1234), c = grow(4321);
+    expect(used(b)).toEqual(used(a));
+    expect(used(c)).not.toEqual(used(a));
+    for (const detail of [TREE_DETAIL.low, TREE_DETAIL.medium, TREE_DETAIL.high]) {
+      // Whole triangles and whole lines, within the slot: a slot's part of the buffers starts on a primitive.
+      expect(detail.bark % 3).toBe(0); expect(detail.twig % 2).toBe(0);
+      for (const seed of [3, 11, 47, 1234]) {
+        const s = grow(seed, TRAITS, detail);
+        expect(s.bark % 3).toBe(0); expect(s.bark).toBeGreaterThan(90); expect(s.bark).toBeLessThanOrEqual(detail.bark);
+        expect(s.twigs % 2).toBe(0); expect(s.twigs).toBeLessThanOrEqual(detail.twig);
+        expect(s.leaves).toBeGreaterThan(2);
+      }
+    }
+    // Low simplifies the same tree; it does not remove it.
+    expect(grow(1234, TRAITS, TREE_DETAIL.low).bark).toBeLessThan(a.bark / 2);
+    // Growth reaches the tips last: births never go down along the bark.
+    for (let v = 1; v < a.bark; v++) expect(a.base[v * 4 + 3]).toBeGreaterThanOrEqual(a.base[(v - 1) * 4 + 3]);
+    expect(a.top).toBeGreaterThan(TRAITS.height * 0.8); expect(a.top).toBeLessThan(TRAITS.height * 2.6);
+    expect(a.anchors).toBeGreaterThan(0);
+  });
+
+  it('glows from the stone, more at the foot of the trunk; its veins run along whole edges', () => {
+    let low = 0, high = 0, lowFaces = 0, highFaces = 0, veins = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const s = grow(seed);
+      for (let v = 0; v < s.bark; v += 3) {
+        // The trunk: the first segment, born at 0 from the point under the root.
+        if (s.base[v * 4 + 3] !== 0 || s.base[v * 4] !== 0 || s.base[v * 4 + 2] !== 0) continue;
+        const y = (s.point[v * 3 + 1] + s.point[v * 3 + 4] + s.point[v * 3 + 7]) / 3, glowing = s.glow[v * 4 + 1] > 0 ? 1 : 0;
+        // (A vein's column glows as often anywhere.)
+        if (s.vein[v * 3 + 2] === 0 && y < 0.25 * s.top) { low += glowing; lowFaces++; } else if (s.vein[v * 3 + 2] === 0 && y > 0.4 * s.top) { high += glowing; highFaces++; }
+        // A vein lights two corners of a triangle (an edge) or none.
+        const edge = s.vein[v * 3 + 1] + s.vein[v * 3 + 4] + s.vein[v * 3 + 7];
+        expect([0, 2]).toContain(edge);
+        if (edge === 2) veins++;
+      }
+    }
+    expect(low / lowFaces).toBeGreaterThan(2 * (high / Math.max(1, highFaces)));
+    expect(veins).toBeGreaterThan(30);
   });
 
   it('its trunk starts on the ground\'s vertex at its lattice point, in every state of the ground, and travels with it', () => {
-    const shape = growTree(77, TRAITS, createShape());
+    const shape = grow(77);
     for (const t of [ground({ row: 10, shift: 0.3, col: 2, shiftX: 0.4 }), ground({ row: 300, terrace: 1, lift: 1, relief: 7 }), ground({ row: PERIOD - 3, release: 0.8, bulge: 3, front: 30 })]) {
       const T = tree({ R: (t.row + 40) % PERIOD }), i = T.J - t.col, k = ((T.R - t.row) % PERIOD + PERIOD) % PERIOD;
-      const base = branchPoint(t, { ...T, growth: 0.02 }, shape, 0, 0, 0), vertex = terrainHeight(t, i, k);
-      // At the axis of its trunk (the prism's corners are round it): just under the ground's vertex.
+      const vertex = terrainHeight(t, i, k);
       expect(forestRoot(t, T.J, T.R)[1]).toBeCloseTo(vertex - 0.08, 5);
-      expect(base[1]).toBeCloseTo(vertex - 0.08, 5);
+      // Unborn, the trunk is the point it grows out of: half its radius under the root.
+      const seed = barkPoint(t, { ...T, growth: 0 }, shape, 0);
+      expect(seed[1]).toBeCloseTo(vertex - 0.08 - 0.5 * shape.radius, 5);
     }
   });
 
-  it('grows depth after depth, tip last; a decaying tree drops its leaves and retracts', () => {
-    const t = ground(), shape = growTree(9, TRAITS, createShape());
-    const tip = shape.segments - 1, length = (g: number, s: number) => {
-      const a = branchPoint(t, tree({ growth: g }), shape, s, 0, 0), b = branchPoint(t, tree({ growth: g }), shape, s, 0, 1);
+  it('grows depth after depth, tip last; a decaying tree drops its blossoms and retracts', () => {
+    const t = ground(), shape = grow(9);
+    const span = (g: number, v: number) => {
+      const a = barkPoint(t, tree({ growth: g }), shape, v), b = barkPoint(t, tree({ growth: 0 }), shape, v);
       return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
     };
-    expect(length(0.5 * SPAN, 0)).toBeGreaterThan(0); expect(length(0.5 * SPAN, tip)).toBe(0);
-    expect(length(1, tip)).toBeGreaterThan(0);
-    // Leaves open past full growth, and fall as the tree decays.
-    const leaf = shape.leaves - 1;
+    const tip = shape.bark - 1;
+    expect(span(0.5 * SPAN, 0)).toBeGreaterThan(0); expect(span(0.5 * SPAN, tip)).toBe(0);
+    expect(span(1, tip)).toBeGreaterThan(0);
+    // Twigs come with the blossoms, past full growth.
+    const twig = (g: number) => { const a = twigPoint(t, tree({ growth: g }), shape, 1), b = twigPoint(t, tree({ growth: g }), shape, 0); return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]); };
+    expect(twig(1)).toBe(0); expect(twig(1.25)).toBeGreaterThan(0);
+    // Blossoms open past full growth, and fall as the tree decays.
+    let leaf = shape.leaves - 1;
+    while (shape.leafLook[leaf * 4 + 2] > 0.5) leaf--;
     const at = (g: number, decay: number) => leafPoint(t, tree({ growth: g, decay }), shape, leaf, 0);
     const closed = at(1, 0), open = at(1.25, 0), fallen = at(1.25, 1);
     expect(Math.hypot(open[0] - closed[0], open[2] - closed[2]) + Math.abs(open[1] - closed[1])).toBeGreaterThan(0);
@@ -67,15 +107,16 @@ describe('forest law: a tree stands on the ground\'s own vertex and grows in the
   });
 
   it('leans rigidly about its root: every distance between its points is kept', () => {
-    const t = ground(), shape = growTree(5, TRAITS, createShape());
-    const points = (lean: number) => Array.from({ length: shape.segments }, (_, s) => branchPoint(t, tree({ lean }), shape, s, 0, 1));
+    const t = ground(), shape = grow(5);
+    const points = (lean: number) => Array.from({ length: shape.bark / 9 | 0 }, (_, n) => barkPoint(t, tree({ lean }), shape, n * 9));
     const straight = points(0), leaning = points(0.06);
-    for (let s = 1; s < shape.segments; s++) {
+    for (let s = 1; s < straight.length; s++) {
       const d0 = Math.hypot(...straight[s].map((x, q) => x - straight[0][q]) as [number, number, number]);
       const d1 = Math.hypot(...leaning[s].map((x, q) => x - leaning[0][q]) as [number, number, number]);
-      expect(d1).toBeCloseTo(d0, 5);
+      expect(d1).toBeCloseTo(d0, 4);
     }
     expect(forestLawGlsl).toContain('terrainHeight(i, k, d)');
+    expect(barkGlsl).toContain('aBase.xyz + (position - aBase.xyz) * grown');
   });
 });
 
@@ -212,6 +253,36 @@ describe('forest: the life the music gives the trees', () => {
     expect(at(60)).toEqual(a); expect(at(30)).toEqual(a); expect(at(144)).toEqual(a);
   });
 
+  it('the structure glows as the phase asks, settles and holds; a release heard peaks it; the level never drives it', () => {
+    const settle = (phase: CuesFrame['phase'], light = 0.5) => {
+      const f = walk();
+      f.run(12, (world, cues) => { cues.phase = phase; cues.silent = phase === 'silence'; world.excitation = light; world.illumination = light; });
+      return { emission: f.field.emission, nodes: f.field.nodes };
+    };
+    expect(settle('silence').emission).toBeCloseTo(EMISSION.silence, 3);
+    expect(settle('breakdown').emission).toBeCloseTo(EMISSION.breakdown, 3);
+    expect(settle('groove').emission).toBeCloseTo(EMISSION.groove, 3);
+    expect(settle('rising').emission).toBeCloseTo(EMISSION.rising, 3);
+    expect(settle('rising').nodes).toBeCloseTo(NODES.rising, 3);
+    expect(settle('groove', 1).emission).toBeCloseTo(settle('groove', 0.2).emission, 9);
+    // Settled, it holds: nothing moves at rest.
+    const f = walk();
+    f.run(15);
+    const held = f.field.emission;
+    f.run(2);
+    expect(f.field.emission).toBe(held);
+    // A release heard: at its peak at once, back to the phase's level over a few seconds.
+    f.push('release', 'confirmed', f.world.time);
+    f.run(0.05);
+    expect(f.field.emission).toBeGreaterThan(0.97);
+    f.run(15);
+    expect(f.field.emission).toBeCloseTo(EMISSION.groove, 2);
+    // Without a clock the forest rests at the silence's level.
+    const g = walk();
+    g.run(12, undefined, 60, undefined, false);
+    expect(g.field.emission).toBeCloseTo(EMISSION.silence, 6);
+  });
+
   it('settings are bounded', () => {
     expect(forestParams({ capacity: 999, lean: 3, low: 50, high: 2 })).toMatchObject({ capacity: 40, lean: 0.15, low: 30, high: 30 });
   });
@@ -244,10 +315,9 @@ describe('Resonant Forest: a scene of the Worlds family', { timeout: 60_000 }, (
         const k = ((field.R[s] - t.row) % PERIOD + PERIOD) % PERIOD;
         if (k > 12) continue;
         const state = tree({ J: field.J[s], R: field.R[s], growth: field.growth[s], lean: field.trees[s * 4 + 1] });
-        for (let n = 0; n < field.shapes[s].segments; n++) for (let c = 0; c < 3; c++) {
-          const x = branchPoint(t, state, field.shapes[s], n, c, 1)[0];
-          closest = Math.min(closest, Math.abs(x) - drift); checked++;
-        }
+        const shape = field.shapes[s];
+        for (let n = 0; n < shape.bark; n += 2) { closest = Math.min(closest, Math.abs(barkPoint(t, state, shape, n)[0]) - drift); checked++; }
+        for (let n = 0; n < shape.twigs; n++) { closest = Math.min(closest, Math.abs(twigPoint(t, state, shape, n)[0]) - drift); checked++; }
       }
     });
     expect(checked).toBeGreaterThan(100);
@@ -260,7 +330,7 @@ describe('Resonant Forest: a scene of the Worlds family', { timeout: 60_000 }, (
     const full = mountWorld('resonant-forest');
     const geometry = vi.spyOn(BufferGeometry.prototype, 'dispose'), material = vi.spyOn(Material.prototype, 'dispose');
     full.dispose();
-    // Ground: two of each; trees at Medium: three of each.
-    expect(geometry).toHaveBeenCalledTimes(5); expect(material).toHaveBeenCalledTimes(5);
+    // Ground: two of each; trees at Medium: four of each (bark, twigs, blossoms, filaments).
+    expect(geometry).toHaveBeenCalledTimes(6); expect(material).toHaveBeenCalledTimes(6);
   });
 });

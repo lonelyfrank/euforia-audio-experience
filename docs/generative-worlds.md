@@ -180,17 +180,19 @@ altezza una **legge nuova in GLSL e TS** (`oceanLaw.ts`):
 ## 7. Resonant Forest
 
 Sul suolo del Terrain (colline basse, una radura che il volo segue). Alberi: un ciclo di vita nuovo
-(`forestGrowth.ts`) e una legge nuova in GLSL e TS (`forestLaw.ts`). Tre draw call (rami, foglie e nodi, filamenti; a
-Low niente filamenti).
+(`forestGrowth.ts`) e una legge nuova in GLSL e TS (`forestLaw.ts`). Dal 16 ottobre gli alberi seguono la direzione
+artistica del mockup: volumi chiusi sfaccettati, materiale ossidiana, emissione strutturale per stato; quattro draw call
+(corteccia, rametti, fiori e nodi, filamenti; a Low niente filamenti). Percorso, fasi e misure:
+[resonant-forest.md](resonant-forest.md); ciò che segue in questa sezione sul ciclo di vita e sulla memoria vale ancora.
 
 ```text
 dormant → seed (1,2 s) → growth (profondità dopo profondità, punta per ultima) → mature ⇄ resonance → decay (foglie che cadono, rami che rientrano) → recycle
 ```
 
 - **Forma**: fissata alla semina da seme + musica sentita allora (ramificazione, curvatura, densità della geometria;
-  la tensione tira i rami in alto), quantizzata a quarti: un frame di differenza non cambia un albero. Tronco a
-  prisma triangolare, fino a 24 segmenti e 24 foglie/nodi. Non cambia mai forma dopo: cresce, si piega rigidamente
-  (vento: il lato del suono, ≤ 0,06 rad), decade.
+  la tensione tira i rami in alto), quantizzata a quarti: un frame di differenza non cambia un albero. Tronco, radici e
+  rami tubolari chiusi, rametti e fiori ([resonant-forest.md](resonant-forest.md) §3). Non cambia mai forma dopo:
+  cresce, si piega rigidamente (vento: il lato del suono, ≤ 0,06 rad), decade.
 - **Ancoraggio**: il tronco parte dal vertice del suolo al suo punto del reticolo, attraverso `terrainHeight` sugli
   stessi uniform (come i monoliti), 8 cm sotto: non può galleggiare.
 - **Dove e quanto**: le righe che entrano in vista, fuori da una radura larga quanto il corridoio + la chioma; la
